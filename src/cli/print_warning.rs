@@ -1,38 +1,38 @@
-use crate::cli::data_structure::Warning;
+use crate::cli::cli_warning::CliWarning;
 
-pub fn print_warning(warning: Warning) {
+pub fn print_warning(warning: &CliWarning) {
     match warning {
-        Warning::DeprecatedOption(opt) => {
+        CliWarning::DeprecatedOption(opt) => {
             eprintln!(
                 "Warning: The option '{}' is deprecated and may be removed in future versions.",
                 opt
             );
         }
-        Warning::DuplicateOptionIgnored(opt) => {
+        CliWarning::DuplicateOptionIgnored(opt) => {
             eprintln!(
                 "Warning: Duplicate option '{}' encountered; the latter occurrence is ignored.",
                 opt
             );
         }
-        Warning::UnknownOptionEncountered(opt) => {
+        CliWarning::UnknownOptionEncountered(opt) => {
             eprintln!(
                 "Warning: Unknown option '{}' encountered; it was ignored.",
                 opt
             );
         }
-        Warning::OptionValueTruncated { option, original } => {
+        CliWarning::OptionValueTruncated { option, original } => {
             eprintln!(
                 "Warning: The value for option '{}' was too long and has been truncated. Original: '{}'",
                 option, original
             );
         }
-        Warning::UnusedArgument(arg) => {
+        CliWarning::UnusedArgument(arg) => {
             eprintln!(
                 "Warning: Unused argument '{}' detected; it was ignored.",
                 arg
             );
         }
-        Warning::OptionOverridden {
+        CliWarning::OptionOverridden {
             option,
             previous_value,
             new_value,

@@ -1,30 +1,43 @@
-use std::{println, process};
+use std::process;
 
-use base_browser::{
-    cli::{parse_cli::parse_cli, print_warning::print_warning},
-    navigation::url::Url,
-};
+use base_browser::cli::command::Command;
+use base_browser::parser::data_structure::Parse;
+use base_browser::{cli::print_warning::print_warning, url::url::Url};
 
 fn main() {
-    let parsed_output = match parse_cli() {
-        Ok(mut parsed_output) => {
-            // Pop warnings and print them until the list is empty
-            while let Some(warning) = parsed_output.warnings.pop() {
+    // Gather CLI arguments
+    let args: Vec<String> = std::env::args().collect();
+
+    let command = match Command::parse(args) {
+        Ok(parsed_output) => {
+            for warning in &parsed_output.warnings {
                 print_warning(warning);
             }
-            parsed_output
+            parsed_output.value
         }
-
         Err(err) => {
             eprintln!("Error: {err}");
             process::exit(1);
         }
     };
 
-    if let Some(_sub_command) = parsed_output.sub_command {
+    if let Some(_sub_command) = command.sub_command {
         // handle sub_command
-    } else if let Some(url_str) = parsed_output.opts.url {
-        let parsed_url = Url::parse(&url_str);
+    } else if let Some(url_str) = command.opts.url {
+        // Handle URL parsing, print warnings, and output the parsed URL
+        let parsed_url = match Url::parse(&url_str) {
+            Ok(parsed_out) => {
+                for warning in &parsed_out.warnings {
+                    //  handle log warning
+                }
+                parsed_out.value
+            }
+            Err(err) => {
+                eprintln!("Error parsing URL: {err}");
+                process::exit(1);
+            }
+        };
+
         println!("{parsed_url:?}");
     } else {
         eprintln!(
