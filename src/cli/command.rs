@@ -5,7 +5,7 @@ use crate::{
         cli_warning::CliWarning,
         utils::{is_accepted_arg, is_accepted_subcommand},
     },
-    parser::data_structure::{Parse, ParsedOutput},
+    parser::{generic_struct::ParsedOutput, traits::Parse},
 };
 
 #[derive(Debug, Clone)]

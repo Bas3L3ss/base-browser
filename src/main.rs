@@ -1,17 +1,16 @@
 use std::process;
 
 use base_browser::cli::command::Command;
-use base_browser::parser::data_structure::Parse;
-use base_browser::{cli::print_warning::print_warning, url::url::Url};
+use base_browser::parser::traits::Parse;
+use base_browser::url::url::Url;
 
 fn main() {
-    // Gather CLI arguments
     let args: Vec<String> = std::env::args().collect();
 
     let command = match Command::parse(args) {
         Ok(parsed_output) => {
             for warning in &parsed_output.warnings {
-                print_warning(warning);
+                base_browser::cli::print_warning::print_warning(warning);
             }
             parsed_output.value
         }
@@ -24,11 +23,10 @@ fn main() {
     if let Some(_sub_command) = command.sub_command {
         // handle sub_command
     } else if let Some(url_str) = command.opts.url {
-        // Handle URL parsing, print warnings, and output the parsed URL
         let parsed_url = match Url::parse(&url_str) {
             Ok(parsed_out) => {
                 for warning in &parsed_out.warnings {
-                    //  handle log warning
+                    base_browser::url::print_warning::print_warning(warning);
                 }
                 parsed_out.value
             }

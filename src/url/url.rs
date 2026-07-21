@@ -3,10 +3,9 @@ use std::str::FromStr;
 
 use anyhow::Result;
 
-use crate::{
-    parser::data_structure::{Parse, ParsedOutput},
-    url::url_warning::UrlWarning,
-};
+use crate::parser::generic_struct::ParsedOutput;
+use crate::parser::traits::Parse;
+use crate::url::url_warning::UrlWarning;
 
 #[derive(Debug)]
 pub struct Url {

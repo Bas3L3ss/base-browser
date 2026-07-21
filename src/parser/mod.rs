@@ -1,1 +1,2 @@
-pub mod data_structure;
+pub mod generic_struct;
+pub mod traits;
