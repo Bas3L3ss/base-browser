@@ -1,8 +1,11 @@
+use std::net::IpAddr;
+use std::str::FromStr;
+
 #[derive(Debug)]
 pub struct Url {
     pub scheme: Scheme,
-    pub host: String,
-    pub port: Option<u16>,
+    pub host: Host,
+    pub port: u16,
     pub path: String,
     pub query: Option<String>,
     pub fragment: Option<String>,
@@ -12,6 +15,12 @@ pub struct Url {
 pub enum Scheme {
     Http,
     Https,
+}
+
+#[derive(Debug)]
+pub enum Host {
+    Ip(IpAddr),
+    Domain(String),
 }
 
 impl Url {
@@ -35,7 +44,7 @@ impl Url {
         } else if without_query.starts_with("http://") {
             (Scheme::Http, &without_query["http://".len()..])
         } else {
-            // Default to http
+            // HANDLE ERROR - NO SCHEME SPECIFIED OR WARNING AND TELLING TO DEFAULT TO HTTP
             (Scheme::Http, without_query)
         };
 
@@ -46,13 +55,46 @@ impl Url {
             (rest, "")
         };
 
-        let (host, mut port) = if let Some(colon_idx) = host_port.find(':') {
-            let (h, p) = host_port.split_at(colon_idx);
-            let port_str = &p[1..];
-            let port = port_str.parse::<u16>().ok();
-            (h.to_string(), port)
+        let (host_str, mut port) = if host_port.starts_with('[') {
+            if let Some(end_bracket_idx) = host_port.find(']') {
+                let host_lit = &host_port[..=end_bracket_idx];
+                let remainder: &str = &host_port[end_bracket_idx + 1..];
+                let port = if remainder.starts_with(':') {
+                    remainder[1..].parse::<u16>().ok()
+                } else {
+                    None
+                };
+                (host_lit, port)
+            } else {
+                (host_port, None)
+            }
         } else {
-            (host_port.to_string(), None)
+            if let Some(colon_idx) = host_port.rfind(':') {
+                if colon_idx > 0 {
+                    let (h, p) = host_port.split_at(colon_idx);
+                    let port_str = &p[1..];
+                    let port = port_str.parse::<u16>().ok();
+                    (h, port)
+                } else {
+                    (host_port, None)
+                }
+            } else {
+                (host_port, None)
+            }
+        };
+
+        let host = if host_str.starts_with('[') && host_str.ends_with(']') {
+            // It's an IPv6 literal, strip brackets
+            let ip_str = &host_str[1..host_str.len() - 1];
+            if let Ok(ip) = IpAddr::from_str(ip_str) {
+                Host::Ip(ip)
+            } else {
+                Host::Domain(host_str.to_string())
+            }
+        } else if let Ok(ip) = IpAddr::from_str(host_str) {
+            Host::Ip(ip)
+        } else {
+            Host::Domain(host_str.to_string())
         };
 
         if port.is_none() {
@@ -69,7 +111,7 @@ impl Url {
         Url {
             scheme,
             host,
-            port,
+            port: port.unwrap(),
             path: path.to_string(),
             query,
             fragment,
