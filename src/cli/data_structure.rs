@@ -21,12 +21,12 @@ impl ParsedOutput {
 
 #[derive(Debug, Clone)]
 pub struct Options {
-    pub url: String,
+    pub url: Option<String>,
 }
 
 impl Options {
     pub fn new() -> Options {
-        Options { url: String::new() }
+        Options { url: None }
     }
 }
 
