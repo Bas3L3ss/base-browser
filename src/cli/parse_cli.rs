@@ -22,15 +22,15 @@ pub fn parse_cli() -> Result<ParsedOutput> {
             if needs_value {
                 if i + 1 < args.len() {
                     if arg == "--url" {
-                        if opts.url.is_empty() {
-                            opts.url = args[i + 1].clone();
+                        if opts.url.is_none() {
+                            opts.url = Some(args[i + 1].clone());
                         } else {
                             warnings.push(Warning::OptionOverridden {
                                 option: arg.to_string(),
-                                previous_value: opts.url.clone(),
+                                previous_value: opts.url.unwrap().clone(),
                                 new_value: args[i + 1].clone(),
                             });
-                            opts.url = args[i + 1].clone();
+                            opts.url = Some(args[i + 1].clone());
                         }
                         i += 2;
                         continue;
@@ -45,9 +45,9 @@ pub fn parse_cli() -> Result<ParsedOutput> {
             sub_commands = Some(arg.to_string());
             i += 1;
             continue;
-        } else if !arg.starts_with("--") && opts.url.is_empty() {
+        } else if !arg.starts_with("--") && opts.url.is_none() {
             // Accept positional URL if --url wasn't set yet
-            opts.url = arg.to_string();
+            opts.url = Some(arg.to_string());
             i += 1;
             continue;
         } else if !arg.starts_with("--") {
