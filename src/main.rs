@@ -38,7 +38,14 @@ fn main() {
         };
 
         let dns = DnsClient {};
-        let ip = dns.lookup(&parsed_url);
+        let ip = match dns.lookup(&parsed_url) {
+            Ok(ip) => ip,
+            Err(err) => {
+                eprintln!("DNS lookup failed: {err}");
+                process::exit(1);
+            }
+        };
+
         println!("{ip:?}");
     } else {
         eprintln!(
