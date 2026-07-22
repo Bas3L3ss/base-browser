@@ -1,6 +1,7 @@
-use std::process;
+use std::{println, process};
 
 use base_browser::cli::command::Command;
+use base_browser::dns::client::DnsClient;
 use base_browser::parser::traits::Parse;
 use base_browser::url::url::Url;
 
@@ -36,7 +37,9 @@ fn main() {
             }
         };
 
-        println!("{parsed_url:?}");
+        let dns = DnsClient {};
+        let ip = dns.lookup(&parsed_url);
+        println!("{ip:?}");
     } else {
         eprintln!(
             "Error: No URL or sub command was provided. Please specify a URL using a positional argument or with the '--url' option."
