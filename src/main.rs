@@ -37,7 +37,7 @@ fn main() {
             }
         };
 
-        let dns = DnsClient {};
+        let dns = DnsClient::new();
         let ip = match dns.lookup(&parsed_url) {
             Ok(ip) => ip,
             Err(err) => {
@@ -46,7 +46,7 @@ fn main() {
             }
         };
 
-        println!("{ip:?}");
+        println!("{ip:#?}");
     } else {
         eprintln!(
             "Error: No URL or sub command was provided. Please specify a URL using a positional argument or with the '--url' option."

@@ -19,6 +19,9 @@ const GOOGLE_ALTERNATE_DNS: ([u8; 4], u16) = ([8, 8, 4, 4], 53);
 pub struct DnsClient {}
 
 impl DnsClient {
+    pub fn new() -> Self {
+        DnsClient {}
+    }
     pub fn lookup(&self, url: &Url) -> Result<LookupResult> {
         let mut rng = rand::rng();
         let header_id: u16 = rng.random();
