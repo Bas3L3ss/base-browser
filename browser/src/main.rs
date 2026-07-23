@@ -1,5 +1,3 @@
-use std::println;
-
 use base_browser::cli::command::Command;
 use input_parser::traits::Parse;
 use network::http::client::HttpClient;
@@ -39,8 +37,8 @@ fn main() -> anyhow::Result<()> {
         };
 
         let http = HttpClient::new();
-        println!("{}", http.get(&url)?.body_as_string());
-
+        let response = http.get(&url)?;
+        let document = html::parser::parse::parse(&response.body_as_string())?;
         Ok(())
     } else {
         eprintln!(

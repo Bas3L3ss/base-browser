@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-
+#[allow(unused_assignments)]
 pub fn decode_name(bytes: &[u8], mut offset: usize) -> Result<(String, usize)> {
     let mut labels = Vec::new();
     let mut jumped = false;
@@ -30,6 +30,7 @@ pub fn decode_name(bytes: &[u8], mut offset: usize) -> Result<(String, usize)> {
             }
             // Mark as jumped so that total_offset is not updated anymore after following the pointer
             jumped = true;
+
             let (name, _) = decode_name(bytes, pointer)?;
             labels.push(name);
             break;

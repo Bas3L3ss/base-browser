@@ -36,6 +36,7 @@ name = "base-browser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "html",
  "input_parser",
  "network",
  "url",
@@ -127,6 +128,13 @@ dependencies = [
  "libc",
  "r-efi",
  "rand_core",
+]
+
+[[package]]
+name = "html"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]
