@@ -216,7 +216,7 @@ impl<'a> Tokenizer<'a> {
                     if word.eq_ignore_ascii_case("doctype") {
                         self.skip_whitespace();
                         let dt_val = self.consume_until(">");
-                        tokens.push(Token::Doctype(dt_val.trim().to_string()));
+                        tokens.push(Token::Doctype(dt_val.trim().to_string())); // TODO: DOCTYPE MORE COMPREHENSIVE SUPPORT
                     } else {
                         // fallback: not a correct doctype, just skip (could emit error)
                     }
@@ -227,8 +227,6 @@ impl<'a> Tokenizer<'a> {
                     self.skip_whitespace();
                     let attributes = self.parse_attributes();
 
-                    // -- Browser-correct handling of <img/> vs <div/> vs <img> --
-
                     // Self-closing syntax <tag ... />
                     if self.source[self.position..].starts_with("/>") {
                         let is_void = Self::is_void_element(tag.as_str());
@@ -237,8 +235,7 @@ impl<'a> Tokenizer<'a> {
                         if is_void {
                             tokens.push(Token::SelfClose(HtmlTags::from_str(&tag), attributes));
                         } else {
-                            // For non-void elements, browsers treat <div/> as <div>, not self-closing.
-                            // Could emit a parse warning here if desired.
+                            // TODO: For non-void elements, browser should treat <div/> as <div>, not self-closing.
                             tokens.push(Token::Start(HtmlTags::from_str(&tag), attributes));
                         }
                     }
@@ -251,9 +248,8 @@ impl<'a> Tokenizer<'a> {
                         } else {
                             tokens.push(Token::Start(HtmlTags::from_str(&tag), attributes));
                         }
-                    }
-                    // If we get here, it's a malformed tag. Advance past whatever broke it.
-                    else {
+                    } else {
+                        // If we get here, it's a malformed tag. Advance past whatever broke it.
                         // This is a simple recovery (advance one char).
                         self.advance();
                     }
@@ -261,7 +257,6 @@ impl<'a> Tokenizer<'a> {
             } else {
                 // Text node: collect content until next tag
                 let content = self.parse_content();
-                // Only emit content tokens for non-empty, non-whitespace-only strings
                 if !content.is_empty() && !content.chars().all(|ch| ch.is_whitespace()) {
                     tokens.push(Token::Content(content));
                 }
