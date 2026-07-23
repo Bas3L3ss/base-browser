@@ -1,11 +1,8 @@
 use anyhow::{Result, bail};
 
-use crate::{
-    cli::{
-        cli_warning::CliWarning,
-        utils::{is_accepted_arg, is_accepted_subcommand},
-    },
-    input_parser::{generic_struct::ParsedOutput, traits::Parse},
+use crate::cli::{
+    cli_warning::CliWarning,
+    utils::{is_accepted_arg, is_accepted_subcommand},
 };
 
 #[derive(Debug, Clone)]
@@ -30,6 +27,9 @@ impl Command {
         Command { opts, sub_command }
     }
 }
+
+use input_parser::generic_struct::ParsedOutput;
+use input_parser::traits::Parse;
 
 impl Parse<CliWarning, Vec<String>> for Command {
     fn parse(args: Vec<String>) -> Result<ParsedOutput<Command, CliWarning>> {

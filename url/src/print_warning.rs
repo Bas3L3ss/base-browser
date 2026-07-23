@@ -1,4 +1,4 @@
-use crate::url::url_warning::UrlWarning;
+use crate::url_warning::UrlWarning;
 
 /// Prints a user-friendly message for each type of UrlWarning.
 pub fn print_warning(warning: &UrlWarning) {

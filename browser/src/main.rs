@@ -2,8 +2,8 @@ use std::println;
 
 use base_browser::cli::command::Command;
 use base_browser::http::client::HttpClient;
-use base_browser::input_parser::traits::Parse;
-use base_browser::url::url::Url;
+use input_parser::traits::Parse;
+use url::url::Url;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
         let url = match Url::parse(&url_str) {
             Ok(parsed_out) => {
                 for warning in &parsed_out.warnings {
-                    base_browser::url::print_warning::print_warning(warning);
+                    url::print_warning::print_warning(warning);
                 }
                 parsed_out.value
             }

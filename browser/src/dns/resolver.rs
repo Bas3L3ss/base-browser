@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use rand::RngExt;
+use url::url::{Host, Url};
 
 use crate::dns::enums::Rcode;
 use crate::dns::enums::{QueryClass, QueryType};
@@ -11,7 +12,6 @@ use crate::dns::header::Header;
 use crate::dns::packet::DnsPacket;
 use crate::dns::question::DnsQuestion;
 use crate::dns::response::LookupResult;
-use crate::url::url::Url;
 
 const GOOGLE_PUBLIC_DNS: ([u8; 4], u16) = ([8, 8, 8, 8], 53);
 const GOOGLE_ALTERNATE_DNS: ([u8; 4], u16) = ([8, 8, 4, 4], 53);
@@ -29,8 +29,8 @@ impl DnsResolver {
         let header = Header::new(header_id, Flag::new(), 1, 0, 0, 0);
 
         let host_str = match &url.host {
-            crate::url::url::Host::Domain(d) => d.clone(),
-            crate::url::url::Host::Ip(ip) => ip.to_string(),
+            Host::Domain(d) => d.clone(),
+            Host::Ip(ip) => ip.to_string(),
         };
         let question = DnsQuestion::new(host_str, QueryType::default(), QueryClass::default());
 

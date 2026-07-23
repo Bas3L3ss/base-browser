@@ -2,10 +2,10 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use anyhow::Result;
+use input_parser::generic_struct::ParsedOutput;
+use input_parser::traits::Parse;
 
-use crate::input_parser::generic_struct::ParsedOutput;
-use crate::input_parser::traits::Parse;
-use crate::url::url_warning::UrlWarning;
+use crate::url_warning::UrlWarning;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Url {

@@ -1,13 +1,10 @@
 use std::{net::IpAddr, sync::Arc};
 
-use rustls::ClientConfig;
-
-use crate::{
-    network::{
-        connection::Connection, tcp_connection::TcpConnection, tls_connection::TlsConnection,
-    },
-    url::url::{Scheme, Url},
+use crate::network::{
+    connection::Connection, tcp_connection::TcpConnection, tls_connection::TlsConnection,
 };
+use rustls::ClientConfig;
+use url::url::{Scheme, Url};
 
 pub struct ConnectionFactory {
     config: Arc<ClientConfig>,

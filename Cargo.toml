@@ -1,10 +1,4 @@
-[package]
-name = "base-browser"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["browser", "input_parser", "url"]
 
-[dependencies]
-anyhow = "1.0.104"
-rand = "0.10.2"
-rustls = "0.23.42"
-webpki-roots = "1.0.9"
+resolver = "2"

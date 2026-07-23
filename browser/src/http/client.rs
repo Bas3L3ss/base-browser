@@ -4,10 +4,10 @@ use crate::{
     dns::{resolver::DnsResolver, response::LookupResult},
     http::response::HttpResponse,
     network::{connection::Connection, connection_factory::ConnectionFactory},
-    url::url::Url,
 };
 use anyhow::Result;
 use rustls::{ClientConfig, RootCertStore};
+use url::url::Url;
 
 pub struct HttpClient {
     dns_resolver: DnsResolver,
@@ -49,7 +49,7 @@ impl HttpClient {
         let request = format!(
             "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
             path, host
-        );
+        ); // TODO: HttpRequest::get(url)
 
         // Write request
         conn.write(request.as_bytes())?;
