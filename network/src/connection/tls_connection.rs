@@ -1,8 +1,11 @@
-use crate::network::connection::Connection;
-use rustls::ClientConnection;
+use rustls::pki_types::ServerName;
+use rustls::{ClientConfig, ClientConnection};
+
 use std::io::Write;
 use std::io::{ErrorKind, Read};
 use std::net::TcpStream;
+
+use crate::connection::connection::Connection;
 
 pub struct TlsConnection {
     pub tcp: TcpStream,
@@ -13,9 +16,8 @@ impl TlsConnection {
         ip: std::net::IpAddr,
         port: u16,
         host: &str,
-        config: std::sync::Arc<rustls::ClientConfig>,
+        config: std::sync::Arc<ClientConfig>,
     ) -> anyhow::Result<Self> {
-        use rustls::{ClientConnection, pki_types::ServerName};
         let server_name = ServerName::try_from(host.to_string())?;
         let tls = ClientConnection::new(config, server_name)?;
         let tcp = TcpStream::connect((ip, port))?;

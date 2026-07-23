@@ -1,8 +1,8 @@
 use std::println;
 
 use base_browser::cli::command::Command;
-use base_browser::http::client::HttpClient;
 use input_parser::traits::Parse;
+use network::http::client::HttpClient;
 use url::url::Url;
 
 fn main() -> anyhow::Result<()> {

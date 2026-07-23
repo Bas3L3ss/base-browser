@@ -1,9 +1,9 @@
 use std::{format, sync::Arc, unimplemented};
 
 use crate::{
+    connection::{connection::Connection, connection_factory::ConnectionFactory},
     dns::{resolver::DnsResolver, response::LookupResult},
     http::response::HttpResponse,
-    network::{connection::Connection, connection_factory::ConnectionFactory},
 };
 use anyhow::Result;
 use rustls::{ClientConfig, RootCertStore};

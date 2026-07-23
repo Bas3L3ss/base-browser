@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use crate::network::connection::Connection;
+use crate::connection::connection::Connection;
 
 pub struct TcpConnection {
     pub stream: TcpStream,

@@ -1,6 +1,6 @@
 use std::{net::IpAddr, sync::Arc};
 
-use crate::network::{
+use crate::connection::{
     connection::Connection, tcp_connection::TcpConnection, tls_connection::TlsConnection,
 };
 use rustls::ClientConfig;
