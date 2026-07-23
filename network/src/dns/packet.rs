@@ -1,6 +1,6 @@
 use std::{net::IpAddr, vec};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::dns::{
     header::Header, question::DnsQuestion, record::DnsRecord, response::ResolvedAddress,

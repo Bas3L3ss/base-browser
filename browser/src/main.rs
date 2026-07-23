@@ -1,6 +1,5 @@
-use std::println;
-
 use base_browser::cli::command::Command;
+use html::{parser::parser::Parser, print_dom_tree};
 use input_parser::traits::Parse;
 use network::http::client::HttpClient;
 use url::url::Url;
@@ -39,7 +38,10 @@ fn main() -> anyhow::Result<()> {
         };
 
         let http = HttpClient::new();
-        println!("{}", http.get(&url)?.body_as_string());
+        let response = http.get(&url)?;
+        let html_parse_result = Parser::to_dom(&response.body_as_string())?;
+
+        print_dom_tree(&html_parse_result.value);
 
         Ok(())
     } else {
