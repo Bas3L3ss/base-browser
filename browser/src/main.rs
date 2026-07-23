@@ -1,5 +1,5 @@
 use base_browser::cli::command::Command;
-use html::{parser::parser::Parser, print_dom_tree};
+use html::{parser::parser::Parser, util::print_dom_tree::print_dom_tree};
 use input_parser::traits::Parse;
 use network::http::client::HttpClient;
 use url::url::Url;
