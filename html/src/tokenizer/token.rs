@@ -1,11 +1,11 @@
-use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTags};
+use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTag};
 use std::fmt;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Token {
-    Start(HtmlTags, Attributes),
-    SelfClose(HtmlTags, Attributes),
-    End(HtmlTags),
+    Start(HtmlTag, Attributes),
+    SelfClose(HtmlTag, Attributes),
+    End(HtmlTag),
     Content(String),
     Comment(String),
     Doctype(String),

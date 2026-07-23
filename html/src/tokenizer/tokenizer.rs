@@ -1,6 +1,6 @@
 use std::matches;
 
-use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTags, token::Token};
+use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token};
 
 pub struct Tokenizer<'a> {
     source: &'a str,
@@ -193,7 +193,7 @@ impl<'a> Tokenizer<'a> {
                         self.advance();
                     }
                     if !tag.is_empty() {
-                        tokens.push(Token::End(HtmlTags::from_str(&tag)));
+                        tokens.push(Token::End(HtmlTag::from_str(&tag)));
                     }
                 }
                 // Comment (<!-- ... -->)
@@ -233,10 +233,10 @@ impl<'a> Tokenizer<'a> {
                         self.advance(); // skip '/'
                         self.advance(); // skip '>'
                         if is_void {
-                            tokens.push(Token::SelfClose(HtmlTags::from_str(&tag), attributes));
+                            tokens.push(Token::SelfClose(HtmlTag::from_str(&tag), attributes));
                         } else {
                             // TODO: For non-void elements, browser should treat <div/> as <div>, not self-closing.
-                            tokens.push(Token::Start(HtmlTags::from_str(&tag), attributes));
+                            tokens.push(Token::Start(HtmlTag::from_str(&tag), attributes));
                         }
                     }
                     // Normal opening tag <tag ...>
@@ -244,9 +244,9 @@ impl<'a> Tokenizer<'a> {
                         self.advance();
 
                         if Self::is_void_element(tag.as_str()) {
-                            tokens.push(Token::SelfClose(HtmlTags::from_str(&tag), attributes));
+                            tokens.push(Token::SelfClose(HtmlTag::from_str(&tag), attributes));
                         } else {
-                            tokens.push(Token::Start(HtmlTags::from_str(&tag), attributes));
+                            tokens.push(Token::Start(HtmlTag::from_str(&tag), attributes));
                         }
                     } else {
                         // If we get here, it's a malformed tag. Advance past whatever broke it.

@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HtmlTags {
+pub enum HtmlTag {
     // Document Structure
     Doctype,
     Html,
@@ -22,6 +22,7 @@ pub enum HtmlTags {
     Article,
     Nav,
     Aside,
+    Div, // <div>
 
     // Headings
     Header(u8), // Header(1) means H1, Header(2) means H2, etc.
@@ -131,35 +132,36 @@ pub enum HtmlTags {
     Dialog,
 
     // Others and special
-    UnknownTag(String), // Any unknown tag for extensibility
+    CustomTag(String), // Any unknown tag for extensibility
 }
 
-impl HtmlTags {
-    /// Create an `HtmlTags` variant from a tag name string (e.g., "p", "h2", "html", "random-tag")
+impl HtmlTag {
+    /// Create an `HtmlTag` variant from a tag name string (e.g., "p", "h2", "html", "random-tag")
     pub fn from_str(s: &str) -> Self {
         match s.to_ascii_lowercase().as_str() {
             // Document Structure
-            "!doctype" => HtmlTags::Doctype,
-            "html" => HtmlTags::Html,
-            "head" => HtmlTags::Head,
-            "body" => HtmlTags::Body,
+            "!doctype" => HtmlTag::Doctype,
+            "html" => HtmlTag::Html,
+            "head" => HtmlTag::Head,
+            "body" => HtmlTag::Body,
 
             // Metadata
-            "title" => HtmlTags::Title,
-            "meta" => HtmlTags::Meta,
-            "link" => HtmlTags::Link,
-            "style" => HtmlTags::Style,
-            "script" => HtmlTags::ScriptTag,
-            "base" => HtmlTags::Base,
+            "title" => HtmlTag::Title,
+            "meta" => HtmlTag::Meta,
+            "link" => HtmlTag::Link,
+            "style" => HtmlTag::Style,
+            "script" => HtmlTag::ScriptTag,
+            "base" => HtmlTag::Base,
 
             // Sections
-            "header" => HtmlTags::HeaderTag,
-            "footer" => HtmlTags::Footer,
-            "main" => HtmlTags::Main,
-            "section" => HtmlTags::Section,
-            "article" => HtmlTags::Article,
-            "nav" => HtmlTags::Nav,
-            "aside" => HtmlTags::Aside,
+            "header" => HtmlTag::HeaderTag,
+            "footer" => HtmlTag::Footer,
+            "main" => HtmlTag::Main,
+            "section" => HtmlTag::Section,
+            "article" => HtmlTag::Article,
+            "nav" => HtmlTag::Nav,
+            "aside" => HtmlTag::Aside,
+            "div" => HtmlTag::Div,
 
             // Headings h1-h6
             tag if tag.starts_with('h')
@@ -167,114 +169,114 @@ impl HtmlTags {
                 && tag.chars().nth(1).unwrap().is_ascii_digit() =>
             {
                 match tag[1..2].parse::<u8>() {
-                    Ok(n @ 1..=6) => HtmlTags::Header(n),
-                    _ => HtmlTags::UnknownTag(s.to_string()),
+                    Ok(n @ 1..=6) => HtmlTag::Header(n),
+                    _ => HtmlTag::CustomTag(s.to_string()),
                 }
             }
 
             // Text content
-            "p" => HtmlTags::Paragraph,
-            "#text" => HtmlTags::Text,
-            "#whitespace" => HtmlTags::Whitespace,
+            "p" => HtmlTag::Paragraph,
+            "#text" => HtmlTag::Text,
+            "#whitespace" => HtmlTag::Whitespace,
 
             // Lists
-            "ol" => HtmlTags::OrderedList,
-            "ul" => HtmlTags::UnorderedList,
-            "li" => HtmlTags::ListItem,
-            "dl" => HtmlTags::DescriptionList,
-            "dt" => HtmlTags::DescriptionTerm,
-            "dd" => HtmlTags::DescriptionDetails,
+            "ol" => HtmlTag::OrderedList,
+            "ul" => HtmlTag::UnorderedList,
+            "li" => HtmlTag::ListItem,
+            "dl" => HtmlTag::DescriptionList,
+            "dt" => HtmlTag::DescriptionTerm,
+            "dd" => HtmlTag::DescriptionDetails,
 
             // Inline text semantics
-            "a" => HtmlTags::Anchor,
-            "em" => HtmlTags::Emphasis,
-            "strong" => HtmlTags::Strong,
-            "i" => HtmlTags::Italic,
-            "b" => HtmlTags::Bold,
-            "small" => HtmlTags::Small,
-            "mark" => HtmlTags::Mark,
-            "del" => HtmlTags::Delete,
-            "ins" => HtmlTags::Insert,
-            "sub" => HtmlTags::Subscript,
-            "sup" => HtmlTags::Superscript,
-            "code" => HtmlTags::Code,
-            "kbd" => HtmlTags::Kbd,
-            "samp" => HtmlTags::Samp,
-            "var" => HtmlTags::Var,
-            "cite" => HtmlTags::Cite,
-            "q" => HtmlTags::Q,
-            "abbr" => HtmlTags::Abbr,
-            "time" => HtmlTags::Time,
-            "data" => HtmlTags::Data,
-            "span" => HtmlTags::Span,
-            "br" => HtmlTags::Br,
-            "wbr" => HtmlTags::Wbr,
+            "a" => HtmlTag::Anchor,
+            "em" => HtmlTag::Emphasis,
+            "strong" => HtmlTag::Strong,
+            "i" => HtmlTag::Italic,
+            "b" => HtmlTag::Bold,
+            "small" => HtmlTag::Small,
+            "mark" => HtmlTag::Mark,
+            "del" => HtmlTag::Delete,
+            "ins" => HtmlTag::Insert,
+            "sub" => HtmlTag::Subscript,
+            "sup" => HtmlTag::Superscript,
+            "code" => HtmlTag::Code,
+            "kbd" => HtmlTag::Kbd,
+            "samp" => HtmlTag::Samp,
+            "var" => HtmlTag::Var,
+            "cite" => HtmlTag::Cite,
+            "q" => HtmlTag::Q,
+            "abbr" => HtmlTag::Abbr,
+            "time" => HtmlTag::Time,
+            "data" => HtmlTag::Data,
+            "span" => HtmlTag::Span,
+            "br" => HtmlTag::Br,
+            "wbr" => HtmlTag::Wbr,
             // More phrasing tags
-            "ruby" => HtmlTags::Ruby,
-            "rt" => HtmlTags::Rt,
-            "rp" => HtmlTags::Rp,
-            "bdi" => HtmlTags::Bdi,
-            "bdo" => HtmlTags::Bdo,
-            "s" => HtmlTags::S,
-            "u" => HtmlTags::U,
+            "ruby" => HtmlTag::Ruby,
+            "rt" => HtmlTag::Rt,
+            "rp" => HtmlTag::Rp,
+            "bdi" => HtmlTag::Bdi,
+            "bdo" => HtmlTag::Bdo,
+            "s" => HtmlTag::S,
+            "u" => HtmlTag::U,
 
             // Image and multimedia
-            "img" => HtmlTags::Image,
-            "figure" => HtmlTags::Figure,
-            "figcaption" => HtmlTags::Figcaption,
-            "audio" => HtmlTags::Audio,
-            "video" => HtmlTags::Video,
-            "source" => HtmlTags::Source,
-            "track" => HtmlTags::Track,
-            "canvas" => HtmlTags::CanvasTag,
-            "map" => HtmlTags::Map,
-            "area" => HtmlTags::Area,
-            "picture" => HtmlTags::Picture,
-            "iframe" => HtmlTags::Iframe,
-            "embed" => HtmlTags::Embed,
-            "object" => HtmlTags::Object,
-            "param" => HtmlTags::Param,
+            "img" => HtmlTag::Image,
+            "figure" => HtmlTag::Figure,
+            "figcaption" => HtmlTag::Figcaption,
+            "audio" => HtmlTag::Audio,
+            "video" => HtmlTag::Video,
+            "source" => HtmlTag::Source,
+            "track" => HtmlTag::Track,
+            "canvas" => HtmlTag::CanvasTag,
+            "map" => HtmlTag::Map,
+            "area" => HtmlTag::Area,
+            "picture" => HtmlTag::Picture,
+            "iframe" => HtmlTag::Iframe,
+            "embed" => HtmlTag::Embed,
+            "object" => HtmlTag::Object,
+            "param" => HtmlTag::Param,
 
             // Tables
-            "table" => HtmlTags::Table,
-            "tr" => HtmlTags::TableRow,
-            "td" => HtmlTags::TableData,
-            "th" => HtmlTags::TableHeader,
-            "thead" => HtmlTags::TableHead,
-            "tbody" => HtmlTags::TableBody,
-            "tfoot" => HtmlTags::TableFoot,
-            "colgroup" => HtmlTags::Colgroup,
-            "col" => HtmlTags::Col,
-            "caption" => HtmlTags::Caption,
+            "table" => HtmlTag::Table,
+            "tr" => HtmlTag::TableRow,
+            "td" => HtmlTag::TableData,
+            "th" => HtmlTag::TableHeader,
+            "thead" => HtmlTag::TableHead,
+            "tbody" => HtmlTag::TableBody,
+            "tfoot" => HtmlTag::TableFoot,
+            "colgroup" => HtmlTag::Colgroup,
+            "col" => HtmlTag::Col,
+            "caption" => HtmlTag::Caption,
 
             // Forms
-            "form" => HtmlTags::Form,
-            "input" => HtmlTags::Input,
-            "button" => HtmlTags::Button,
-            "textarea" => HtmlTags::Textarea,
-            "select" => HtmlTags::Select,
-            "option" => HtmlTags::Option,
-            "optgroup" => HtmlTags::Optgroup,
-            "label" => HtmlTags::Label,
-            "fieldset" => HtmlTags::Fieldset,
-            "legend" => HtmlTags::Legend,
-            "datalist" => HtmlTags::Datalist,
-            "output" => HtmlTags::Output,
-            "progress" => HtmlTags::Progress,
-            "meter" => HtmlTags::Meter,
+            "form" => HtmlTag::Form,
+            "input" => HtmlTag::Input,
+            "button" => HtmlTag::Button,
+            "textarea" => HtmlTag::Textarea,
+            "select" => HtmlTag::Select,
+            "option" => HtmlTag::Option,
+            "optgroup" => HtmlTag::Optgroup,
+            "label" => HtmlTag::Label,
+            "fieldset" => HtmlTag::Fieldset,
+            "legend" => HtmlTag::Legend,
+            "datalist" => HtmlTag::Datalist,
+            "output" => HtmlTag::Output,
+            "progress" => HtmlTag::Progress,
+            "meter" => HtmlTag::Meter,
 
             // Scripting
-            "noscript" => HtmlTags::Noscript,
-            "template" => HtmlTags::Template,
-            "slot" => HtmlTags::Slot,
+            "noscript" => HtmlTag::Noscript,
+            "template" => HtmlTag::Template,
+            "slot" => HtmlTag::Slot,
 
             // Other common tags
-            "details" => HtmlTags::Details,
-            "summary" => HtmlTags::Summary,
-            "dialog" => HtmlTags::Dialog,
+            "details" => HtmlTag::Details,
+            "summary" => HtmlTag::Summary,
+            "dialog" => HtmlTag::Dialog,
 
             // Fallback for unknown or custom tags
-            other => HtmlTags::UnknownTag(other.to_string()),
+            other => HtmlTag::CustomTag(other.to_string()),
         }
     }
 }

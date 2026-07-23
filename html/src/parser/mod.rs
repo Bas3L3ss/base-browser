@@ -1,2 +1,4 @@
-pub mod dom;
-pub mod parse;
+pub mod element;
+pub mod node;
+pub mod node_type;
+pub mod parser;
