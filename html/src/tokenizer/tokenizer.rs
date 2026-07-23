@@ -25,14 +25,6 @@ impl<'a> Tokenizer<'a> {
         self.source[self.position..].chars().next()
     }
 
-    /// Peeks the next character (without advancing), after the current one.
-    #[allow(dead_code)]
-    fn peek_next(&self) -> Option<char> {
-        let mut chars = self.source[self.position..].chars();
-        chars.next()?; // skip current
-        chars.next()
-    }
-
     /// Advances the position and returns the character, or None if at end.
     fn advance(&mut self) -> Option<char> {
         let ch = self.peek()?;
@@ -133,7 +125,7 @@ impl<'a> Tokenizer<'a> {
                 result.push(ch);
             }
         }
-        // Advance the correct number of chars, NOT bytes!
+        // Advance the correct number of chars
         for _ in end.chars() {
             self.advance();
         }
