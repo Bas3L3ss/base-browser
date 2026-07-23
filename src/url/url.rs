@@ -3,11 +3,11 @@ use std::str::FromStr;
 
 use anyhow::Result;
 
-use crate::parser::generic_struct::ParsedOutput;
-use crate::parser::traits::Parse;
+use crate::input_parser::generic_struct::ParsedOutput;
+use crate::input_parser::traits::Parse;
 use crate::url::url_warning::UrlWarning;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Url {
     pub scheme: Scheme,
     pub host: Host,
@@ -17,16 +17,25 @@ pub struct Url {
     pub fragment: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scheme {
     Http,
     Https,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Host {
     Ip(IpAddr),
     Domain(String),
+}
+
+impl std::fmt::Display for Host {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Host::Ip(ip) => write!(f, "{ip}"),
+            Host::Domain(domain) => write!(f, "{domain}"),
+        }
+    }
 }
 
 impl Parse<UrlWarning, &str> for Url {

@@ -1,4 +1,4 @@
-use crate::parser::generic_struct::ParsedOutput;
+use crate::input_parser::generic_struct::ParsedOutput;
 
 /// A trait for types that can be parsed from an input, optionally producing warnings.
 ///
