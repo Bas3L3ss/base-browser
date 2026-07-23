@@ -1,11 +1,11 @@
-use std::{println, process};
+use std::println;
 
 use base_browser::cli::command::Command;
-use base_browser::dns::client::DnsClient;
-use base_browser::parser::traits::Parse;
+use base_browser::http::client::HttpClient;
+use base_browser::input_parser::traits::Parse;
 use base_browser::url::url::Url;
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     let command = match Command::parse(args) {
@@ -17,14 +17,15 @@ fn main() {
         }
         Err(err) => {
             eprintln!("Error: {err}");
-            process::exit(1);
+            return Err(err.into());
         }
     };
 
     if let Some(_sub_command) = command.sub_command {
         // handle sub_command
+        return Ok(());
     } else if let Some(url_str) = command.opts.url {
-        let parsed_url = match Url::parse(&url_str) {
+        let url = match Url::parse(&url_str) {
             Ok(parsed_out) => {
                 for warning in &parsed_out.warnings {
                     base_browser::url::print_warning::print_warning(warning);
@@ -33,24 +34,18 @@ fn main() {
             }
             Err(err) => {
                 eprintln!("Error parsing URL: {err}");
-                process::exit(1);
+                return Err(err.into());
             }
         };
 
-        let dns = DnsClient::new();
-        let ip = match dns.lookup(&parsed_url) {
-            Ok(ip) => ip,
-            Err(err) => {
-                eprintln!("DNS lookup failed: {err}");
-                process::exit(1);
-            }
-        };
+        let http = HttpClient::new();
+        println!("{}", http.get(&url)?.body_as_string());
 
-        println!("{ip:#?}");
+        Ok(())
     } else {
         eprintln!(
             "Error: No URL or sub command was provided. Please specify a URL using a positional argument or with the '--url' option."
         );
-        process::exit(1);
+        Err(anyhow::anyhow!("No URL or sub command was provided"))
     }
 }

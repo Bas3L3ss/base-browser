@@ -1,9 +1,9 @@
-pub mod client;
 pub mod enums;
 pub mod flag;
 pub mod header;
 pub mod packet;
 pub mod question;
 pub mod record;
+pub mod resolver;
 pub mod response;
 pub mod utils;

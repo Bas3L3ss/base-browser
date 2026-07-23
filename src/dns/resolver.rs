@@ -16,13 +16,13 @@ use crate::url::url::Url;
 const GOOGLE_PUBLIC_DNS: ([u8; 4], u16) = ([8, 8, 8, 8], 53);
 const GOOGLE_ALTERNATE_DNS: ([u8; 4], u16) = ([8, 8, 4, 4], 53);
 
-pub struct DnsClient {}
+pub struct DnsResolver {}
 
-impl DnsClient {
+impl DnsResolver {
     pub fn new() -> Self {
-        DnsClient {}
+        DnsResolver {}
     }
-    pub fn lookup(&self, url: &Url) -> Result<LookupResult> {
+    pub fn resolve(&self, url: &Url) -> Result<LookupResult> {
         let mut rng = rand::rng();
         let header_id: u16 = rng.random();
 
