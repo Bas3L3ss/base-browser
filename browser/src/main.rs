@@ -1,5 +1,5 @@
 use base_browser::cli::command::Command;
-use html::parser::parser::Parser;
+use html::{parser::parser::Parser, print_dom_tree};
 use input_parser::traits::Parse;
 use network::http::client::HttpClient;
 use url::url::Url;
@@ -39,7 +39,9 @@ fn main() -> anyhow::Result<()> {
 
         let http = HttpClient::new();
         let response = http.get(&url)?;
-        let document_node = Parser::to_dom(&response.body_as_string());
+        let html_parse_result = Parser::to_dom(&response.body_as_string());
+
+        print_dom_tree(&html_parse_result.arena);
 
         Ok(())
     } else {

@@ -1,4 +1,4 @@
-use crate::parser::element::DomElement;
+use crate::parser::dom_element::DomElement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
