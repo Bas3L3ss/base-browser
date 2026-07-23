@@ -1,5 +1,8 @@
 use std::vec;
 
+use anyhow::Result;
+use input_parser::generic_struct::ParsedOutput;
+
 use crate::{
     parser::{dom_element::DomElement, node::Node, node_type::NodeType},
     tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token, tokenizer::Tokenizer},
@@ -11,25 +14,20 @@ pub enum ParserError {
     UnexpectedClosingTag { expected: HtmlTag, found: HtmlTag },
 }
 
-/// Holds the result of parsing: the DOM tree and any errors found.
-#[derive(Debug)]
-pub struct ParseResult {
-    pub arena: Vec<Node>,
-    pub errors: Vec<ParserError>,
-}
-
 pub struct Parser;
 
 impl Parser {
     /// Parses the given HTML string into a DOM tree represented as a vector of Nodes,
-    /// and collects any parser errors encountered (such as unclosed or unexpected tags).
-    pub fn to_dom(html: &str) -> ParseResult {
+    /// and collects any parser errors encountered (such as unclosed or unexpected tags)
+    /// as warnings in the ParsedOutput.
+    pub fn to_dom(html: &str) -> Result<ParsedOutput<Vec<Node>, ParserError>> {
         let mut tokenizer = Tokenizer::new(html);
         let tokens = tokenizer.tokenize();
         let mut arena = vec![Node::new(NodeType::Document, None, vec![])];
         let mut errors = vec![];
-        Self::parse_children(&tokens, &mut arena, &mut 0, 0, &mut errors);
-        ParseResult { arena, errors }
+        let mut token_idx = 0;
+        Self::parse_children(&tokens, &mut arena, &mut token_idx, 0, &mut errors);
+        Ok(ParsedOutput::new(arena, errors))
     }
 
     fn push_child(arena: &mut Vec<Node>, parent_id: usize, node: Node) -> usize {
