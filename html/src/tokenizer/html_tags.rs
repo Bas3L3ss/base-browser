@@ -132,6 +132,7 @@ pub enum HtmlTag {
     Dialog,
 
     // Others and special
+    Pre,               // <pre>
     CustomTag(String), // Any unknown tag for extensibility
 }
 
@@ -274,6 +275,7 @@ impl HtmlTag {
             "details" => HtmlTag::Details,
             "summary" => HtmlTag::Summary,
             "dialog" => HtmlTag::Dialog,
+            "pre" => HtmlTag::Pre,
 
             // Fallback for unknown or custom tags
             other => HtmlTag::CustomTag(other.to_string()),
