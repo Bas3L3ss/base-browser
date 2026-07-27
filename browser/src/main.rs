@@ -1,4 +1,4 @@
-use std::println;
+use std::{println, unimplemented};
 
 use base_browser::cli::command::Command;
 use html::{parser::parser::Parser, util::print_dom_tree::print_dom_tree};
@@ -25,7 +25,7 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(_sub_command) = command.sub_command {
         // handle sub_command
-        return Ok(());
+        unimplemented!("Subcommand handling not yet implemented");
     } else if let Some(url_str) = command.opts.url {
         let url = match Url::parse(&url_str) {
             Ok(parsed_out) => {
