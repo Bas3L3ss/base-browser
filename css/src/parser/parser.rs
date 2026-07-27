@@ -11,9 +11,7 @@ impl Parser {
     pub fn to_cssom(dom: &str) -> Result<Vec<Rule>> {
         profile_scope!("To CSSOM");
 
-        let mut tokenizer = Tokenizer::new(&dom);
-
-        let tokens = tokenizer.tokenize();
+        let tokens = Tokenizer::from_string(dom);
         println!("{tokens:?}");
         Ok(vec![])
     }
