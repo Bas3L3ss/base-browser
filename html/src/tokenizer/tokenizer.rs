@@ -1,5 +1,7 @@
 use std::matches;
 
+use utils::profile_scope;
+
 use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token};
 
 pub struct Tokenizer<'a> {
@@ -171,6 +173,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
+        profile_scope!("HTML Tokenize");
         let mut tokens = Vec::new();
 
         while !self.eof() {

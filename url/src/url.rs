@@ -4,6 +4,7 @@ use std::str::FromStr;
 use anyhow::Result;
 use input_parser::generic_struct::ParsedOutput;
 use input_parser::traits::Parse;
+use utils::profile_scope;
 
 use crate::url_warning::UrlWarning;
 
@@ -40,6 +41,7 @@ impl std::fmt::Display for Host {
 
 impl Parse<UrlWarning, &str> for Url {
     fn parse(url_str: &str) -> Result<ParsedOutput<Url, UrlWarning>> {
+        profile_scope!("Parse URL");
         let mut warnings = Vec::new();
 
         // Fragment

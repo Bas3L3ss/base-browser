@@ -9,3 +9,4 @@ url = { path = "../url" }
 input_parser = { path = "../input_parser" }
 network = {path = "../network"}
 html ={ path="../html" }
+utils = {path = "../utils"}

@@ -7,3 +7,4 @@ edition = "2024"
 anyhow = "1.0.104"
 input_parser ={ path = "../input_parser"}
 utils = {path = "../utils"}
+

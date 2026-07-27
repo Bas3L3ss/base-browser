@@ -2,6 +2,7 @@ use std::vec;
 
 use anyhow::Result;
 use input_parser::generic_struct::ParsedOutput;
+use utils::profile_scope;
 
 use crate::{
     parser::{dom_element::DomElement, node::Node, node_type::NodeType},
@@ -23,6 +24,7 @@ impl Parser {
     pub fn to_dom(html: &str) -> Result<ParsedOutput<Vec<Node>, ParserError>> {
         let mut tokenizer = Tokenizer::new(html);
         let tokens = tokenizer.tokenize();
+        profile_scope!("HTML Parse");
         let mut arena = vec![Node::new(NodeType::Document, None, vec![])];
         let mut errors = vec![];
         let mut token_idx = 0;
