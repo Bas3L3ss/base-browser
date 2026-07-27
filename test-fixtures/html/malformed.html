@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Malformed HTML Fixture</title>
+    <meta> <!-- unclosed meta tag -->
+    <script type="text/javascript">console.log("test") <!-- missing closing tag for script -->
+  </head>
+  <body>
+    <div>
+      <p>Paragraph not closed
+      <ul>
+        <li>Item 1
+        <li>Item 2
+      </ul>
+    <!-- Missing closing div and p tags -->
+    <span>Unclosed span
+    <img src="broken.png">
+    <a href="http://example.com">Link with no end
+    <!-- Nested tags with improper closure -->
+    <b><i>Bold and Italic
+  </body>

@@ -8,7 +8,7 @@ use crate::{
     tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token, tokenizer::Tokenizer},
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ParserError {
     UnclosedTag { tag: HtmlTag },
     UnexpectedClosingTag { expected: HtmlTag, found: HtmlTag },
@@ -163,5 +163,161 @@ impl Parser {
                 }
             }
         }
+    }
+}
+
+// ----------------- UNIT TESTS -------------------
+
+#[cfg(test)]
+mod tests {
+    use std::matches;
+
+    use super::*;
+    use crate::{parser::node_type::NodeType, tokenizer::html_tags::HtmlTag};
+
+    fn get_element_tag(node: &Node) -> Option<&HtmlTag> {
+        match &node.ntype {
+            NodeType::Element(el) => Some(&el.tag),
+            _ => None,
+        }
+    }
+
+    fn get_text_content(node: &Node) -> Option<&str> {
+        match &node.ntype {
+            NodeType::Text(txt) => Some(txt.as_str()),
+            _ => None,
+        }
+    }
+
+    fn has_element(arena: &[Node], wanted: HtmlTag) -> bool {
+        arena
+            .iter()
+            .any(|n| matches!(&n.ntype, NodeType::Element(el) if el.tag == wanted))
+    }
+
+    #[test]
+    fn test_parse_simple_html() {
+        let html = "<html><body><h1>Hello</h1></body></html>";
+        let output = Parser::to_dom(html).unwrap();
+        // Should contain html, body, h1 elements
+        assert!(has_element(&output.value, HtmlTag::Html));
+        assert!(has_element(&output.value, HtmlTag::Body));
+        assert!(has_element(&output.value, HtmlTag::Header(1)));
+        // Should not have parse errors
+        assert!(output.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_unclosed_tag_reports_error() {
+        let html = "<div><span>Unclosed";
+        let output = Parser::to_dom(html).unwrap();
+        // span is unclosed, so error should be reported
+        assert!(
+            output
+                .warnings
+                .iter()
+                .any(|err| matches!(err, ParserError::UnclosedTag { tag }
+                    if *tag == HtmlTag::Span
+
+                ))
+        );
+        // div is also unclosed
+        assert!(
+            output
+                .warnings
+                .iter()
+                .any(|err| matches!(err, ParserError::UnclosedTag { tag }
+                    if *tag == HtmlTag::Div
+                ))
+        );
+    }
+
+    #[test]
+    fn test_mismatched_close_tag_reports_error() {
+        let html = "<ul><li>Item 1</ul>";
+        let output = Parser::to_dom(html).unwrap();
+        // <ul> closes but <li> not closed - should report a mismatched close error
+        assert!(output.warnings.iter().any(
+            |err| matches!(err, ParserError::UnexpectedClosingTag { expected, found }
+                if *expected == HtmlTag::ListItem && *found == HtmlTag::UnorderedList
+            )
+        ));
+    }
+
+    #[test]
+    fn test_self_closing_tag() {
+        let html = "<img src='x.jpg'/>";
+        let output = Parser::to_dom(html).unwrap();
+        assert!(has_element(&output.value, HtmlTag::Image));
+        assert!(output.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_text_content_extraction() {
+        let html = "<div>Hello <b>World</b>!</div>";
+        let output = Parser::to_dom(html).unwrap();
+        let text_nodes: Vec<&str> = output
+            .value
+            .iter()
+            .filter_map(|n| get_text_content(n))
+            .collect();
+        assert!(text_nodes.iter().any(|t| t.contains("Hello")));
+        assert!(text_nodes.iter().any(|t| t.contains("World")));
+        assert!(text_nodes.iter().any(|t| t.contains("!")));
+    }
+
+    #[test]
+    fn test_comments_and_doctype() {
+        let html = "<!DOCTYPE html><!-- a comment --><div></div>";
+        let output = Parser::to_dom(html).unwrap();
+        let has_doctype = output
+            .value
+            .iter()
+            .any(|n| matches!(&n.ntype, NodeType::Doctype(dt) if dt.contains("html")));
+        let has_comment = output
+            .value
+            .iter()
+            .any(|n| matches!(&n.ntype, NodeType::Comment(c) if c.contains("a comment")));
+        assert!(has_doctype);
+        assert!(has_comment);
+    }
+
+    #[test]
+    fn test_empty_html_gives_document_node() {
+        let html = "";
+        let output = Parser::to_dom(html).unwrap();
+        // Always contains a single Document node (root)
+        assert_eq!(output.value.len() > 0, true);
+        match &output.value[0].ntype {
+            NodeType::Document => {}
+            _ => panic!("Root node not a Document"),
+        }
+        assert!(output.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_deeply_nested_tags() {
+        let html = "<ul><li><span><b>txt</b></span></li></ul>";
+        let output = Parser::to_dom(html).unwrap();
+        // Should find all these elements
+        assert!(has_element(&output.value, HtmlTag::UnorderedList));
+        assert!(has_element(&output.value, HtmlTag::ListItem));
+        assert!(has_element(&output.value, HtmlTag::Span));
+        assert!(has_element(&output.value, HtmlTag::Bold));
+        // And should not have parse errors
+        assert!(output.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_top_level_elements() {
+        let html = "<div>1</div><div>2</div>";
+        let output = Parser::to_dom(html).unwrap();
+        let divs = output
+            .value
+            .iter()
+            .filter(|n| get_element_tag(n) == Some(&HtmlTag::Div))
+            .count();
+        assert!(divs >= 2);
+        assert!(output.warnings.is_empty());
     }
 }

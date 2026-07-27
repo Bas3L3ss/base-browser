@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Nested Elements Fixture</title>
+  </head>
+  <body>
+    <div id="outer">
+      Outer Div
+      <section>
+        <header>
+          <h1>Main Heading</h1>
+        </header>
+        <article>
+          <p>
+            Article paragraph <span class="highlight">with a highlight</span>.
+          </p>
+          <ul>
+            <li>First item</li>
+            <li>
+              Second item with nested
+              <ol>
+                <li>Subitem 1</li>
+                <li>Subitem 2</li>
+              </ol>
+            </li>
+            <li>Third item</li>
+          </ul>
+        </article>
+        <footer>
+          <small>Footer info</small>
+        </footer>
+      </section>
+      <nav>
+        <ul>
+          <li><a href="#one">One</a></li>
+          <li><a href="#two">Two</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div id="sibling">
+      <p>Sibiling div content</p>
+    </div>
+  </body>
+</html>
