@@ -1,6 +1,6 @@
-use crate::parser::node_type::NodeType;
+use crate::dom::node_type::NodeType;
 
-type NodeID = usize;
+pub type NodeID = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
