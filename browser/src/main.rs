@@ -2,7 +2,7 @@ use base_browser::cli::command::Command;
 use css::style_engine::StyleEngine;
 use input_parser::traits::Parse;
 use network::{http::client::HttpClient, resource_loader::resource_loader::ResourceLoader};
-use std::unimplemented;
+use std::{println, unimplemented};
 use url::url::Url;
 use utils::profile_scope;
 
@@ -45,7 +45,9 @@ fn main() -> anyhow::Result<()> {
         let html = loader.load_html(&url)?;
         let dom = html::parser::parser::Parser::to_dom(&html)?;
 
-        let _cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
+        let cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
+
+        println!("{cssom:#?}");
 
         Ok(())
     } else {

@@ -11,6 +11,7 @@ use crate::{
         property::Property,
         rule::Rule,
         selector::{AttrSelectorOperator, Selector},
+        unit::Unit,
     },
     tokenizer::{css_token::CssToken, tokenizer::Tokenizer},
 };
@@ -515,7 +516,7 @@ impl Parser {
                 Dimension { value, unit } => {
                     components.push(ComponentValue::Dimension {
                         value: *value,
-                        unit: unit.clone(),
+                        unit: Unit::from_str(unit),
                     });
                     i += 1;
                 }

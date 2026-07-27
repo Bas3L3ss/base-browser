@@ -1,4 +1,4 @@
-use crate::cssom::function::Function;
+use crate::cssom::{function::Function, unit::Unit};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComponentValue {
@@ -15,7 +15,7 @@ pub enum ComponentValue {
     Number(f32),
 
     // 10px, 1fr, 2em, 3rem...
-    Dimension { value: f32, unit: String },
+    Dimension { value: f32, unit: Unit },
 
     // 50%
     Percentage(f32),

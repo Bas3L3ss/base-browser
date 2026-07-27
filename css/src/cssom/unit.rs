@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Unit {
     Px,   // Pixels
     Em,   // Relative to font-size of the element
@@ -15,6 +15,7 @@ pub enum Unit {
     Vh,   // 1% of the viewport's height
     Vmin, // 1% of the viewport's smaller dimension
     Vmax, // 1% of the viewport's larger dimension
+    Unknown(String),
 }
 
 impl Unit {
@@ -35,7 +36,7 @@ impl Unit {
             "vh" => Unit::Vh,
             "vmin" => Unit::Vmin,
             "vmax" => Unit::Vmax,
-            _ => Unit::Px,
+            _ => Unit::Unknown(s.to_string()),
         }
     }
 }
