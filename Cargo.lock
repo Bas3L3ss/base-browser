@@ -40,6 +40,7 @@ dependencies = [
  "input_parser",
  "network",
  "url",
+ "utils",
 ]
 
 [[package]]
@@ -136,6 +137,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "input_parser",
+ "utils",
 ]
 
 [[package]]
@@ -175,6 +177,7 @@ dependencies = [
  "rand",
  "rustls",
  "url",
+ "utils",
  "webpki-roots",
 ]
 
@@ -287,7 +290,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "input_parser",
+ "utils",
 ]
+
+[[package]]
+name = "utils"
+version = "0.1.0"
 
 [[package]]
 name = "wasi"

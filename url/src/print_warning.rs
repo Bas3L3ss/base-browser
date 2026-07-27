@@ -4,8 +4,11 @@ use crate::url_warning::UrlWarning;
 pub fn print_warning(warning: &UrlWarning) {
     match warning {
         UrlWarning::MissingScheme => {
-            println!("Warning: The URL is missing a scheme (e.g., 'http', 'https').");
+            println!(
+                "Warning: The URL is missing a scheme (e.g., 'http', 'https'). Defaulting to 'https'."
+            );
         }
+
         UrlWarning::InvalidPort(port) => {
             println!("Warning: The URL specifies an invalid port: '{}'.", port);
         }

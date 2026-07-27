@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::{Result, anyhow};
 use rand::RngExt;
 use url::url::{Host, Url};
+use utils::profile_scope;
 
 use crate::dns::enums::Rcode;
 use crate::dns::enums::{QueryClass, QueryType};
@@ -23,6 +24,8 @@ impl DnsResolver {
         DnsResolver {}
     }
     pub fn resolve(&self, url: &Url) -> Result<LookupResult> {
+        profile_scope!("DNS Resolve");
+
         let mut rng = rand::rng();
         let header_id: u16 = rng.random();
 

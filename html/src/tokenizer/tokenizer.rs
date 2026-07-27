@@ -1,5 +1,7 @@
 use std::matches;
 
+use utils::profile_scope;
+
 use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token};
 
 pub struct Tokenizer<'a> {
@@ -171,6 +173,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
+        profile_scope!("HTML Tokenize");
         let mut tokens = Vec::new();
 
         while !self.eof() {
@@ -266,5 +269,152 @@ impl<'a> Tokenizer<'a> {
         // Always emit EOF token at the end
         tokens.push(Token::EOF);
         tokens
+    }
+}
+
+// ----------------- UNIT TESTS -------------------
+
+#[cfg(test)]
+mod tests {
+    use std::{assert_eq, vec};
+
+    use super::*;
+    use crate::tokenizer::html_tags::HtmlTag;
+    use crate::tokenizer::token::Token;
+
+    fn tokens_without_eof(mut toks: Vec<Token>) -> Vec<Token> {
+        // Remove trailing EOF for easier assertion
+        if !toks.is_empty() && matches!(toks.last(), Some(Token::EOF)) {
+            toks.pop();
+        }
+        toks
+    }
+
+    #[test]
+    fn test_tokenize_simple_tag() {
+        let mut tokenizer = Tokenizer::new("<div></div>");
+        let tokens = tokenizer.tokenize();
+        assert_eq!(
+            tokens_without_eof(tokens),
+            vec![
+                Token::Start(HtmlTag::Div, Attributes::new()),
+                Token::End(HtmlTag::Div)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_with_text_content() {
+        let mut tokenizer = Tokenizer::new("<b>Hello World!</b>");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Start(HtmlTag::Bold, Attributes::new()),
+                Token::Content("Hello World!".to_string()),
+                Token::End(HtmlTag::Bold)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_self_closing_void_element() {
+        let mut tokenizer = Tokenizer::new("<img src=\"x\">");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(
+            tokens,
+            vec![Token::SelfClose(HtmlTag::Image, {
+                let mut attrs = Attributes::new();
+                attrs.add_attribute("src", "x");
+                attrs
+            })]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_explicit_self_closing_nonvoid_treated_as_start() {
+        // Non-void elements like <div/> should produce Start, not SelfClose.
+        let mut tokenizer = Tokenizer::new("<div/>");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(tokens, vec![Token::Start(HtmlTag::Div, Attributes::new())]);
+    }
+
+    #[test]
+    fn test_tokenize_comment_and_doctype() {
+        let mut tokenizer = Tokenizer::new("<!DOCTYPE html><!-- comment --><br>");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Doctype("html".to_string()),
+                Token::Comment(" comment ".to_string()),
+                Token::SelfClose(HtmlTag::Br, Attributes::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_attributes() {
+        let mut tokenizer = Tokenizer::new("<input type='text' checked placeholder=abc>");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        let mut attrs = Attributes::new();
+        attrs.add_attribute("type", "text");
+        attrs.add_attribute("checked", "checked");
+        attrs.add_attribute("placeholder", "abc");
+        assert_eq!(tokens, vec![Token::SelfClose(HtmlTag::Input, attrs)]);
+    }
+
+    #[test]
+    fn test_tokenize_text_and_whitespace() {
+        let mut tokenizer = Tokenizer::new("   <span> x </span>   ");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Start(HtmlTag::Span, Attributes::new()),
+                Token::Content(" x ".to_string()),
+                Token::End(HtmlTag::Span)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_malformed_tag_recovery() {
+        // This tag has invalid syntax: <div Hello> -- should recover and at least produce a Start div.
+        let mut tokenizer = Tokenizer::new("<div Hello>");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(
+            tokens,
+            vec![Token::Start(HtmlTag::Div, {
+                let mut attrs = Attributes::new();
+                attrs.add_attribute("Hello", "Hello");
+                attrs
+            })]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_multiple_elements() {
+        let mut tokenizer = Tokenizer::new("<div>1</div><div>2</div>");
+        let tokens = tokens_without_eof(tokenizer.tokenize());
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Start(HtmlTag::Div, Attributes::new()),
+                Token::Content("1".to_string()),
+                Token::End(HtmlTag::Div),
+                Token::Start(HtmlTag::Div, Attributes::new()),
+                Token::Content("2".to_string()),
+                Token::End(HtmlTag::Div),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_empty_input_gives_eof() {
+        let mut tokenizer = Tokenizer::new("");
+        let tokens = tokenizer.tokenize();
+        // Only EOF token
+        assert_eq!(tokens, vec![Token::EOF]);
     }
 }

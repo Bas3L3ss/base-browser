@@ -3,6 +3,7 @@ use html::{parser::parser::Parser, util::print_dom_tree::print_dom_tree};
 use input_parser::traits::Parse;
 use network::http::client::HttpClient;
 use url::url::Url;
+use utils::profile_scope;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -39,6 +40,7 @@ fn main() -> anyhow::Result<()> {
 
         let http = HttpClient::new();
         let response = http.get(&url)?;
+        profile_scope!("HTML to dom");
         let html_parse_result = Parser::to_dom(&response.body_as_string())?;
 
         print_dom_tree(&html_parse_result.value);
