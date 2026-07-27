@@ -1,0 +1,10 @@
+[package]
+name = "css"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+input_parser ={ path = "../input_parser"}
+utils = {path = "../utils"}
+html = {path = "../html"}
