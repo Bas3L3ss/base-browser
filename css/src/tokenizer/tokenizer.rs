@@ -197,8 +197,18 @@ impl<'a> Tokenizer<'a> {
                 '@' => {
                     self.advance();
                     let keyword = self.consume_while(Self::is_ident_continue);
-                    CssToken::AtKeyword(keyword)
+                    // Accept both @media as AtKeyword and plain @ as Delim if not followed by ident-like
+                    if keyword.is_empty() {
+                        CssToken::Delim('@')
+                    } else {
+                        CssToken::AtKeyword(keyword)
+                    }
                 }
+                '!' => {
+                    self.advance();
+                    CssToken::Delim('!')
+                }
+                // Add Delim fallback for any other single-char symbol not matched above (not identifier start etc)
                 '"' | '\'' => {
                     // String literal (handle escape sequences!)
                     let quote = self.advance().unwrap();
@@ -247,9 +257,9 @@ impl<'a> Tokenizer<'a> {
                     CssToken::Ident(ident)
                 }
                 _ => {
-                    // Unrecognized char: error
+                    // Any unrecognized, not-whitespace non-control char is Delim!
                     let bad = self.advance().unwrap();
-                    CssToken::Error(CssTokenizerError::UnexpectedChar(bad, self.position - 1))
+                    CssToken::Delim(bad)
                 }
             };
             return Some(token);
@@ -668,5 +678,17 @@ mod tests {
         assert_eq!(tokens[0], CssToken::Number(5.0));
         assert_eq!(tokens[1], CssToken::Plus);
         assert_eq!(tokens[2], CssToken::Number(3.0));
+    }
+    #[test]
+    fn test_tokenize_important() {
+        let tokens = Tokenizer::from_string("color: red !important");
+        // color Ident, Colon, Whitespace, Ident("red"), Whitespace, Delim('!'), Ident("important")
+        assert_eq!(tokens[0], CssToken::Ident("color".into()));
+        assert_eq!(tokens[1], CssToken::Colon);
+        assert_eq!(tokens[2], CssToken::Whitespace);
+        assert_eq!(tokens[3], CssToken::Ident("red".into()));
+        assert_eq!(tokens[4], CssToken::Whitespace);
+        assert_eq!(tokens[5], CssToken::Delim('!'));
+        assert_eq!(tokens[6], CssToken::Ident("important".into()));
     }
 }
