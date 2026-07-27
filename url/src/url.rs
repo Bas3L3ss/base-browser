@@ -1,12 +1,7 @@
-use std::net::IpAddr;
-use std::str::FromStr;
-
+use crate::host::Host;
+use crate::scheme::Scheme;
 use anyhow::Result;
-use input_parser::generic_struct::ParsedOutput;
 use input_parser::traits::Parse;
-use utils::profile_scope;
-
-use crate::url_warning::UrlWarning;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Url {
@@ -18,165 +13,222 @@ pub struct Url {
     pub fragment: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scheme {
-    Http,
-    Https,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Host {
-    Ip(IpAddr),
-    Domain(String),
+enum RelativeUrlType<'a> {
+    Absolute(&'a str),       // http:// or https:// (strictly)
+    SchemeRelative(&'a str), // //host/path
+    RootRelative(&'a str),   // /path
+    QueryOnly(&'a str),      // ?query
+    FragmentOnly(&'a str),   // #fragment
+    Empty,
+    Relative(&'a str), // ./xyz or abc.png
 }
 
-impl std::fmt::Display for Host {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Host::Ip(ip) => write!(f, "{ip}"),
-            Host::Domain(domain) => write!(f, "{domain}"),
-        }
+fn classify_href(href: &str) -> RelativeUrlType<'_> {
+    let href = href.trim();
+    if href.is_empty() {
+        RelativeUrlType::Empty
+    } else if href.starts_with("http://") || href.starts_with("https://") {
+        RelativeUrlType::Absolute(href)
+    } else if href.starts_with("//") {
+        RelativeUrlType::SchemeRelative(href)
+    } else if href.starts_with('/') {
+        RelativeUrlType::RootRelative(href)
+    } else if href.starts_with('?') {
+        RelativeUrlType::QueryOnly(&href[1..])
+    } else if href.starts_with('#') {
+        RelativeUrlType::FragmentOnly(&href[1..])
+    } else {
+        RelativeUrlType::Relative(href)
     }
 }
 
-impl Parse<UrlWarning, &str> for Url {
-    fn parse(url_str: &str) -> Result<ParsedOutput<Url, UrlWarning>> {
-        profile_scope!("Parse URL");
-        let mut warnings = Vec::new();
+impl Url {
+    pub fn resolve(&self, href: &str) -> Result<Self> {
+        use RelativeUrlType::*;
 
-        // Fragment
-        let (without_fragment, fragment) = if let Some(hash_idx) = url_str.find('#') {
-            let (left, right) = url_str.split_at(hash_idx);
-            (left, Some(right[1..].to_string()))
-        } else {
-            (url_str, None)
-        };
+        match classify_href(href) {
+            // Absolute: e.g. "http://example.com/page", "https://site.org/a/b"
+            Absolute(url) => {
+                // Only support http/https absolute URLs
+                // Example href: "https://example.com/abc?q=1#foo"
+                Url::parse(url).map(|x| x.value)
+            }
+            // SchemeRelative: e.g. "//cdn.example.com/img.png"
+            SchemeRelative(url) => {
+                // Example href: "//cdn.example.com/resource"
+                let scheme_str = self.scheme.as_str();
+                let full = format!("{scheme_str}:{}", url);
+                Url::parse(&full).map(|x| x.value)
+            }
+            // RootRelative: e.g. "/images/logo.png"
+            RootRelative(path_query_frag) => {
+                // Example href: "/foo/bar?x=1#frag"
+                // Split path/query/fragment
+                let (path, query, fragment) = parse_path_query_fragment(path_query_frag);
+                Ok(Url {
+                    scheme: self.scheme.clone(),
+                    host: self.host.clone(),
+                    port: self.port,
+                    path,
+                    query,
+                    fragment,
+                })
+            }
+            // QueryOnly: e.g. "?debug=true"
+            QueryOnly(new_query) => {
+                // Example href: "?q=test"
+                // Replace only query, keep everything else; preserve path, wipe fragment
+                Ok(Url {
+                    scheme: self.scheme.clone(),
+                    host: self.host.clone(),
+                    port: self.port,
+                    path: self.path.clone(),
+                    query: Some(new_query.to_string()),
+                    fragment: None,
+                })
+            }
+            // FragmentOnly: e.g. "#section2"
+            FragmentOnly(new_fragment) => {
+                // Example href: "#footer"
+                // Only change fragment, preserve query
+                Ok(Url {
+                    scheme: self.scheme.clone(),
+                    host: self.host.clone(),
+                    port: self.port,
+                    path: self.path.clone(),
+                    query: self.query.clone(),
+                    fragment: Some(new_fragment.to_string()),
+                })
+            }
+            // Empty: ""
+            Empty => {
+                // Example href: ""
+                // Empty href means "this page"
+                Ok(self.clone())
+            }
+            // Relative: e.g. "cat.jpg", "./foo", "subdir/page.html", "../img/m.png"
+            Relative(relhref) => {
+                // Examples: "about.html", "./faq", "../up.html", "dir/file?x=2#bar"
+                // Split fragment
+                let mut rel = relhref;
+                let mut fragment = None;
+                if let Some(hash) = rel.find('#') {
+                    fragment = Some(rel[hash + 1..].to_string());
+                    rel = &rel[..hash];
+                }
+                // Split query
+                let mut query = None;
+                if let Some(qmark) = rel.find('?') {
+                    query = Some(rel[qmark + 1..].to_string());
+                    rel = &rel[..qmark];
+                }
 
-        // Query
-        let (without_query, query) = if let Some(q_idx) = without_fragment.find('?') {
-            let (left, right) = without_fragment.split_at(q_idx);
-            (left, Some(right[1..].to_string()))
-        } else {
-            (without_fragment, None)
-        };
-
-        // Scheme
-        let (scheme, rest) = if without_query.starts_with("https://") {
-            (Scheme::Https, &without_query["https://".len()..])
-        } else if without_query.starts_with("http://") {
-            (Scheme::Http, &without_query["http://".len()..])
-        } else {
-            // No scheme: warn and default to http
-            warnings.push(UrlWarning::MissingScheme);
-            (Scheme::Https, without_query)
-        };
-
-        // Host & Path
-        let (host_port, mut path) = if let Some(slash_idx) = rest.find('/') {
-            let (h, p) = rest.split_at(slash_idx);
-            (h, p)
-        } else {
-            (rest, "")
-        };
-
-        // Host & Port
-        let (host_str, mut port) = if host_port.starts_with('[') {
-            if let Some(end_bracket_idx) = host_port.find(']') {
-                let host_lit = &host_port[..=end_bracket_idx];
-                let remainder: &str = &host_port[end_bracket_idx + 1..];
-                let port = if remainder.starts_with(':') {
-                    match remainder[1..].parse::<u16>() {
-                        Ok(n) => Some(n),
-                        Err(_) => {
-                            warnings.push(UrlWarning::InvalidPort(remainder[1..].to_string()));
-                            None
-                        }
+                // Compute base directory from self.path
+                let mut base_path = self.path.clone();
+                let is_directory = base_path.ends_with('/');
+                if !is_directory {
+                    if let Some(idx) = base_path.rfind('/') {
+                        base_path.truncate(idx + 1);
+                    } else {
+                        base_path = "/".to_string();
                     }
-                } else {
-                    None
-                };
-                (host_lit, port)
-            } else {
-                // Missing closing ']' for IPv6 addr, treat entire host_port as host
-                warnings.push(UrlWarning::InvalidHost(host_port.to_string()));
-                (host_port, None)
-            }
-        } else {
-            if let Some(colon_idx) = host_port.rfind(':') {
-                if colon_idx > 0 {
-                    let (h, p) = host_port.split_at(colon_idx);
-                    let port_str = &p[1..];
-                    let port = match port_str.parse::<u16>() {
-                        Ok(n) => Some(n),
-                        Err(_) => {
-                            warnings.push(UrlWarning::InvalidPort(port_str.to_string()));
-                            None
-                        }
-                    };
-                    (h, port)
-                } else {
-                    (host_port, None)
                 }
-            } else {
-                (host_port, None)
+                let combined = format!("{base_path}{rel}");
+                let normalized_path = normalize_path(&combined);
+
+                Ok(Url {
+                    scheme: self.scheme.clone(),
+                    host: self.host.clone(),
+                    port: self.port,
+                    path: normalized_path,
+                    query,
+                    fragment,
+                })
             }
-        };
-
-        // Host validation
-        let host = if host_str.is_empty() {
-            warnings.push(UrlWarning::MissingHost);
-            Host::Domain("".to_string())
-        } else if host_str.starts_with('[') && host_str.ends_with(']') {
-            // IPv6 literal, strip brackets
-            let ip_str = &host_str[1..host_str.len() - 1];
-            match IpAddr::from_str(ip_str) {
-                Ok(ip) => Host::Ip(ip),
-                Err(_) => {
-                    warnings.push(UrlWarning::InvalidHost(ip_str.to_string()));
-                    Host::Domain(host_str.to_string())
-                }
-            }
-        } else if let Ok(ip) = IpAddr::from_str(host_str) {
-            Host::Ip(ip)
-        } else {
-            Host::Domain(host_str.to_string())
-        };
-
-        // Default port if not specified
-        if port.is_none() {
-            port = Some(match scheme {
-                Scheme::Http => 80,
-                Scheme::Https => 443,
-            });
         }
-
-        // Path
-        if path.is_empty() {
-            path = "/";
-        }
-
-        Ok(ParsedOutput::new(
-            Url {
-                scheme,
-                host,
-                port: port.unwrap_or(0),
-                path: path.to_string(),
-                query,
-                fragment,
-            },
-            warnings,
-        ))
     }
+}
+
+// Helper: splits a string into (path, query, fragment) parts
+fn parse_path_query_fragment(input: &str) -> (String, Option<String>, Option<String>) {
+    let mut path = input;
+    let mut query = None;
+    let mut fragment = None;
+
+    // Find fragment first
+    if let Some(hash) = path.find('#') {
+        fragment = Some(path[hash + 1..].to_string());
+        path = &path[..hash];
+    }
+    // Now query
+    if let Some(qmark) = path.find('?') {
+        query = Some(path[qmark + 1..].to_string());
+        path = &path[..qmark];
+    }
+    (path.to_string(), query, fragment)
+}
+
+// Normalize dot-segments as per RFC 3986 section 5.2.4
+// and preserve trailing slash for directories, or if the last segment is "." or ".."
+// The key: after normalization, if the input ends with "/" OR the last normalized segment is "" (dir), "." (dir), or ".." (parent dir), output trailing "/"
+fn normalize_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let segments: Vec<&str> = path.split('/').collect();
+    let has_trailing = path.ends_with('/') || path.ends_with("/.") || path.ends_with("/..");
+    let mut output = Vec::new();
+    for seg in segments.iter() {
+        match *seg {
+            "" | "." => {
+                // Skip empty or "."
+            }
+            ".." => {
+                if !output.is_empty() {
+                    output.pop();
+                }
+            }
+            s => {
+                output.push(s);
+            }
+        }
+    }
+
+    let mut result = String::new();
+    if absolute {
+        result.push('/');
+    }
+    result.push_str(&output.join("/"));
+
+    // Should trailing slash be restored?
+    // RFC: If 1) original path ends in "/" OR 2) original ends with "/." or "/.." OR 3) after removing dot segments, the intended logical meaning is a directory (".") or parent ("..")
+    let needs_trailing_slash = if has_trailing {
+        true
+    } else {
+        // If there were no segments left after normalization, and the original was not absolute (should be treated as "/")
+        false
+    };
+
+    if needs_trailing_slash && !result.ends_with('/') {
+        result.push('/');
+    }
+
+    // Special case: if result is empty string, treat as "/"
+    if result.is_empty() {
+        result.push('/');
+    }
+    result
 }
 
 // ----------------- UNIT TESTS -------------------
 
 #[cfg(test)]
 mod tests {
-    use std::assert_eq;
+    use std::{assert_eq, net::IpAddr, str::FromStr};
+
+    use crate::url_warning::UrlWarning;
 
     use super::*;
-    use input_parser::traits::Parse;
+    use input_parser::{generic_struct::ParsedOutput, traits::Parse};
 
     fn url(s: &str) -> ParsedOutput<Url, UrlWarning> {
         Url::parse(s).unwrap()
@@ -284,5 +336,120 @@ mod tests {
     fn default_path_is_slash() {
         let out = url("http://site.com");
         assert_eq!(out.value.path, "/");
+    }
+
+    // --- TESTS FOR resolve() ---
+    #[test]
+    fn resolve_absolute_url() {
+        let base = url("https://example.com/store/index.html").value;
+        let abs = base.resolve("http://another.com/hi/there").unwrap();
+        assert_eq!(abs.scheme, Scheme::Http);
+        assert_eq!(abs.host, Host::Domain("another.com".to_string()));
+        assert_eq!(abs.path, "/hi/there");
+    }
+
+    #[test]
+    fn resolve_scheme_relative_url() {
+        let base = url("https://example.com/store/index.html").value;
+        let abs = base.resolve("//another.com/hi/there").unwrap();
+        assert_eq!(abs.scheme, Scheme::Https);
+        assert_eq!(abs.host, Host::Domain("another.com".to_string()));
+        assert_eq!(abs.path, "/hi/there");
+    }
+
+    #[test]
+    fn resolve_root_relative() {
+        let base = url("https://example.com/store/index.html").value;
+        let css = base.resolve("/css/theme.css").unwrap();
+        assert_eq!(css.scheme, Scheme::Https);
+        assert_eq!(css.host, Host::Domain("example.com".to_string()));
+        assert_eq!(css.path, "/css/theme.css");
+    }
+
+    #[test]
+    fn resolve_sibling_path() {
+        let base = url("https://example.com/store/index.html").value;
+        let css = base.resolve("theme.css").unwrap();
+        assert_eq!(css.path, "/store/theme.css");
+    }
+
+    #[test]
+    fn resolve_parent_relative() {
+        let base = url("https://example.com/store/index.html").value;
+        let css = base.resolve("../css/theme.css").unwrap();
+        assert_eq!(css.path, "/css/theme.css");
+    }
+
+    #[test]
+    fn resolve_complex_dot_segments() {
+        let base = url("https://example.com/a/b/c/index.html").value;
+        let css = base.resolve("../../css/./theme.css").unwrap();
+        assert_eq!(css.path, "/a/css/theme.css");
+    }
+
+    #[test]
+    fn resolve_when_base_has_no_path() {
+        let base = url("https://domain.com").value;
+        let a = base.resolve("foo.css").unwrap();
+        assert_eq!(a.path, "/foo.css");
+        let b = base.resolve("/bar.css").unwrap();
+        assert_eq!(b.path, "/bar.css");
+    }
+
+    #[test]
+    fn resolve_query_only_reuses_path() {
+        let base = url("https://domain.com/products/index.html").value;
+        let a = base.resolve("?page=2").unwrap();
+        assert_eq!(a.path, "/products/index.html");
+        assert_eq!(a.query, Some("page=2".to_string()));
+        assert_eq!(a.fragment, None);
+    }
+
+    #[test]
+    fn resolve_fragment_only_reuses_path_and_query() {
+        let base = url("https://site.com/index.html?a=1").value;
+        let b = base.resolve("#part2").unwrap();
+        assert_eq!(b.path, "/index.html");
+        assert_eq!(b.query, Some("a=1".to_string()));
+        assert_eq!(b.fragment, Some("part2".to_string()));
+    }
+
+    #[test]
+    fn resolve_empty_href_is_idempotent() {
+        let base = url("https://site.com/abc?x=2#yyy").value;
+        let out = base.resolve("").unwrap();
+        assert_eq!(out, base);
+    }
+
+    #[test]
+    fn resolve_parent_dot_yields_root() {
+        // .. from /blog/index.html
+        let base = url("https://site.com/blog/index.html").value;
+        let out = base.resolve("..").unwrap();
+        assert_eq!(out.path, "/");
+    }
+
+    #[test]
+    fn resolve_current_dir_no_slash() {
+        // . from /blog/index.html
+        let base = url("https://site.com/blog/index.html").value;
+        let out = base.resolve(".").unwrap();
+        assert_eq!(out.path, "/blog/");
+    }
+
+    #[test]
+    fn resolve_current_dir_with_slash() {
+        // ./ from /blog/index.html
+        let base = url("https://site.com/blog/index.html").value;
+        let out = base.resolve("./").unwrap();
+        assert_eq!(out.path, "/blog/");
+    }
+
+    #[test]
+    fn resolve_directory_trailing_slash() {
+        // Append child to directory ending slash
+        let base = url("https://site.com/dir/").value;
+        let out = base.resolve("child/").unwrap();
+        assert_eq!(out.path, "/dir/child/");
     }
 }

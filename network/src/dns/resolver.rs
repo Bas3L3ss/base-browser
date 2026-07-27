@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use rand::RngExt;
-use url::url::{Host, Url};
+use url::host::Host;
+use url::url::Url;
 use utils::profile_scope;
 
 use crate::dns::enums::Rcode;

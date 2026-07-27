@@ -1,6 +1,8 @@
 use input_parser::generic_struct::ParsedOutput;
 use input_parser::traits::Parse;
-use url::url::{Host, Scheme, Url};
+use url::host::Host;
+use url::scheme::Scheme;
+use url::url::Url;
 use url::url_warning::UrlWarning;
 
 use std::net::IpAddr;
