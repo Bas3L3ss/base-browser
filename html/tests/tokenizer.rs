@@ -1,5 +1,5 @@
 use html::tokenizer::tokenizer::Tokenizer;
-use test_utils::fixture::html;
+use utils::test_fixture::html;
 
 #[test]
 fn tokenizes_basic_inline_html() {

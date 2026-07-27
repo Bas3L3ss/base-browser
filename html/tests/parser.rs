@@ -1,5 +1,5 @@
 use html::parser::parser::Parser;
-use test_utils::fixture::html;
+use utils::test_fixture::html;
 
 #[test]
 fn parses_basic_inline_html() {

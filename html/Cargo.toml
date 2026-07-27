@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.104"
 input_parser ={ path = "../input_parser"}
-test_utils = {path = "../test_utils"}
+utils = {path = "../utils"}
