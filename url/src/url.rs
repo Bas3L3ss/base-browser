@@ -66,7 +66,7 @@ impl Parse<UrlWarning, &str> for Url {
         } else {
             // No scheme: warn and default to http
             warnings.push(UrlWarning::MissingScheme);
-            (Scheme::Http, without_query)
+            (Scheme::Https, without_query)
         };
 
         // Host & Path
@@ -164,5 +164,123 @@ impl Parse<UrlWarning, &str> for Url {
             },
             warnings,
         ))
+    }
+}
+
+// ----------------- UNIT TESTS -------------------
+
+#[cfg(test)]
+mod tests {
+    use std::assert_eq;
+
+    use super::*;
+    use input_parser::traits::Parse;
+
+    fn url(s: &str) -> ParsedOutput<Url, UrlWarning> {
+        Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn parses_basic_http_url() {
+        let out = url("http://example.com/path");
+        assert_eq!(out.value.scheme, Scheme::Http);
+        assert_eq!(out.value.host, Host::Domain("example.com".to_string()));
+        assert_eq!(out.value.port, 80);
+        assert_eq!(out.value.path, "/path".to_string());
+        assert_eq!(out.value.query, None);
+        assert_eq!(out.value.fragment, None);
+        assert!(out.warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_https_url_with_query_and_fragment() {
+        let out = url("https://secure.com/secure?foo=bar#frag");
+        assert_eq!(out.value.scheme, Scheme::Https);
+        assert_eq!(out.value.host, Host::Domain("secure.com".to_string()));
+        assert_eq!(out.value.port, 443);
+        assert_eq!(out.value.path, "/secure");
+        assert_eq!(out.value.query, Some("foo=bar".to_string()));
+        assert_eq!(out.value.fragment, Some("frag".to_string()));
+        assert!(out.warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_url_with_custom_port() {
+        let out = url("http://foo.com:8080/xyz");
+        assert_eq!(out.value.scheme, Scheme::Http);
+        assert_eq!(out.value.host, Host::Domain("foo.com".to_string()));
+        assert_eq!(out.value.port, 8080);
+        assert_eq!(out.value.path, "/xyz");
+        assert!(out.warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_ipv4_address() {
+        let out = url("http://127.0.0.1:1234/");
+        assert_eq!(
+            out.value.host,
+            Host::Ip(IpAddr::from_str("127.0.0.1").unwrap())
+        );
+        assert_eq!(out.value.port, 1234);
+        assert_eq!(out.value.path, "/");
+    }
+
+    #[test]
+    fn parses_ipv6_literal() {
+        let out = url("https://[2001:db8::1]/foo");
+        assert_eq!(out.value.scheme, Scheme::Https);
+        assert_eq!(
+            out.value.host,
+            Host::Ip(IpAddr::from_str("2001:db8::1").unwrap())
+        );
+        assert_eq!(out.value.port, 443);
+        assert_eq!(out.value.path, "/foo");
+        assert!(out.warnings.is_empty());
+    }
+
+    #[test]
+    fn warns_on_missing_scheme_and_fills_defaults() {
+        let out = url("foo.com/blah");
+        assert_eq!(out.value.scheme, Scheme::Https);
+        assert_eq!(out.value.host, Host::Domain("foo.com".to_string()));
+        assert_eq!(out.value.port, 443);
+        assert_eq!(out.value.path, "/blah");
+        assert!(out.warnings.contains(&UrlWarning::MissingScheme));
+    }
+
+    #[test]
+    fn warns_on_missing_host() {
+        let out = url("http:///abc");
+        assert_eq!(out.value.host, Host::Domain("".to_string()));
+        assert_eq!(out.value.path, "/abc");
+        assert!(out.warnings.contains(&UrlWarning::MissingHost));
+    }
+
+    #[test]
+    fn warns_on_invalid_port() {
+        let out = url("http://foo.com:abc/def");
+        assert_eq!(out.value.port, 80); // fallback default
+        assert!(
+            out.warnings
+                .iter()
+                .any(|w| matches!(w, UrlWarning::InvalidPort(p) if p == "abc"))
+        );
+    }
+
+    #[test]
+    fn warns_on_invalid_ipv6_host() {
+        let out = url("http://[ghij::nutty]/");
+        assert!(matches!(out.value.host, Host::Domain(_)));
+        assert!(
+            out.warnings
+                .iter()
+                .any(|w| matches!(w, UrlWarning::InvalidHost(msg) if msg == "ghij::nutty"))
+        );
+    }
+
+    #[test]
+    fn default_path_is_slash() {
+        let out = url("http://site.com");
+        assert_eq!(out.value.path, "/");
     }
 }
