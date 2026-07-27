@@ -36,6 +36,7 @@ name = "base-browser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "css",
  "html",
  "input_parser",
  "network",
@@ -97,6 +98,8 @@ dependencies = [
  "anyhow",
  "html",
  "input_parser",
+ "network",
+ "url",
  "utils",
 ]
 
@@ -184,6 +187,7 @@ name = "network"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "html",
  "rand",
  "rustls",
  "url",

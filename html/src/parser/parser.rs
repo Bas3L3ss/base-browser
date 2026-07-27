@@ -6,7 +6,8 @@ use utils::profile_scope;
 
 use crate::{
     dom::{
-        dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType, stylesheet::StyleSheet,
+        dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType,
+        style_sheet_ref::StyleSheetRef,
     },
     tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token, tokenizer::Tokenizer},
 };
@@ -29,7 +30,7 @@ impl Parser {
         let tokens = tokenizer.tokenize();
         profile_scope!("HTML Parse");
         let mut arena = vec![Node::new(NodeType::Document, None, vec![])];
-        let mut style_sheets: Vec<StyleSheet> = vec![];
+        let mut style_sheets: Vec<StyleSheetRef> = vec![];
         let mut errors = vec![];
         let mut token_idx = 0;
         Self::parse_children(
@@ -58,7 +59,7 @@ impl Parser {
         tag: &HtmlTag,
         attributes: &Attributes,
         errors: &mut Vec<ParserError>,
-        style_sheets: &mut Vec<StyleSheet>,
+        style_sheets: &mut Vec<StyleSheetRef>,
     ) {
         let node = Node::new(
             NodeType::Element(DomElement::new(tag.clone(), attributes.clone())),
@@ -69,7 +70,7 @@ impl Parser {
 
         // Detect <style> tag and register its node_id as InlineStyle
         if *tag == HtmlTag::Style {
-            style_sheets.push(StyleSheet::InlineStyle(node_id));
+            style_sheets.push(StyleSheetRef::InlineStyle(node_id));
         }
 
         // Detect <link rel="stylesheet" ...>
@@ -80,7 +81,7 @@ impl Parser {
 
             if let (Some(rel), Some(href)) = (rel_value, href_value) {
                 if rel == "stylesheet" && !href.is_empty() {
-                    style_sheets.push(StyleSheet::StyleSheetLink(node_id));
+                    style_sheets.push(StyleSheetRef::StyleSheetLink(node_id));
                 }
             }
         }
@@ -97,7 +98,7 @@ impl Parser {
         token_idx: &mut usize,
         parent_id: usize,
         errors: &mut Vec<ParserError>,
-        style_sheets: &mut Vec<StyleSheet>,
+        style_sheets: &mut Vec<StyleSheetRef>,
     ) {
         while *token_idx < tokens.len() {
             match &tokens[*token_idx] {
@@ -174,7 +175,7 @@ impl Parser {
 
                         if let (Some(rel), Some(href)) = (rel_value, href_value) {
                             if rel == "stylesheet" && !href.is_empty() {
-                                style_sheets.push(StyleSheet::StyleSheetLink(node_id));
+                                style_sheets.push(StyleSheetRef::StyleSheetLink(node_id));
                             }
                         }
                     }
@@ -224,7 +225,7 @@ mod tests {
     use std::{assert_eq, matches};
 
     use super::*;
-    use crate::dom::stylesheet::StyleSheet;
+    use crate::dom::style_sheet_ref::StyleSheetRef;
     use crate::{dom::node_type::NodeType, tokenizer::html_tags::HtmlTag};
 
     fn get_element_tag(node: &Node) -> Option<&HtmlTag> {
@@ -345,12 +346,12 @@ mod tests {
         assert!(
             style_ids
                 .iter()
-                .any(|s| matches!(s, StyleSheet::InlineStyle(_)))
+                .any(|s| matches!(s, StyleSheetRef::InlineStyle(_)))
         );
         assert!(
             style_ids
                 .iter()
-                .any(|s| matches!(s, StyleSheet::StyleSheetLink(_)))
+                .any(|s| matches!(s, StyleSheetRef::StyleSheetLink(_)))
         );
     }
 

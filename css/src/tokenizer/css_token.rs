@@ -1,5 +1,5 @@
 use crate::cssom::unit::Unit;
-
+#[derive(Debug)]
 pub enum CssToken {
     Ident(String),
 
