@@ -1,3 +1,5 @@
+use std::println;
+
 use base_browser::cli::command::Command;
 use html::{parser::parser::Parser, util::print_dom_tree::print_dom_tree};
 use input_parser::traits::Parse;
@@ -42,8 +44,6 @@ fn main() -> anyhow::Result<()> {
         let response = http.get(&url)?;
         profile_scope!("HTML to dom");
         let html_parse_result = Parser::to_dom(&response.body_as_string())?;
-
-        print_dom_tree(&html_parse_result.value);
 
         Ok(())
     } else {
