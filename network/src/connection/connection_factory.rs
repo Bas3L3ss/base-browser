@@ -4,7 +4,7 @@ use crate::connection::{
     connection::Connection, tcp_connection::TcpConnection, tls_connection::TlsConnection,
 };
 use rustls::ClientConfig;
-use url::url::{Scheme, Url};
+use url::{scheme::Scheme, url::Url};
 
 pub struct ConnectionFactory {
     config: Arc<ClientConfig>,
