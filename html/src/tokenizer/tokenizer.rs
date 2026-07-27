@@ -269,6 +269,8 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
+// ----------------- UNIT TESTS -------------------
+
 #[cfg(test)]
 mod tests {
     use std::{assert_eq, vec};
