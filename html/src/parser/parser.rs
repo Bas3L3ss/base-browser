@@ -5,7 +5,9 @@ use input_parser::generic_struct::ParsedOutput;
 use utils::profile_scope;
 
 use crate::{
-    parser::{dom_element::DomElement, node::Node, node_type::NodeType},
+    dom::{
+        dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType, stylesheet::StyleSheet,
+    },
     tokenizer::{attributes::Attributes, html_tags::HtmlTag, token::Token, tokenizer::Tokenizer},
 };
 
@@ -21,15 +23,24 @@ impl Parser {
     /// Parses the given HTML string into a DOM tree represented as a vector of Nodes,
     /// and collects any parser errors encountered (such as unclosed or unexpected tags)
     /// as warnings in the ParsedOutput.
-    pub fn to_dom(html: &str) -> Result<ParsedOutput<Vec<Node>, ParserError>> {
+    pub fn to_dom(html: &str) -> Result<ParsedOutput<Dom, ParserError>> {
+        profile_scope!("HTML to dom");
         let mut tokenizer = Tokenizer::new(html);
         let tokens = tokenizer.tokenize();
         profile_scope!("HTML Parse");
         let mut arena = vec![Node::new(NodeType::Document, None, vec![])];
+        let mut style_sheets: Vec<StyleSheet> = vec![];
         let mut errors = vec![];
         let mut token_idx = 0;
-        Self::parse_children(&tokens, &mut arena, &mut token_idx, 0, &mut errors);
-        Ok(ParsedOutput::new(arena, errors))
+        Self::parse_children(
+            &tokens,
+            &mut arena,
+            &mut token_idx,
+            0,
+            &mut errors,
+            &mut style_sheets,
+        );
+        Ok(ParsedOutput::new(Dom::new(arena, style_sheets), errors))
     }
 
     fn push_child(arena: &mut Vec<Node>, parent_id: usize, node: Node) -> usize {
@@ -47,6 +58,7 @@ impl Parser {
         tag: &HtmlTag,
         attributes: &Attributes,
         errors: &mut Vec<ParserError>,
+        style_sheets: &mut Vec<StyleSheet>,
     ) {
         let node = Node::new(
             NodeType::Element(DomElement::new(tag.clone(), attributes.clone())),
@@ -54,8 +66,27 @@ impl Parser {
             vec![],
         );
         let node_id = Self::push_child(arena, parent_id, node);
+
+        // Detect <style> tag and register its node_id as InlineStyle
+        if *tag == HtmlTag::Style {
+            style_sheets.push(StyleSheet::InlineStyle(node_id));
+        }
+
+        // Detect <link rel="stylesheet" ...>
+        if *tag == HtmlTag::Link {
+            // rel="stylesheet"
+            let rel_value = attributes.rel.as_ref().map(|v| v.to_ascii_lowercase());
+            let href_value = attributes.href.as_ref().map(|v| v.trim().to_string());
+
+            if let (Some(rel), Some(href)) = (rel_value, href_value) {
+                if rel == "stylesheet" && !href.is_empty() {
+                    style_sheets.push(StyleSheet::StyleSheetLink(node_id));
+                }
+            }
+        }
+
         *token_idx += 1;
-        Self::parse_children(tokens, arena, token_idx, node_id, errors);
+        Self::parse_children(tokens, arena, token_idx, node_id, errors, style_sheets);
     }
 
     /// Depth-first traversal to consume tokens and build node tree into arena.
@@ -66,6 +97,7 @@ impl Parser {
         token_idx: &mut usize,
         parent_id: usize,
         errors: &mut Vec<ParserError>,
+        style_sheets: &mut Vec<StyleSheet>,
     ) {
         while *token_idx < tokens.len() {
             match &tokens[*token_idx] {
@@ -86,7 +118,14 @@ impl Parser {
 
                 Token::Start(tag, attributes) => {
                     Self::parse_element(
-                        tokens, arena, token_idx, parent_id, tag, attributes, errors,
+                        tokens,
+                        arena,
+                        token_idx,
+                        parent_id,
+                        tag,
+                        attributes,
+                        errors,
+                        style_sheets,
                     );
                 }
 
@@ -121,15 +160,25 @@ impl Parser {
                 }
 
                 Token::SelfClose(tag, attributes) => {
-                    Self::push_child(
-                        arena,
-                        parent_id,
-                        Node::new(
-                            NodeType::Element(DomElement::new(tag.clone(), attributes.clone())),
-                            Some(parent_id),
-                            vec![],
-                        ),
+                    let node = Node::new(
+                        NodeType::Element(DomElement::new(tag.clone(), attributes.clone())),
+                        Some(parent_id),
+                        vec![],
                     );
+                    let node_id = Self::push_child(arena, parent_id, node);
+
+                    // Detect <link rel="stylesheet" ... /> self-closing
+                    if *tag == HtmlTag::Link {
+                        let rel_value = attributes.rel.as_ref().map(|v| v.to_ascii_lowercase());
+                        let href_value = attributes.href.as_ref().map(|v| v.trim().to_string());
+
+                        if let (Some(rel), Some(href)) = (rel_value, href_value) {
+                            if rel == "stylesheet" && !href.is_empty() {
+                                style_sheets.push(StyleSheet::StyleSheetLink(node_id));
+                            }
+                        }
+                    }
+
                     *token_idx += 1;
                 }
 
@@ -172,10 +221,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use std::matches;
+    use std::{assert_eq, matches};
 
     use super::*;
-    use crate::{parser::node_type::NodeType, tokenizer::html_tags::HtmlTag};
+    use crate::dom::stylesheet::StyleSheet;
+    use crate::{dom::node_type::NodeType, tokenizer::html_tags::HtmlTag};
 
     fn get_element_tag(node: &Node) -> Option<&HtmlTag> {
         match &node.ntype {
@@ -202,9 +252,9 @@ mod tests {
         let html = "<html><body><h1>Hello</h1></body></html>";
         let output = Parser::to_dom(html).unwrap();
         // Should contain html, body, h1 elements
-        assert!(has_element(&output.value, HtmlTag::Html));
-        assert!(has_element(&output.value, HtmlTag::Body));
-        assert!(has_element(&output.value, HtmlTag::Header(1)));
+        assert!(has_element(&output.value.nodes, HtmlTag::Html));
+        assert!(has_element(&output.value.nodes, HtmlTag::Body));
+        assert!(has_element(&output.value.nodes, HtmlTag::Header(1)));
         // Should not have parse errors
         assert!(output.warnings.is_empty());
     }
@@ -250,7 +300,7 @@ mod tests {
     fn test_self_closing_tag() {
         let html = "<img src='x.jpg'/>";
         let output = Parser::to_dom(html).unwrap();
-        assert!(has_element(&output.value, HtmlTag::Image));
+        assert!(has_element(&output.value.nodes, HtmlTag::Image));
         assert!(output.warnings.is_empty());
     }
 
@@ -260,6 +310,7 @@ mod tests {
         let output = Parser::to_dom(html).unwrap();
         let text_nodes: Vec<&str> = output
             .value
+            .nodes
             .iter()
             .filter_map(|n| get_text_content(n))
             .collect();
@@ -274,10 +325,12 @@ mod tests {
         let output = Parser::to_dom(html).unwrap();
         let has_doctype = output
             .value
+            .nodes
             .iter()
             .any(|n| matches!(&n.ntype, NodeType::Doctype(dt) if dt.contains("html")));
         let has_comment = output
             .value
+            .nodes
             .iter()
             .any(|n| matches!(&n.ntype, NodeType::Comment(c) if c.contains("a comment")));
         assert!(has_doctype);
@@ -285,12 +338,29 @@ mod tests {
     }
 
     #[test]
+    fn test_style_and_link_stylesheet_detection() {
+        let html = "<style>.a{}</style><link rel=\"stylesheet\" href=\".\"><div></div>";
+        let output = Parser::to_dom(html).unwrap();
+        let style_ids: Vec<_> = output.value.style_sheets.iter().collect();
+        assert!(
+            style_ids
+                .iter()
+                .any(|s| matches!(s, StyleSheet::InlineStyle(_)))
+        );
+        assert!(
+            style_ids
+                .iter()
+                .any(|s| matches!(s, StyleSheet::StyleSheetLink(_)))
+        );
+    }
+
+    #[test]
     fn test_empty_html_gives_document_node() {
         let html = "";
         let output = Parser::to_dom(html).unwrap();
         // Always contains a single Document node (root)
-        assert_eq!(output.value.len() > 0, true);
-        match &output.value[0].ntype {
+        assert_eq!(output.value.nodes.len() > 0, true);
+        match &output.value.nodes[0].ntype {
             NodeType::Document => {}
             _ => panic!("Root node not a Document"),
         }
@@ -302,10 +372,10 @@ mod tests {
         let html = "<ul><li><span><b>txt</b></span></li></ul>";
         let output = Parser::to_dom(html).unwrap();
         // Should find all these elements
-        assert!(has_element(&output.value, HtmlTag::UnorderedList));
-        assert!(has_element(&output.value, HtmlTag::ListItem));
-        assert!(has_element(&output.value, HtmlTag::Span));
-        assert!(has_element(&output.value, HtmlTag::Bold));
+        assert!(has_element(&output.value.nodes, HtmlTag::UnorderedList));
+        assert!(has_element(&output.value.nodes, HtmlTag::ListItem));
+        assert!(has_element(&output.value.nodes, HtmlTag::Span));
+        assert!(has_element(&output.value.nodes, HtmlTag::Bold));
         // And should not have parse errors
         assert!(output.warnings.is_empty());
     }
@@ -316,6 +386,7 @@ mod tests {
         let output = Parser::to_dom(html).unwrap();
         let divs = output
             .value
+            .nodes
             .iter()
             .filter(|n| get_element_tag(n) == Some(&HtmlTag::Div))
             .count();

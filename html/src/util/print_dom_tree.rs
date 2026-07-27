@@ -1,11 +1,11 @@
 use std::println;
 
-pub fn print_dom_tree(nodes: &Vec<crate::parser::node::Node>) {
-    fn print_node(nodes: &Vec<crate::parser::node::Node>, node_id: usize, indent: usize) {
+pub fn print_dom_tree(nodes: &Vec<crate::dom::node::Node>) {
+    fn print_node(nodes: &Vec<crate::dom::node::Node>, node_id: usize, indent: usize) {
         // Increase indentation by making it 4 spaces per level instead of 2
         let indent_str = "    ".repeat(indent);
         if let Some(node) = nodes.get(node_id) {
-            use crate::parser::node_type::NodeType;
+            use crate::dom::node_type::NodeType;
             match &node.ntype {
                 NodeType::Document => println!("{indent_str}Document"),
                 NodeType::Doctype(s) => println!("{indent_str}<!DOCTYPE {s}>"),
