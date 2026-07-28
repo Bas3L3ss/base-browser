@@ -1,4 +1,4 @@
-use std::matches;
+use std::{matches, print, println};
 
 use anyhow::{Ok, Result};
 use utils::profile_scope;
@@ -11,7 +11,9 @@ use crate::{
         property::Property,
         rule::Rule,
         selector::{
-            AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, SimpleSelector,
+            AttrSelectorOperator,
+            Combinator::{self},
+            ComplexSelector, CompoundSelector, SimpleSelector,
         },
         unit::Unit,
     },
@@ -32,7 +34,7 @@ impl Parser {
         while i < tokens.len() {
             if let Some(selector_start) = Self::find_selector_start(&tokens, i) {
                 i = selector_start;
-                let (selectors, next_i) = Self::collect_selectors_until_left_brace(&tokens, i);
+                let (selectors, mut next_i) = Self::collect_selectors_until_left_brace(&tokens, i);
                 i = next_i;
 
                 if matches!(tokens.get(i), Some(CssToken::LeftBrace)) {
@@ -42,8 +44,8 @@ impl Parser {
                     continue;
                 }
 
-                let (declarations, next_i) = Self::parse_declarations(&tokens, i);
-                i = next_i;
+                let (declarations, next_i2) = Self::parse_declarations(&tokens, i);
+                i = next_i2;
                 if matches!(tokens.get(i), Some(CssToken::RightBrace)) {
                     i += 1;
                 }
@@ -65,9 +67,7 @@ impl Parser {
                 | CssToken::Star
                 | CssToken::Dot
                 | CssToken::Hash(_)
-                | CssToken::OpenBracket => {
-                    return Some(i);
-                }
+                | CssToken::OpenBracket => return Some(i),
                 CssToken::EOF => return None,
                 _ => i += 1,
             }
@@ -75,68 +75,45 @@ impl Parser {
         None
     }
 
-    /// Collect selectors until a '{' (left brace) is found.
-    ///
-    /// # Supported
-    /// - Simple selectors: element, .class, #id, *, [attr], [attr=val], etc.
-    /// - Attribute selector operators: [attr], [attr=val], [attr~=val], [attr|=val], [attr^=val], [attr$=val], [attr*=val].
-    /// - Pseudo-classes: Supports :not(), :is(), :where(), :has(), as well as pseudo-classes without arguments (e.g. :hover, :first-child, etc).
-    /// - Pseudo-elements: Supports double colon syntax for pseudo-elements (e.g. ::before, ::after), and also single colon for legacy pseudo-elements (e.g. :before).
-    ///
-    ///
-    /// # Not Supported
-    /// - Combinators (>, +, ~, descendant whitespace) are not parsed as relationships; each group ends at comma or left brace.
-    /// - Complex selector relationships, nesting, or specificity ordering beyond naïve token grouping.
-    /// - Arbitrary pseudo-class or pseudo-element arguments unless matched by hardcoded logic for supported pseudo-classes.
-    /// - :nth-child, :nth-of-type, and similar with expressions or math as function argument.
-    /// - Vendor-prefixed pseudo-elements and custom pseudo-elements.
-    /// - Full CSS4 selector features.
+    #[inline]
+    fn push_selector_from_tokens(selectors: &mut Vec<ComplexSelector>, buf: &mut Vec<CssToken>) {
+        if !buf.is_empty() {
+            if let Some(sel) = Self::selector_from_tokens(buf) {
+                selectors.push(sel);
+            }
+            buf.clear();
+        }
+    }
 
     fn collect_selectors_until_left_brace(
         tokens: &[CssToken],
         mut i: usize,
     ) -> (Vec<ComplexSelector>, usize) {
-        let mut selectors: Vec<ComplexSelector> = Vec::new();
-        let mut cur_selector_tokens: Vec<CssToken> = Vec::new();
-        let mut parens: Vec<CssToken> = Vec::new();
+        let mut selectors = Vec::new();
+        let mut cur_selector_tokens = Vec::new();
+        let mut parens = 0;
 
         while i < tokens.len() {
             match &tokens[i] {
                 CssToken::LeftParen => {
                     cur_selector_tokens.push(tokens[i].clone());
-                    parens.push(CssToken::LeftParen);
+                    parens += 1;
                     i += 1;
                 }
                 CssToken::RightParen => {
                     cur_selector_tokens.push(tokens[i].clone());
-                    parens.pop();
+                    if parens > 0 {
+                        parens -= 1;
+                    }
                     i += 1;
                 }
                 CssToken::LeftBrace => {
-                    // Finish last selector before brace
-                    if !cur_selector_tokens.is_empty() {
-                        if let Some(sel) = Self::selector_from_tokens(&cur_selector_tokens) {
-                            selectors.push(sel);
-                        }
-                        cur_selector_tokens.clear();
-                    }
+                    Self::push_selector_from_tokens(&mut selectors, &mut cur_selector_tokens);
                     break;
                 }
-                CssToken::Comma => {
-                    if parens.len() > 0 {
-                        cur_selector_tokens.push(tokens[i].clone());
-                        i += 1;
-                        continue;
-                    }
-                    // End current selector in group
-                    if !cur_selector_tokens.is_empty() {
-                        if let Some(sel) = Self::selector_from_tokens(&cur_selector_tokens) {
-                            selectors.push(sel);
-                        }
-                        cur_selector_tokens.clear();
-                    }
+                CssToken::Comma if parens == 0 => {
+                    Self::push_selector_from_tokens(&mut selectors, &mut cur_selector_tokens);
                     i += 1;
-                    // Skip whitespace after comma
                     while matches!(tokens.get(i), Some(CssToken::Whitespace)) {
                         i += 1;
                     }
@@ -148,74 +125,42 @@ impl Parser {
                 }
             }
         }
-        // Handle last group if any
-        if !cur_selector_tokens.is_empty() {
-            if let Some(sel) = Self::selector_from_tokens(&cur_selector_tokens) {
-                selectors.push(sel);
-            }
-        }
+
+        Self::push_selector_from_tokens(&mut selectors, &mut cur_selector_tokens);
+
         (selectors, i)
     }
 
     fn collect_selectors_until_end_of_tokens(tokens: &[CssToken]) -> Vec<ComplexSelector> {
-        let mut selectors: Vec<ComplexSelector> = Vec::new();
-        let mut cur_selector_tokens: Vec<CssToken> = Vec::new();
+        let mut selectors = Vec::new();
+        let mut cur_selector_tokens = Vec::new();
         let mut i = 0;
         while i < tokens.len() {
             match &tokens[i] {
                 CssToken::Comma => {
-                    // End current selector in group
-                    if !cur_selector_tokens.is_empty() {
-                        if let Some(sel) = Self::selector_from_tokens(&cur_selector_tokens) {
-                            selectors.push(sel);
-                        }
-                        cur_selector_tokens.clear();
-                    }
+                    Self::push_selector_from_tokens(&mut selectors, &mut cur_selector_tokens);
                     i += 1;
-                    // Skip whitespace after comma
                     while matches!(tokens.get(i), Some(CssToken::Whitespace)) {
                         i += 1;
                     }
                 }
-                CssToken::EOF => {
-                    // End parsing on EOF
-                    break;
-                }
+                CssToken::EOF => break,
                 _ => {
                     cur_selector_tokens.push(tokens[i].clone());
                     i += 1;
                 }
             }
         }
-        // Handle last group if any
-        if !cur_selector_tokens.is_empty() {
-            if let Some(sel) = Self::selector_from_tokens(&cur_selector_tokens) {
-                selectors.push(sel);
-            }
-        }
+        Self::push_selector_from_tokens(&mut selectors, &mut cur_selector_tokens);
         selectors
     }
 
-    ///
-    /// # Supported
-    /// - Tag selectors, class selectors, id selectors, universal (*), and attribute selectors as described above.
-    /// - Attribute selector operator coverage as above.
-    /// - Grouping multiple simple selectors together as a compound selector (e.g. `div.foo#bar[attr]`).
-    /// - :not(), :has(), :is(), :where() pseudo-classes, including single and grouped selectors for :is()/:where().
-    /// - Pseudo-elements (::before) and pseudo-classes (:hover, :checked, etc) recognized by presence/syntax.
-    ///
-    /// # Not Supported
-    /// - Chained or nested combinators (>, +, ~, descendant).
-    /// - Full parsing/argument extraction for arbitrary pseudo-classes with complex expressions.
-    /// - Vendor-prefixed, custom, or unknown pseudo-elements or pseudo-classes unless trivially matched.
-    /// - Functional or mathematical notation in pseudo-class arguments outside of basic support for those listed above.
-    /// - Universal grammar of CSS selectors (parsing is approximate).
     fn selector_from_tokens(selector_tokens: &[CssToken]) -> Option<ComplexSelector> {
         if selector_tokens.is_empty() {
             return None;
         }
 
-        // Remove leading/trailing whitespace.
+        // Trim whitespace
         let mut start = 0;
         let mut end = selector_tokens.len();
         while start < end && matches!(selector_tokens[start], CssToken::Whitespace) {
@@ -227,12 +172,12 @@ impl Parser {
         if start >= end {
             return None;
         }
-
         let tokens = &selector_tokens[start..end];
-        let rest: Vec<(Combinator, CompoundSelector)> = Vec::new();
+        let mut rest: Vec<(Combinator, CompoundSelector)> = Vec::new();
         let mut first = CompoundSelector::new();
         let mut idx = 0;
-        let rest_idx: Option<usize> = None;
+
+        println!("{tokens:?}");
 
         while idx < tokens.len() {
             match &tokens[idx] {
@@ -241,7 +186,6 @@ impl Parser {
                         first.push(SimpleSelector::Class(name.clone()));
                         idx += 2;
                     } else {
-                        // Skip malformed
                         idx += 1;
                     }
                 }
@@ -257,98 +201,9 @@ impl Parser {
                     first.push(SimpleSelector::Universal);
                     idx += 1;
                 }
-                // Attribute selectors: [attr], [attr=value], etc.
                 CssToken::OpenBracket => {
-                    let mut name = None;
-                    let mut value = None;
-                    let mut operator = None;
-                    let mut j = idx + 1;
-
-                    // Collect attribute name.
-                    while j < tokens.len() {
-                        match &tokens[j] {
-                            CssToken::Ident(attr_name) => {
-                                name = Some(attr_name.clone());
-                                j += 1;
-                            }
-                            CssToken::Whitespace => j += 1,
-                            _ => break,
-                        }
-                    }
-
-                    // Check for attribute operators (=, ~=, |=, ^=, $=, *=)
-                    if j < tokens.len() {
-                        match &tokens[j] {
-                            CssToken::Equals => {
-                                operator = Some(AttrSelectorOperator::Equals);
-                                j += 1;
-                            }
-                            CssToken::Tilde => {
-                                if matches!(tokens.get(j + 1), Some(CssToken::Equals)) {
-                                    operator = Some(AttrSelectorOperator::Includes);
-                                    j += 2;
-                                }
-                            }
-                            CssToken::Delim('|') => {
-                                if matches!(tokens.get(j + 1), Some(CssToken::Equals)) {
-                                    operator = Some(AttrSelectorOperator::DashMatch);
-                                    j += 2;
-                                }
-                            }
-                            CssToken::Delim('^') => {
-                                if matches!(tokens.get(j + 1), Some(CssToken::Equals)) {
-                                    operator = Some(AttrSelectorOperator::PrefixMatch);
-                                    j += 2;
-                                }
-                            }
-                            CssToken::Delim('$') => {
-                                if matches!(tokens.get(j + 1), Some(CssToken::Equals)) {
-                                    operator = Some(AttrSelectorOperator::SuffixMatch);
-                                    j += 2;
-                                }
-                            }
-                            CssToken::Star => {
-                                if matches!(tokens.get(j + 1), Some(CssToken::Equals)) {
-                                    operator = Some(AttrSelectorOperator::SubstringMatch);
-                                    j += 2;
-                                }
-                            }
-
-                            _ => {}
-                        }
-                    }
-
-                    // If there is an operator, collect value.
-                    if operator.is_some() {
-                        // Only consume tokens up to the close bracket as the value
-                        let mut val_start = j;
-                        let mut val_end = j;
-                        while val_end < tokens.len() {
-                            match &tokens[val_end] {
-                                CssToken::CloseBracket => break,
-                                CssToken::Whitespace if val_start == val_end => {
-                                    val_start += 1;
-                                    val_end += 1;
-                                }
-                                _ => val_end += 1,
-                            }
-                        }
-                        // Find first non-whitespace token for value
-                        value = tokens[val_start..val_end].iter().find_map(|tok| match tok {
-                            CssToken::Ident(v) => Some(v.clone()),
-                            CssToken::String(v) => Some(v.clone()),
-                            CssToken::Hash(v) => Some(v.clone()),
-                            CssToken::Number(n) => Some(n.to_string()),
-                            CssToken::Dimension { value: v, unit } => {
-                                Some(format!("{}{}", v, unit))
-                            }
-                            CssToken::Percentage(p) => Some(format!("{}%", p)),
-                            CssToken::Delim(c) => Some(c.to_string()),
-                            _ => None,
-                        });
-                        j = val_end;
-                    }
-
+                    let (name, value, operator, j) =
+                        Self::parse_attribute_selector(tokens, idx + 1);
                     if let Some(attr_name) = name {
                         first.push(SimpleSelector::Attribute {
                             name: attr_name,
@@ -359,96 +214,275 @@ impl Parser {
                     idx = j;
                 }
                 CssToken::Colon => {
-                    let mut double_colon = false;
-                    let mut j = idx + 1;
-
-                    // Check for double colon (::pseudo-element)
-                    if let Some(CssToken::Colon) = tokens.get(j) {
-                        double_colon = true;
-                        j += 1;
-                    }
-
-                    if let Some(CssToken::Ident(pseudo_name)) = tokens.get(j) {
-                        let mut k = j + 1;
-                        // Skip whitespace after pseudo-class name
-                        while k < tokens.len() && matches!(&tokens[k], CssToken::Whitespace) {
-                            k += 1;
-                        }
-                        // Now expect LeftParen for pseudo-classes like :not(), :is(), :where(), :has()
-                        if matches!(tokens.get(k), Some(CssToken::LeftParen)) {
-                            k += 1;
-                            let mut nest_paren = 1;
-                            let start = k;
-
-                            // Find matching RightParen to end argument
-                            while k < tokens.len() && nest_paren > 0 {
-                                match &tokens[k] {
-                                    CssToken::LeftParen => {
-                                        nest_paren += 1;
-                                        k += 1;
-                                    }
-                                    CssToken::RightParen => {
-                                        nest_paren -= 1;
-                                        if nest_paren == 0 {
-                                            k += 1;
-                                            break;
-                                        } else {
-                                            k += 1;
-                                        }
-                                    }
-                                    _ => k += 1,
-                                }
-                            }
-                            let end = if k > tokens.len() {
-                                tokens.len()
-                            } else {
-                                k.saturating_sub(1)
-                            };
-                            let arg_tokens = if start < end {
-                                &tokens[start..end]
-                            } else {
-                                &[]
-                            };
-
-                            let args_list = if arg_tokens.is_empty() {
-                                None
-                            } else {
-                                Some(Self::collect_selectors_until_end_of_tokens(arg_tokens))
-                            };
-
-                            first.push(SimpleSelector::PseudoClass(
-                                pseudo_name.to_string(),
-                                args_list,
-                            ));
-                        } else {
-                            if double_colon {
-                                first.push(SimpleSelector::PseudoElement(pseudo_name.to_string()));
-                            } else {
-                                first.push(SimpleSelector::PseudoClass(
-                                    pseudo_name.to_string(),
-                                    None,
-                                ));
-                            }
-                        }
-                        idx = k;
+                    let (handled, new_idx) = Self::parse_pseudo(tokens, idx, &mut first);
+                    idx = new_idx;
+                    if handled {
                         continue;
                     }
-
-                    // Always advance idx to avoid endless loops if pseudo-class is malformed.
                     idx += 1;
                 }
-                // Unsupported or ignored token for selectors
                 CssToken::Whitespace => {
                     idx += 1;
+                    while idx < tokens.len() && matches!(tokens[idx], CssToken::Whitespace) {
+                        idx += 1;
+                    }
+                    let (selectors, new_idx) = Self::parse_compound_selectors(tokens, idx);
+                    if !selectors.is_empty() {
+                        rest.push((Combinator::Descendant, selectors));
+                        idx = new_idx;
+                    }
+                }
+                CssToken::Plus => {
+                    idx += 1;
+                    while idx < tokens.len() && matches!(tokens[idx], CssToken::Whitespace) {
+                        idx += 1;
+                    }
+                    let (selectors, new_idx) = Self::parse_compound_selectors(tokens, idx);
+                    rest.push((Combinator::AdjacentSibling, selectors));
+                    idx = new_idx;
+                }
+                CssToken::GreaterThan => {
+                    idx += 1;
+                    while idx < tokens.len() && matches!(tokens[idx], CssToken::Whitespace) {
+                        idx += 1;
+                    }
+                    let (selectors, new_idx) = Self::parse_compound_selectors(tokens, idx);
+                    rest.push((Combinator::Child, selectors));
+                    idx = new_idx;
+                }
+                CssToken::Tilde => {
+                    idx += 1;
+                    while idx < tokens.len() && matches!(tokens[idx], CssToken::Whitespace) {
+                        idx += 1;
+                    }
+                    let (selectors, new_idx) = Self::parse_compound_selectors(tokens, idx);
+                    rest.push((Combinator::GeneralSibling, selectors));
+                    idx = new_idx;
                 }
                 _ => {
                     idx += 1;
                 }
             }
         }
+        Some(ComplexSelector { first, rest })
+    }
 
-        let complex = ComplexSelector { first, rest };
-        Some(complex)
+    fn parse_compound_selectors(
+        selector_tokens: &[CssToken],
+        mut idx: usize,
+    ) -> (CompoundSelector, usize) {
+        let mut selectors = CompoundSelector::new();
+
+        while idx < selector_tokens.len() {
+            match &selector_tokens[idx] {
+                CssToken::Dot => {
+                    if let Some(CssToken::Ident(name)) = selector_tokens.get(idx + 1) {
+                        selectors.push(SimpleSelector::Class(name.clone()));
+                        idx += 2;
+                    } else {
+                        idx += 1;
+                    }
+                }
+                CssToken::Hash(name) => {
+                    selectors.push(SimpleSelector::Id(name.clone()));
+                    idx += 1;
+                }
+                CssToken::Ident(tag) => {
+                    selectors.push(SimpleSelector::Type(tag.clone()));
+                    idx += 1;
+                }
+                CssToken::Star => {
+                    selectors.push(SimpleSelector::Universal);
+                    idx += 1;
+                }
+                CssToken::OpenBracket => {
+                    let (name, value, operator, j) =
+                        Self::parse_attribute_selector(selector_tokens, idx + 1);
+                    if let Some(attr_name) = name {
+                        selectors.push(SimpleSelector::Attribute {
+                            name: attr_name,
+                            value,
+                            operator,
+                        });
+                    }
+                    idx = j;
+                }
+                CssToken::Colon => {
+                    let (handled, new_idx) =
+                        Self::parse_pseudo(selector_tokens, idx, &mut selectors);
+                    idx = new_idx;
+                    if handled {
+                        continue;
+                    }
+                    idx += 1;
+                }
+                _ => break,
+            }
+        }
+
+        (selectors, idx)
+    }
+
+    fn parse_attribute_selector(
+        tokens: &[CssToken],
+        start_idx: usize,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<AttrSelectorOperator>,
+        usize,
+    ) {
+        let mut name = None;
+        let mut value = None;
+        let mut operator = None;
+        let mut j = start_idx;
+
+        // Collect attribute name.
+        while j < tokens.len() {
+            match &tokens[j] {
+                CssToken::Ident(attr_name) => {
+                    name = Some(attr_name.clone());
+                    j += 1;
+                }
+                CssToken::Whitespace => j += 1,
+                _ => break,
+            }
+        }
+
+        // Operators
+        if j < tokens.len() {
+            operator = match &tokens[j] {
+                CssToken::Equals => {
+                    j += 1;
+                    Some(AttrSelectorOperator::Equals)
+                }
+                CssToken::Tilde if matches!(tokens.get(j + 1), Some(CssToken::Equals)) => {
+                    j += 2;
+                    Some(AttrSelectorOperator::Includes)
+                }
+                CssToken::Delim('|') if matches!(tokens.get(j + 1), Some(CssToken::Equals)) => {
+                    j += 2;
+                    Some(AttrSelectorOperator::DashMatch)
+                }
+                CssToken::Delim('^') if matches!(tokens.get(j + 1), Some(CssToken::Equals)) => {
+                    j += 2;
+                    Some(AttrSelectorOperator::PrefixMatch)
+                }
+                CssToken::Delim('$') if matches!(tokens.get(j + 1), Some(CssToken::Equals)) => {
+                    j += 2;
+                    Some(AttrSelectorOperator::SuffixMatch)
+                }
+                CssToken::Star if matches!(tokens.get(j + 1), Some(CssToken::Equals)) => {
+                    j += 2;
+                    Some(AttrSelectorOperator::SubstringMatch)
+                }
+                _ => None,
+            };
+        }
+
+        // Collect value if operator is found
+        if operator.is_some() {
+            let mut val_start = j;
+            let mut val_end = j;
+            while val_end < tokens.len() {
+                match &tokens[val_end] {
+                    CssToken::CloseBracket => break,
+                    CssToken::Whitespace if val_start == val_end => {
+                        val_start += 1;
+                        val_end += 1;
+                    }
+                    _ => val_end += 1,
+                }
+            }
+            value = tokens[val_start..val_end].iter().find_map(|tok| match tok {
+                CssToken::Ident(v) => Some(v.clone()),
+                CssToken::String(v) => Some(v.clone()),
+                CssToken::Hash(v) => Some(v.clone()),
+                CssToken::Number(n) => Some(n.to_string()),
+                CssToken::Dimension { value: v, unit } => Some(format!("{}{}", v, unit)),
+                CssToken::Percentage(p) => Some(format!("{}%", p)),
+                CssToken::Delim(c) => Some(c.to_string()),
+                _ => None,
+            });
+            j = val_end;
+        }
+        (name, value, operator, j)
+    }
+
+    fn parse_pseudo(
+        tokens: &[CssToken],
+        idx: usize,
+        selectors: &mut CompoundSelector,
+    ) -> (bool, usize) {
+        let mut double_colon = false;
+        let mut j = idx + 1;
+
+        if let Some(CssToken::Colon) = tokens.get(j) {
+            double_colon = true;
+            j += 1;
+        }
+
+        if let Some(CssToken::Ident(pseudo_name)) = tokens.get(j) {
+            let mut k = j + 1;
+            while k < tokens.len() && matches!(tokens[k], CssToken::Whitespace) {
+                k += 1;
+            }
+
+            if matches!(tokens.get(k), Some(CssToken::LeftParen)) {
+                k += 1;
+                let mut nest_paren = 1;
+                let start = k;
+
+                while k < tokens.len() && nest_paren > 0 {
+                    match &tokens[k] {
+                        CssToken::LeftParen => {
+                            nest_paren += 1;
+                            k += 1;
+                        }
+                        CssToken::RightParen => {
+                            nest_paren -= 1;
+                            if nest_paren == 0 {
+                                k += 1;
+                                break;
+                            } else {
+                                k += 1;
+                            }
+                        }
+                        _ => k += 1,
+                    }
+                }
+                let end = if k > tokens.len() {
+                    tokens.len()
+                } else {
+                    k.saturating_sub(1)
+                };
+                let arg_tokens = if start < end {
+                    &tokens[start..end]
+                } else {
+                    &[]
+                };
+
+                let args_list = if arg_tokens.is_empty() {
+                    None
+                } else {
+                    Some(Self::collect_selectors_until_end_of_tokens(arg_tokens))
+                };
+
+                selectors.push(SimpleSelector::PseudoClass(
+                    pseudo_name.to_string(),
+                    args_list,
+                ));
+                return (true, k);
+            } else {
+                if double_colon {
+                    selectors.push(SimpleSelector::PseudoElement(pseudo_name.to_string()));
+                } else {
+                    selectors.push(SimpleSelector::PseudoClass(pseudo_name.to_string(), None));
+                }
+                return (true, k);
+            }
+        }
+        (false, j)
     }
 
     fn parse_declarations(tokens: &[CssToken], mut i: usize) -> (Vec<Declaration>, usize) {
@@ -548,7 +582,6 @@ impl Parser {
                     components.push(ComponentValue::Delim('~'));
                     i += 1;
                 }
-
                 _ => {
                     i += 1;
                 }
@@ -569,7 +602,9 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use std::{assert_eq, vec};
+    use core::panic;
+
+    use std::{assert_eq, println, sync::mpsc, thread, time::Duration, vec};
 
     use super::*;
     use crate::cssom::selector::{
@@ -577,13 +612,41 @@ mod tests {
     };
 
     fn parse_first_selector(css: &str) -> ComplexSelector {
-        let tokens = Tokenizer::from_string(css);
-        let selectors = Parser::collect_selectors_until_left_brace(&tokens, 0);
-        selectors
-            .0
-            .into_iter()
-            .next()
-            .expect("Should parse at least one selector")
+        let (sender, receiver) = mpsc::channel();
+        let css = css.to_string();
+        thread::spawn(move || {
+            let tokens = Tokenizer::from_string(&css);
+            let selectors = Parser::collect_selectors_until_left_brace(&tokens, 0);
+            let result = selectors
+                .0
+                .into_iter()
+                .next()
+                .expect("Should parse at least one selector");
+            sender.send(result).ok();
+        });
+        match receiver.recv_timeout(Duration::from_secs(3)) {
+            std::result::Result::Ok(selector) => selector,
+            Err(_) => {
+                panic!("Parsing took too long (more than 3 seconds) - possible endless loop.")
+            }
+        }
+    }
+
+    fn parse_first_selector_opt(css: &str) -> Option<ComplexSelector> {
+        let (sender, receiver) = mpsc::channel();
+        let css = css.to_string();
+        thread::spawn(move || {
+            let tokens = Tokenizer::from_string(&css);
+            let selectors = Parser::collect_selectors_until_left_brace(&tokens, 0);
+            let result = selectors.0.into_iter().next();
+            sender.send(result).ok();
+        });
+        match receiver.recv_timeout(Duration::from_secs(3)) {
+            std::result::Result::Ok(selector) => selector,
+            Err(_) => {
+                panic!("Parsing took too long (more than 3 seconds) - possible endless loop.")
+            }
+        }
     }
 
     #[test]
@@ -841,5 +904,437 @@ mod tests {
         } else {
             panic!("Expected :where pseudo-class with arguments");
         }
+    }
+
+    #[test]
+    fn test_descendant_type_selector() {
+        // CSS selector input: "div span"
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //     first: CompoundSelector([Type("div")])
+        //     rest: [(Descendant, CompoundSelector([Type("span")]))]
+        // }
+        let selector = parse_first_selector("div span");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(
+            selector.rest,
+            vec![(Combinator::Descendant, {
+                let mut comp = CompoundSelector::new();
+                comp.push(SimpleSelector::Type("span".to_string()));
+                comp
+            })]
+        );
+    }
+
+    #[test]
+    fn test_descendant_chain() {
+        // CSS selector input: "div article section p"
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //     first: CompoundSelector([Type("div")])
+        //     rest: [
+        //         (Descendant, CompoundSelector([Type("article")])),
+        //         (Descendant, CompoundSelector([Type("section")])),
+        //         (Descendant, CompoundSelector([Type("p")]))
+        //     ]
+        // }
+        let selector = parse_first_selector("div article section p");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 3);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("article".to_string())]
+        );
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("section".to_string())]
+        );
+        assert_eq!(
+            selector.rest[2].1.simple_selectors,
+            vec![SimpleSelector::Type("p".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_descendant_with_compound_selectors() {
+        // CSS selector input: "div.foo span.bar"
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //     first: CompoundSelector([Type("div"), Class("foo")])
+        //     rest: [(Descendant, CompoundSelector([Type("span"), Class("bar")]))]
+        // }
+        let selector = parse_first_selector("div.foo span.bar");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::Class("foo".to_string())
+            ]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![
+                SimpleSelector::Type("span".to_string()),
+                SimpleSelector::Class("bar".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_descendants_with_attribute_selectors() {
+        // CSS selector input: "input[type=text] label[for=username]"
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //   first: CompoundSelector([Type("input"), Attribute{name: "type", operator: Some(Equals), value: Some("text")}])
+        //   rest: [(Descendant, CompoundSelector([Type("label"), Attribute{name: "for", operator: Some(Equals), value: Some("username")}]))]
+        // }
+        let selector = parse_first_selector("input[type=text] label[for=username]");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("input".to_string()),
+                SimpleSelector::Attribute {
+                    name: "type".to_string(),
+                    operator: Some(AttrSelectorOperator::Equals),
+                    value: Some("text".to_string())
+                }
+            ]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![
+                SimpleSelector::Type("label".to_string()),
+                SimpleSelector::Attribute {
+                    name: "for".to_string(),
+                    operator: Some(AttrSelectorOperator::Equals),
+                    value: Some("username".to_string())
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_descendants_with_pseudo_classes_and_elements() {
+        // CSS selector input: "ul > li a:hover::before"
+        // Should succeed (assuming support for Child combinator)
+        // Expected selector tree:
+        // ComplexSelector {
+        //   first: CompoundSelector([Type("ul")])
+        //   rest: [
+        //     (Child, CompoundSelector([Type("li")])),
+        //     (Descendant, CompoundSelector([Type("a"), PseudoClass("hover", None), PseudoElement("before")]))
+        //   ]
+        // }
+        let selector = parse_first_selector("ul > li a:hover::before");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("ul".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 2);
+        // rest[0] is (Child, li)
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("li".to_string())]
+        );
+        // rest[1] is (Descendant, a:hover::before)
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![
+                SimpleSelector::Type("a".to_string()),
+                SimpleSelector::PseudoClass("hover".to_string(), None),
+                SimpleSelector::PseudoElement("before".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_descendant_with_universal_selector() {
+        // CSS selector input: "div *"
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //   first: CompoundSelector([Type("div")])
+        //   rest: [(Descendant, CompoundSelector([Universal]))]
+        // }
+        let selector = parse_first_selector("div *");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Universal]
+        );
+    }
+
+    #[test]
+    fn test_descendant_with_mixed_whitespace() {
+        // CSS selector input: "nav\t\n   ul  li"
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //   first: CompoundSelector([Type("nav")])
+        //   rest: [
+        //     (Descendant, CompoundSelector([Type("ul")])),
+        //     (Descendant, CompoundSelector([Type("li")]))
+        //   ]
+        // }
+        let selector = parse_first_selector("nav\t\n   ul  li");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("nav".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 2);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("ul".to_string())]
+        );
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("li".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_descendant_with_leading_trailing_whitespace() {
+        // CSS selector input: "  div   span  "
+        // Should succeed
+        // Expected selector tree:
+        // ComplexSelector {
+        //   first: CompoundSelector([Type("div")])
+        //   rest: [(Descendant, CompoundSelector([Type("span")]))]
+        // }
+
+        let selector = parse_first_selector("  div   span  ");
+        println!("{selector:#?}");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("span".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_multiple_nested_whitespace_combinators() {
+        // CSS selector input: "div    section\t\n   span  a"
+        // Should parse to:
+        // ComplexSelector {
+        //   first: CompoundSelector([Type("div")])
+        //   rest: [
+        //     (Descendant, CompoundSelector([Type("section")])),
+        //     (Descendant, CompoundSelector([Type("span")])),
+        //     (Descendant, CompoundSelector([Type("a")]))
+        //   ]
+        // }
+        let selector: ComplexSelector = parse_first_selector("div    section\t\n   span  a");
+
+        println!("{selector:?}");
+
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 3);
+        assert_eq!(selector.rest[0].0, Combinator::Descendant);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("section".to_string())]
+        );
+        assert_eq!(selector.rest[1].0, Combinator::Descendant);
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("span".to_string())]
+        );
+        assert_eq!(selector.rest[2].0, Combinator::Descendant);
+        assert_eq!(
+            selector.rest[2].1.simple_selectors,
+            vec![SimpleSelector::Type("a".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_nested_whitespace_only_between_selectors() {
+        // CSS selector input: "main   \n   nav    ul    li"
+        // Should parse to a chain of descendant combinators.
+        let selector = parse_first_selector("main   \n   nav    ul    li");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("main".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 3);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("nav".to_string())]
+        );
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("ul".to_string())]
+        );
+        assert_eq!(
+            selector.rest[2].1.simple_selectors,
+            vec![SimpleSelector::Type("li".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_multiple_compound_within_nested_descendant() {
+        // CSS selector input: "div.foo   span#bar.bz  a.link"
+        // Compound selectors with descendant combinators and multiple simple selectors per compound.
+        let selector = parse_first_selector("div.foo   span#bar.bz  a.link");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::Class("foo".to_string()),
+            ]
+        );
+        assert_eq!(selector.rest.len(), 2);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![
+                SimpleSelector::Type("span".to_string()),
+                SimpleSelector::Id("bar".to_string()),
+                SimpleSelector::Class("bz".to_string()),
+            ]
+        );
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![
+                SimpleSelector::Type("a".to_string()),
+                SimpleSelector::Class("link".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiple_combinators() {
+        // CSS selector input: ".a > .b + .c ~ .d"
+        // Should parse combinators Child, AdjacentSibling, GeneralSibling
+        let selector = parse_first_selector(".a > .b + .c ~ .d");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Class("a".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 3);
+        assert_eq!(selector.rest[0].0, Combinator::Child);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Class("b".to_string())]
+        );
+        assert_eq!(selector.rest[1].0, Combinator::AdjacentSibling);
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Class("c".to_string())]
+        );
+        assert_eq!(selector.rest[2].0, Combinator::GeneralSibling);
+        assert_eq!(
+            selector.rest[2].1.simple_selectors,
+            vec![SimpleSelector::Class("d".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_grouped_selectors_with_varied_combinators() {
+        // CSS selector input: "a, b > c, d + e ~ f"
+        let tokens = Tokenizer::from_string("a, b > c, d + e ~ f");
+        let (selectors, _) = Parser::collect_selectors_until_left_brace(&tokens, 0);
+
+        println!("{selectors:?}");
+        assert_eq!(selectors.len(), 3);
+
+        // First: a
+        assert_eq!(
+            selectors[0].first.simple_selectors,
+            vec![SimpleSelector::Type("a".to_string())]
+        );
+        assert_eq!(selectors[0].rest.len(), 0);
+
+        // Second: b > c
+        assert_eq!(
+            selectors[1].first.simple_selectors,
+            vec![SimpleSelector::Type("b".to_string())]
+        );
+        assert_eq!(selectors[1].rest.len(), 1);
+        assert_eq!(selectors[1].rest[0].0, Combinator::Child);
+        assert_eq!(
+            selectors[1].rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("c".to_string())]
+        );
+
+        // Third: d + e ~ f
+        assert_eq!(
+            selectors[2].first.simple_selectors,
+            vec![SimpleSelector::Type("d".to_string())]
+        );
+        assert_eq!(selectors[2].rest.len(), 2);
+        assert_eq!(selectors[2].rest[0].0, Combinator::AdjacentSibling);
+        assert_eq!(
+            selectors[2].rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("e".to_string())]
+        );
+        assert_eq!(selectors[2].rest[1].0, Combinator::GeneralSibling);
+        assert_eq!(
+            selectors[2].rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("f".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_malformed_descendant_selector_empty() {
+        // CSS selector input: "div   "
+        // Should succeed (single type selector)
+        // Expected selector tree:
+        // ComplexSelector { first: CompoundSelector([Type("div")]), rest: [] }
+        let selector = parse_first_selector("div   ");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert!(selector.rest.is_empty());
+    }
+
+    #[test]
+    fn test_malformed_descendant_selector_space_combinator_only() {
+        // CSS selector input: " "
+        // Should fail (empty/invalid selector)
+        assert!(parse_first_selector_opt(" ").is_none());
+    }
+
+    #[test]
+    fn test_malformed_descendant_leading_combinator() {
+        // CSS selector input: "  > div"
+        // Should fail (combinator without left-hand selector)
+        assert!(parse_first_selector_opt("  > div").is_none());
+    }
+
+    #[test]
+    fn test_malformed_descendant_double_combinator() {
+        // CSS selector input: "div  >  >  span"
+        // Should fail or skip incorrectly chained combinators
+        assert!(parse_first_selector_opt("div  >  >  span").is_none());
+    }
+
+    #[test]
+    fn test_descendant_selector_edge_case_pure_whitespace() {
+        // CSS selector input: "\t\n  "
+        // Should fail (no selectors)
+        assert!(parse_first_selector_opt("\t\n  ").is_none());
     }
 }

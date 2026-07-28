@@ -54,6 +54,10 @@ impl CompoundSelector {
     pub fn push(&mut self, selectors: SimpleSelector) {
         self.simple_selectors.push(selectors);
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.simple_selectors.is_empty()
+    }
 }
 
 /// The four combinators supported by CSS.
@@ -66,7 +70,16 @@ pub enum Combinator {
 }
 
 /// A complex selector: connects compound selectors using combinators.
-/// e.g. `div.foo > p.bar + span:hover`
+/// For example, the selector `div.foo > p.bar + span:hover` would be parsed into:
+///
+/// ComplexSelector {
+///     first: CompoundSelector([Type("div"), Class("foo")]),
+///     rest: [
+///         (Combinator::Child, CompoundSelector([Type("p"), Class("bar")])),
+///         (Combinator::AdjacentSibling, CompoundSelector([Type("span"), PseudoClass("hover", None)])),
+///     ]
+/// }
+///
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComplexSelector {
     pub first: CompoundSelector,
