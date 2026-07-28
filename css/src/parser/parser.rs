@@ -1,4 +1,4 @@
-use std::matches;
+use std::{matches, println};
 
 use anyhow::{Ok, Result};
 use utils::profile_scope;
@@ -8,6 +8,7 @@ use crate::{
         component_value::ComponentValue::{self},
         css_value::CssValue,
         declaration::Declaration,
+        function::Function,
         property::Property,
         rule::Rule,
         selector::ComplexSelector,
@@ -33,7 +34,7 @@ impl<'a> Parser<'a> {
 
         profile_scope!("Parse to CSS Rules");
 
-        while self.pos < self.tokens.len() {
+        while !self.is_eof() {
             let rule = self.parse_rule();
             if rule.is_none() {
                 continue;
@@ -44,7 +45,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_rule(&mut self) -> Option<Rule> {
-        // self.find_selector_start()   ;
         let selectors = self.parse_selector_list();
 
         if self.expect(CssToken::LeftBrace).is_none() {
@@ -52,6 +52,7 @@ impl<'a> Parser<'a> {
         }
 
         let declarations = self.parse_declarations();
+        println!("{:?}", declarations);
 
         self.expect(CssToken::RightBrace);
 
@@ -94,7 +95,7 @@ impl<'a> Parser<'a> {
     fn parse_declarations(&mut self) -> Vec<Declaration> {
         let mut declarations = Vec::new();
 
-        while self.pos < self.tokens.len() {
+        while !self.is_eof() {
             match self.current() {
                 CssToken::RightBrace | CssToken::EOF => break,
                 CssToken::Ident(property_name) => {
@@ -103,7 +104,7 @@ impl<'a> Parser<'a> {
                     if matches!(self.current().into(), Some(CssToken::Colon)) {
                         self.advance(1);
                     } else {
-                        while self.pos < self.tokens.len()
+                        while !self.is_eof()
                             && !matches!(
                                 self.current().into(),
                                 Some(CssToken::Semicolon) | Some(CssToken::RightBrace)
@@ -116,29 +117,126 @@ impl<'a> Parser<'a> {
                         }
                         continue;
                     }
-                    let value = self.parse_value();
+                    let value = self.parse_css_value();
+                    println!("{value:?}");
                     declarations.push(Declaration { property, value });
                 }
                 _ => {
                     self.advance(1);
                 }
             }
-            if matches!(self.current().into(), Some(CssToken::Semicolon)) {
-                self.advance(1);
-            }
+            self.expect(CssToken::Semicolon);
         }
 
         declarations
     }
 
-    fn parse_value(&mut self) -> CssValue {
-        use CssToken::*;
+    fn parse_component_value(&mut self) -> Option<ComponentValue> {
+        match self.current() {
+            CssToken::Ident(s) => {
+                // Could be the start of a function, e.g., rgb(, url(
+                if let Some(CssToken::LeftParen) = self.peek(1) {
+                    // Attempt to parse a function
+                    let name = s.clone();
+                    self.advance(2); // skip ident and '('
+                    let mut args = Vec::new();
+                    let mut paren_depth = 1;
+                    while !self.is_eof() && paren_depth > 0 {
+                        match self.current() {
+                            CssToken::LeftParen => {
+                                paren_depth += 1;
+                                args.push(ComponentValue::Delim('('));
+                                self.advance(1);
+                            }
+                            CssToken::RightParen => {
+                                paren_depth -= 1;
+                                if paren_depth == 0 {
+                                    self.advance(1); // skip ')'
+                                    break;
+                                } else {
+                                    args.push(ComponentValue::Delim(')'));
+                                    self.advance(1);
+                                }
+                            }
+                            CssToken::Comma => {
+                                args.push(ComponentValue::Delim(','));
+                                self.advance(1);
+                            }
+                            CssToken::Whitespace => {
+                                self.advance(1);
+                            }
+                            _ => {
+                                if let Some(component) = self.parse_component_value() {
+                                    args.push(component);
+                                } else {
+                                    self.advance(1);
+                                }
+                            }
+                        }
+                    }
+                    Some(ComponentValue::Function(Function::new(name, args)))
+                } else {
+                    let value = ComponentValue::Ident(s.clone());
+                    self.advance(1);
+                    Some(value)
+                }
+            }
+            CssToken::String(s) => {
+                let value = ComponentValue::String(s.clone());
+                self.advance(1);
+                Some(value)
+            }
+            CssToken::Hash(s) => {
+                let value = ComponentValue::Hash(s.clone());
+                self.advance(1);
+                Some(value)
+            }
+            CssToken::Number(n) => {
+                let value = ComponentValue::Number(*n);
+                self.advance(1);
+                Some(value)
+            }
+            CssToken::Dimension { value, unit } => {
+                let value = ComponentValue::Dimension {
+                    value: *value,
+                    unit: Unit::from_str(unit),
+                };
+                self.advance(1);
+                Some(value)
+            }
+            CssToken::Percentage(p) => {
+                let value = ComponentValue::Percentage(*p);
+                self.advance(1);
+                Some(value)
+            }
+            CssToken::Delim(ch) => {
+                let value = ComponentValue::Delim(*ch);
+                self.advance(1);
+                Some(value)
+            }
+            CssToken::Plus => {
+                self.advance(1);
+                Some(ComponentValue::Delim('+'))
+            }
+            CssToken::GreaterThan => {
+                self.advance(1);
+                Some(ComponentValue::Delim('>'))
+            }
+            CssToken::Tilde => {
+                self.advance(1);
+                Some(ComponentValue::Delim('~'))
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_css_value(&mut self) -> CssValue {
         let mut components = Vec::new();
         let mut is_important = false;
-        while self.pos < self.tokens.len() {
+        while !self.is_eof() {
             match self.current() {
-                Semicolon | RightBrace | EOF => break,
-                Ident(s) => {
+                CssToken::Semicolon | CssToken::RightBrace | CssToken::EOF => break,
+                CssToken::Ident(s) => {
                     if s == "important"
                         && !components.is_empty()
                         && matches!(components.last(), Some(ComponentValue::Delim('!')))
@@ -148,47 +246,22 @@ impl<'a> Parser<'a> {
                         self.advance(1);
                         continue;
                     }
-                    components.push(ComponentValue::Ident(s.clone()));
-                    self.advance(1);
+                    if let Some(component) = self.parse_component_value() {
+                        components.push(component);
+                    }
                 }
-                String(s) => {
-                    components.push(ComponentValue::String(s.clone()));
-                    self.advance(1);
-                }
-                Hash(s) => {
-                    components.push(ComponentValue::Hash(s.clone()));
-                    self.advance(1);
-                }
-                Number(n) => {
-                    components.push(ComponentValue::Number(*n));
-                    self.advance(1);
-                }
-                Dimension { value, unit } => {
-                    components.push(ComponentValue::Dimension {
-                        value: *value,
-                        unit: Unit::from_str(unit),
-                    });
-                    self.advance(1);
-                }
-                Percentage(p) => {
-                    components.push(ComponentValue::Percentage(*p));
-                    self.advance(1);
-                }
-                Delim(ch) => {
-                    components.push(ComponentValue::Delim(*ch));
-                    self.advance(1);
-                }
-                Plus => {
-                    components.push(ComponentValue::Delim('+'));
-                    self.advance(1);
-                }
-                GreaterThan => {
-                    components.push(ComponentValue::Delim('>'));
-                    self.advance(1);
-                }
-                Tilde => {
-                    components.push(ComponentValue::Delim('~'));
-                    self.advance(1);
+                CssToken::String(_)
+                | CssToken::Hash(_)
+                | CssToken::Number(_)
+                | CssToken::Dimension { .. }
+                | CssToken::Percentage(_)
+                | CssToken::Delim(_)
+                | CssToken::Plus
+                | CssToken::GreaterThan
+                | CssToken::Tilde => {
+                    if let Some(component) = self.parse_component_value() {
+                        components.push(component);
+                    }
                 }
                 _ => {
                     self.advance(1);
@@ -211,7 +284,7 @@ impl<'a> Parser<'a> {
     }
     pub(crate) fn skip_whitespace(&mut self) -> bool {
         let mut saw_ws = false;
-        while self.pos < self.tokens.len() && matches!(self.current(), CssToken::Whitespace) {
+        while !self.is_eof() && matches!(self.current(), CssToken::Whitespace) {
             saw_ws = true;
             self.advance(1);
         }
@@ -229,6 +302,10 @@ impl<'a> Parser<'a> {
         } else {
             None
         }
+    }
+
+    pub(crate) fn is_eof(&self) -> bool {
+        self.pos >= self.tokens.len() || matches!(self.tokens.get(self.pos), Some(CssToken::EOF))
     }
 }
 
@@ -1598,5 +1675,555 @@ mod tests {
                 ])
             )]
         );
+    }
+    #[test]
+    fn test_parse_background_radial_gradient_function() {
+        let css =
+            "div { background: radial-gradient(circle at 50% 50%, red, blue 100%) !important; }";
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1, "Should parse one CSS rule");
+        let rule = &rules[0];
+        // The Rule struct has selectors and declarations
+        assert_eq!(rule.selectors.len(), 1, "Rule should have one selector");
+        assert_eq!(
+            rule.declarations.len(),
+            1,
+            "Rule should have one declaration"
+        );
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::Background);
+
+        // Check if the value is marked as important
+        assert!(
+            decl.value.is_important,
+            "The declaration should be marked as important"
+        );
+
+        let found = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "radial-gradient"
+            } else {
+                false
+            }
+        });
+        assert!(
+            found,
+            "Did not find a radial-gradient() function in parsed components"
+        );
+    }
+
+    #[test]
+    fn test_parse_background_url_function() {
+        let css = "div { background-image: url(\"/foo/bar.png\"); }";
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1, "Should parse one CSS rule");
+        let rule = &rules[0];
+        assert_eq!(rule.selectors.len(), 1, "Rule should have one selector");
+        assert_eq!(
+            rule.declarations.len(),
+            1,
+            "Rule should have one declaration"
+        );
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::BackgroundImage);
+
+        let found = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "url"
+            } else {
+                false
+            }
+        });
+        assert!(
+            found,
+            "Did not find a url() function in parsed components for background-image"
+        );
+    }
+
+    #[test]
+    fn test_parse_filter_drop_shadow_function() {
+        // Create a full CSS rule to match the Rule struct in @css/src/cssom/rule.rs
+        let css = "div { filter: drop-shadow(1px 2px 4px #000); }";
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+
+        // A proper CSS rule must have a selector and a declaration (Rule struct in rule.rs)
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+
+        // Check for correct selector (should be div, not an empty selector)
+        assert_eq!(rule.selectors.len(), 1, "Should have one selector");
+        let selector = &rule.selectors[0];
+        // Example check: first simple selector is a div type selector
+        assert!(
+            selector
+                .first
+                .simple_selectors
+                .iter()
+                .any(|s| matches!(s, SimpleSelector::Type(t) if t == "div")),
+            "First selector should be 'div'"
+        );
+
+        // There must be exactly one declaration from our CSS rule
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::Filter);
+
+        let found = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "drop-shadow"
+            } else {
+                false
+            }
+        });
+        assert!(
+            found,
+            "Did not find a drop-shadow() function in parsed components for filter"
+        );
+    }
+
+    #[test]
+    fn test_parse_transform_translate_rotate_scale_functions() {
+        let css = r#"
+            div {
+                transform: translate(10px, 20px) rotate(30deg) scale(2);
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+
+        // A proper CSS rule must have a selector and a declaration (Rule struct in rule.rs)
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+
+        // Check for correct selector (should be div, not an empty selector)
+        assert_eq!(rule.selectors.len(), 1, "Should have one selector");
+        let selector = &rule.selectors[0];
+        // Example check: first simple selector is a div type selector
+        assert!(
+            selector
+                .first
+                .simple_selectors
+                .iter()
+                .any(|s| matches!(s, SimpleSelector::Type(t) if t == "div")),
+            "First selector should be 'div'"
+        );
+
+        // There must be exactly one declaration from our CSS rule
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::Transform);
+
+        // Now parse the functions inside the declaration value (checks like before)
+        let mut found_translate = false;
+        let mut found_rotate = false;
+        let mut found_scale = false;
+        for cv in &decl.value.components {
+            if let ComponentValue::Function(func) = cv {
+                match func.name.as_str() {
+                    "translate" => found_translate = true,
+                    "rotate" => found_rotate = true,
+                    "scale" => found_scale = true,
+                    _ => {}
+                }
+            }
+        }
+        assert!(
+            found_translate,
+            "Did not find translate() function in transform"
+        );
+        assert!(found_rotate, "Did not find rotate() function in transform");
+        assert!(found_scale, "Did not find scale() function in transform");
+    }
+
+    #[test]
+    fn test_parse_color_rgb_and_var_functions() {
+        let css = r#"
+            div {
+                color: rgb(255, 0, 0);
+                background: var(--my-color);
+            }
+        "#;
+        println!("{css}");
+        let tokens = Tokenizer::from_string(css);
+        let tokens_clone = tokens.clone(); // ensure tokens: Vec<CssToken> (not &[CssToken]) for thread
+        let mut parser = Parser::new(&tokens_clone);
+        let rules = parser.parse().expect("Should parse successfully");
+
+        // Should parse a single rule with a selector and 2 declarations
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(
+            rule.selectors.len(),
+            1,
+            "Should have a selector for the rule"
+        );
+        let selector = &rule.selectors[0];
+        assert!(
+            selector
+                .first
+                .simple_selectors
+                .iter()
+                .any(|s| matches!(s, SimpleSelector::Type(t) if t == "div")),
+            "First selector should be 'div'"
+        );
+
+        assert_eq!(rule.declarations.len(), 2);
+        let color_decl = rule
+            .declarations
+            .iter()
+            .find(|d| d.property == Property::Color)
+            .expect("Missing color declaration");
+        let rgb_found = color_decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "rgb"
+            } else {
+                false
+            }
+        });
+        assert!(rgb_found, "Did not find rgb() in color value");
+
+        let bg_decl = rule
+            .declarations
+            .iter()
+            .find(|d| d.property == Property::Background)
+            .expect("Missing background declaration");
+        let var_found = bg_decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "var"
+            } else {
+                false
+            }
+        });
+        assert!(var_found, "Did not find var() in background value");
+    }
+
+    #[test]
+    fn test_parse_clip_path_polygon_function() {
+        let css = r#"
+            .foo {
+                clip-path: polygon(20% 0%, 100% 0%, 100% 100%, 0% 100%);
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+
+        // There should be a proper selector (.foo) and one declaration
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.selectors.len(), 1);
+        let selector = &rule.selectors[0];
+        assert!(
+            selector
+                .first
+                .simple_selectors
+                .iter()
+                .any(|s| matches!(s, SimpleSelector::Class(t) if t == "foo")),
+            "First selector should be .foo"
+        );
+
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::ClipPath);
+
+        let found = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "polygon"
+            } else {
+                false
+            }
+        });
+        assert!(found, "Did not find polygon() in clip-path value");
+    }
+    #[test]
+    fn test_parse_border_radius_multiple_lengths() {
+        let css = r#"
+            .corner {
+                border-radius: 5px 10px 15px 20px;
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.selectors.len(), 1);
+        let selector = &rule.selectors[0];
+        assert!(
+            selector
+                .first
+                .simple_selectors
+                .iter()
+                .any(|s| matches!(s, SimpleSelector::Class(t) if t == "corner"))
+        );
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::BorderRadius);
+
+        // 4 component values for the 4 radii
+        let lengths = decl
+            .value
+            .components
+            .iter()
+            .filter(|c| matches!(c, ComponentValue::Dimension { .. }))
+            .count();
+        assert_eq!(lengths, 4, "Should have 4 length component values");
+    }
+
+    #[test]
+    fn test_parse_font_shorthand_family() {
+        let css = r#"
+            .serif {
+                font: italic small-caps bold 16px/2 Georgia, "Times New Roman", serif;
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.selectors.len(), 1);
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::Font);
+
+        // Should include "Georgia", "Times New Roman", "serif" as Ident/String/Ident
+        let mut found_georgia = false;
+        let mut found_times = false;
+        let mut found_serif = false;
+        for c in &decl.value.components {
+            match c {
+                ComponentValue::Ident(s) if s == "serif" => found_serif = true,
+                ComponentValue::String(s) if s == "Times New Roman" => found_times = true,
+                ComponentValue::Ident(s) if s == "Georgia" => found_georgia = true,
+                _ => {}
+            }
+        }
+        assert!(found_georgia, "Should find Georgia font");
+        assert!(found_times, "Should find Times New Roman font");
+        assert!(found_serif, "Should find serif font");
+    }
+
+    #[test]
+    fn test_parse_transition_shorthand() {
+        let css = r#"
+            .trans {
+                transition: opacity 0.5s linear 2s;
+            }
+        "#;
+        use crate::cssom::{property::Property, unit::Unit};
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::Transition);
+        // Should contain identifier "opacity", a number/unit (duration), an ident "linear", a delay (duration)
+        let has_opacity = decl
+            .value
+            .components
+            .iter()
+            .any(|c| matches!(c, ComponentValue::Ident(s) if s == "opacity"));
+        let has_duration = decl.value.components.iter().any(|c| {
+            matches!(c, ComponentValue::Dimension { value, unit }
+                if (*value - 0.5).abs() < std::f32::EPSILON && *unit == Unit::S)
+        });
+        let has_linear = decl
+            .value
+            .components
+            .iter()
+            .any(|c| matches!(c, ComponentValue::Ident(s) if s == "linear"));
+        let has_delay = decl.value.components.iter().any(|c| {
+            matches!(c, ComponentValue::Dimension { value, unit }
+                if (*value - 2.0).abs() < std::f32::EPSILON && *unit == Unit::S)
+        });
+
+        assert!(has_opacity, "Should have identifier opacity");
+        assert!(has_duration, "Should have .5s duration");
+        assert!(has_linear, "Should have linear timing");
+
+        assert!(has_delay, "Should have 2s delay");
+    }
+
+    #[test]
+    fn test_parse_multiple_declarations_and_selectors() {
+        let css = r#"
+            h1, .xx-large {
+                font-size: 40px;
+                line-height: 1.1;
+                color: #222;
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.selectors.len(), 2); // h1 and .xx-large
+        assert_eq!(rule.declarations.len(), 3);
+        // Check that we have font-size, line-height, and color
+        let font_size = rule
+            .declarations
+            .iter()
+            .find(|d| d.property == Property::FontSize);
+        let line_height = rule
+            .declarations
+            .iter()
+            .find(|d| d.property == Property::LineHeight);
+        let color = rule
+            .declarations
+            .iter()
+            .find(|d| d.property == Property::Color);
+
+        assert!(font_size.is_some(), "Should find font-size");
+        assert!(line_height.is_some(), "Should find line-height");
+        assert!(color.is_some(), "Should find color");
+        // Color component should be a hash value (#222)
+        let color_decl = color.unwrap();
+        let hash_found = color_decl
+            .value
+            .components
+            .iter()
+            .any(|c| matches!(c, ComponentValue::Hash(s) if s == "222"));
+        assert!(hash_found, "Should find #222 in color");
+    }
+
+    #[test]
+    fn test_parse_gradient_as_background_image() {
+        let css = r#"
+            div.gradient {
+                background-image: linear-gradient(90deg, #fff, #000 60%);
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::BackgroundImage);
+
+        // Should contain a linear-gradient function
+        let has_gradient = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "linear-gradient"
+            } else {
+                false
+            }
+        });
+        assert!(has_gradient, "Should have linear-gradient function");
+    }
+
+    #[test]
+    fn test_parse_background_image_with_url() {
+        let css = r#"
+            .img-bg {
+                background-image: url("https://example.com/image.png");
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::BackgroundImage);
+
+        // Should contain a url() function
+        let has_url = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "url"
+                    && func.args.iter().any(|arg| {
+                        matches!(arg, ComponentValue::String(s) if s == "https://example.com/image.png")
+                    })
+            } else {
+                false
+            }
+        });
+        assert!(has_url, "Should have url('https://example.com/image.png')");
+    }
+
+    #[test]
+    fn test_parse_list_style_image_with_url() {
+        let css = r#"
+            ul.custom-list {
+                list-style-image: url('/static/foo.svg');
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        assert_eq!(rule.declarations.len(), 1);
+        let decl = &rule.declarations[0];
+        assert_eq!(decl.property, Property::ListStyleImage);
+
+        // Should contain a url() function
+        let has_url = decl.value.components.iter().any(|c| {
+            if let ComponentValue::Function(func) = c {
+                func.name == "url"
+                    && func.args.iter().any(
+                        |arg| matches!(arg, ComponentValue::String(s) if s == "/static/foo.svg"),
+                    )
+            } else {
+                false
+            }
+        });
+        assert!(has_url, "Should have url('/static/foo.svg')");
+    }
+
+    #[test]
+    fn test_parse_src_property_with_url() {
+        let css = r#"
+            @font-face {
+                font-family: 'MyFont';
+                src: url('fonts/myfont.woff2') format('woff2');
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        // The @font-face rule may be parsed differently as an at-rule.
+        // If not supported, just test the src declaration parsing logic.
+        let contains_src = rules.iter().any(|rule| {
+            rule.declarations
+                .iter()
+                .any(|decl| decl.property == Property::Src)
+        });
+        assert!(contains_src, "Should find src property");
+
+        for rule in &rules {
+            for decl in &rule.declarations {
+                if decl.property == Property::Src {
+                    let has_url = decl.value.components.iter().any(|c| {
+                        if let ComponentValue::Function(func) = c {
+                            func.name == "url"
+                                && func.args.iter().any(|arg| {
+                                    matches!(arg, ComponentValue::String(s) if s == "fonts/myfont.woff2")
+                                })
+                        } else {
+                            false
+                        }
+                    });
+                    assert!(
+                        has_url,
+                        "Should have url('fonts/myfont.woff2') in src property"
+                    );
+                }
+            }
+        }
     }
 }
