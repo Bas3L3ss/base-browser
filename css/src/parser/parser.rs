@@ -18,8 +18,8 @@ use crate::{
 };
 
 pub struct Parser<'a> {
-    tokens: &'a [CssToken],
-    pos: usize,
+    pub(crate) tokens: &'a [CssToken],
+    pub(crate) pos: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -43,94 +43,62 @@ impl<'a> Parser<'a> {
         Ok(rules)
     }
 
-    pub fn parse_rule(&mut self) -> Option<Rule> {
-        self.find_selector_start();
-        let selectors = self.parse_rule_selectors();
+    fn parse_rule(&mut self) -> Option<Rule> {
+        // self.find_selector_start()   ;
+        let selectors = self.parse_selector_list();
 
-        if matches!(self.current().into(), Some(CssToken::LeftBrace)) {
-            self.advance(1);
-        } else {
-            self.advance(1);
+        if self.expect(CssToken::LeftBrace).is_none() {
             return None;
         }
 
         let declarations = self.parse_declarations();
-        if matches!(self.current().into(), Some(CssToken::RightBrace)) {
-            self.advance(1);
-        }
+
+        self.expect(CssToken::RightBrace);
+
         Some(Rule {
             selectors,
             declarations,
         })
     }
 
-    fn parse_rule_selectors(&mut self) -> Vec<ComplexSelector> {
-        let mut selectors: Vec<ComplexSelector> = Vec::new();
-        let mut cur_selector_tokens: Vec<CssToken> = Vec::new();
-        let mut parens = 0;
+    pub fn expect(&mut self, expected: CssToken) -> Option<()> {
+        if std::mem::discriminant(self.current()) == std::mem::discriminant(&expected) {
+            self.advance(1);
+            Some(())
+        } else {
+            None
+        }
+    }
 
-        while self.pos < self.tokens.len() {
-            match self.current() {
-                CssToken::LeftParen => {
-                    cur_selector_tokens.push(self.tokens[self.pos].clone());
-                    parens += 1;
-                    self.advance(1);
+    fn parse_selector_list(&mut self) -> Vec<ComplexSelector> {
+        let mut selectors = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+
+            let mut selector_parser = SelectorParser::new(self);
+
+            if let Some(selector) = selector_parser.parse_complex_selector() {
+                // Only push if at least first or rest are not empty
+                if !selector.first.is_empty() || !selector.rest.is_empty() {
+                    selectors.push(selector);
                 }
-                CssToken::RightParen => {
-                    cur_selector_tokens.push(self.tokens[self.pos].clone());
-                    if parens > 0 {
-                        parens -= 1;
-                    }
-                    self.advance(1);
-                }
-                CssToken::LeftBrace => {
-                    Self::push_selector_if_not_empty(&mut cur_selector_tokens, &mut selectors);
-                    break;
-                }
-                CssToken::Comma if parens == 0 => {
-                    Self::push_selector_if_not_empty(&mut cur_selector_tokens, &mut selectors);
-                    self.advance(1);
-                    while matches!(self.current().into(), Some(CssToken::Whitespace)) {
-                        self.advance(1);
-                    }
-                }
-                CssToken::EOF => break,
-                _ => {
-                    cur_selector_tokens.push(self.tokens[self.pos].clone());
-                    self.advance(1);
-                }
+            }
+
+            self.skip_whitespace();
+
+            if self.expect(CssToken::Comma).is_some() {
+                continue;
+            } else if matches!(self.current(), CssToken::LeftBrace | CssToken::EOF) {
+                break;
+            } else {
+                // syntax error later
+                break;
             }
         }
 
-        Self::push_selector_if_not_empty(&mut cur_selector_tokens, &mut selectors);
         selectors
     }
-
-    #[inline]
-    fn push_selector_if_not_empty(
-        cur_selector_tokens: &mut Vec<CssToken>,
-        selectors: &mut Vec<ComplexSelector>,
-    ) {
-        if !cur_selector_tokens.is_empty() {
-            // Remove trailing whitespace tokens
-            while matches!(cur_selector_tokens.last(), Some(CssToken::Whitespace)) {
-                cur_selector_tokens.pop();
-            }
-            // Remove leading whitespace tokens
-            while matches!(cur_selector_tokens.first(), Some(CssToken::Whitespace)) {
-                cur_selector_tokens.remove(0);
-            }
-
-            if !cur_selector_tokens.is_empty() {
-                let mut selector_parser = SelectorParser::new(&cur_selector_tokens);
-                if let Some(sel) = selector_parser.parse_complex_selector() {
-                    selectors.push(sel);
-                }
-            }
-            cur_selector_tokens.clear();
-        }
-    }
-
     fn parse_declarations(&mut self) -> Vec<Declaration> {
         let mut declarations = Vec::new();
 
@@ -242,29 +210,24 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn find_selector_start(&mut self) {
-        while self.pos < self.tokens.len() {
-            match self.current() {
-                CssToken::Ident(_)
-                | CssToken::Star
-                | CssToken::Dot
-                | CssToken::Hash(_)
-                | CssToken::OpenBracket => break,
-                _ => self.advance(1),
-            }
-        }
-    }
-
-    pub fn advance(&mut self, n: usize) {
+    pub(crate) fn advance(&mut self, n: usize) {
         self.pos = usize::min(self.pos.saturating_add(n), self.tokens.len());
     }
 
-    pub fn peek(&self, offset: usize) -> Option<&CssToken> {
-        self.tokens.get(self.pos.saturating_add(offset))
+    pub(crate) fn current(&self) -> &CssToken {
+        &self.tokens[self.pos]
+    }
+    pub(crate) fn skip_whitespace(&mut self) -> bool {
+        let mut saw_ws = false;
+        while self.pos < self.tokens.len() && matches!(self.current(), CssToken::Whitespace) {
+            saw_ws = true;
+            self.advance(1);
+        }
+        saw_ws
     }
 
-    pub fn current(&self) -> &CssToken {
-        &self.tokens[self.pos]
+    pub(crate) fn peek(&self, n: usize) -> Option<&CssToken> {
+        self.tokens.get(self.pos + n)
     }
 }
 
@@ -290,7 +253,7 @@ mod tests {
         thread::spawn(move || {
             let tokens = Tokenizer::from_string(&css);
             let mut parser = Parser::new(&tokens);
-            let selectors = parser.parse_rule_selectors();
+            let selectors = parser.parse_selector_list();
             let result = selectors
                 .into_iter()
                 .next()
@@ -311,12 +274,16 @@ mod tests {
         thread::spawn(move || {
             let tokens = Tokenizer::from_string(&css);
             let mut parser = Parser::new(&tokens);
-            let selectors = parser.parse_rule_selectors();
+            let selectors = parser.parse_selector_list();
             let result = selectors.into_iter().next();
             sender.send(result).ok();
         });
         match receiver.recv_timeout(Duration::from_secs(3)) {
-            std::result::Result::Ok(selector) => selector,
+            std::result::Result::Ok(selector) => {
+                println!("{:?}", selector);
+                selector
+            }
+
             Err(_) => {
                 panic!("Parsing took too long (more than 3 seconds) - possible endless loop.")
             }
@@ -930,7 +897,7 @@ mod tests {
         // CSS selector input: "a, b > c, d + e ~ f"
         let tokens = Tokenizer::from_string("a, b > c, d + e ~ f");
         let mut parser = Parser::new(&tokens);
-        let selectors = parser.parse_rule_selectors();
+        let selectors = parser.parse_selector_list();
 
         println!("{selectors:?}");
         assert_eq!(selectors.len(), 3);
@@ -1006,4 +973,629 @@ mod tests {
     //     // Should fail or skip incorrectly chained combinators
     //     assert!(parse_first_selector_opt("div  >  >  span").is_none());
     // }
+
+    #[test]
+    fn test_is_pseudo_class_with_child_combinator() {
+        // CSS selector input: ":is(div > p)"
+        // Should parse as one selector: a pseudo-class :is() with argument [div > p]
+        let selector = parse_first_selector(":is(div > p)");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::PseudoClass(
+                "is".to_string(),
+                Some(vec![ComplexSelector {
+                    first: {
+                        let mut comp = CompoundSelector::new();
+                        comp.push(SimpleSelector::Type("div".to_string()));
+                        comp
+                    },
+                    rest: vec![(Combinator::Child, {
+                        let mut comp = CompoundSelector::new();
+                        comp.push(SimpleSelector::Type("p".to_string()));
+                        comp
+                    })]
+                }])
+            )]
+        );
+    }
+
+    #[test]
+    fn test_is_pseudo_class_with_comma_and_combinator() {
+        // CSS selector input: ":is(div, span > a)"
+        // Should parse :is with arg [div], [span > a]
+        let selector = parse_first_selector(":is(div, span > a)");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::PseudoClass(
+                "is".to_string(),
+                Some(vec![
+                    ComplexSelector {
+                        first: {
+                            let mut comp = CompoundSelector::new();
+                            comp.push(SimpleSelector::Type("div".to_string()));
+                            comp
+                        },
+                        rest: vec![]
+                    },
+                    ComplexSelector {
+                        first: {
+                            let mut comp = CompoundSelector::new();
+                            comp.push(SimpleSelector::Type("span".to_string()));
+                            comp
+                        },
+                        rest: vec![(Combinator::Child, {
+                            let mut comp = CompoundSelector::new();
+                            comp.push(SimpleSelector::Type("a".to_string()));
+                            comp
+                        })]
+                    }
+                ])
+            )]
+        );
+    }
+
+    #[test]
+    fn test_compound_combinators_chain() {
+        // CSS selector input: "div > p + span ~ a"
+        // Should parse as:
+        // ComplexSelector {
+        //   first: [Type("div")],
+        //   rest: [
+        //     (Child, [Type("p")]),
+        //     (AdjacentSibling, [Type("span")]),
+        //     (GeneralSibling, [Type("a")])
+        //   ]
+        // }
+        let selector = parse_first_selector("div > p + span ~ a");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(selector.rest.len(), 3);
+        assert_eq!(selector.rest[0].0, Combinator::Child);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("p".to_string())]
+        );
+        assert_eq!(selector.rest[1].0, Combinator::AdjacentSibling);
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("span".to_string())]
+        );
+        assert_eq!(selector.rest[2].0, Combinator::GeneralSibling);
+        assert_eq!(
+            selector.rest[2].1.simple_selectors,
+            vec![SimpleSelector::Type("a".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_nested_functional_pseudos() {
+        let selector = parse_first_selector("div:is(:not(.a), .b)");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::PseudoClass(
+                    "is".to_string(),
+                    Some(vec![
+                        {
+                            let mut s = ComplexSelector::default();
+                            s.first.simple_selectors.push(SimpleSelector::PseudoClass(
+                                "not".to_string(),
+                                Some(vec![{
+                                    let mut s2 = ComplexSelector::default();
+                                    s2.first
+                                        .simple_selectors
+                                        .push(SimpleSelector::Class("a".to_string()));
+                                    s2
+                                }]),
+                            ));
+                            s
+                        },
+                        {
+                            let mut s = ComplexSelector::default();
+                            s.first
+                                .simple_selectors
+                                .push(SimpleSelector::Class("b".to_string()));
+                            s
+                        }
+                    ])
+                )
+            ]
+        );
+
+        let selector = parse_first_selector("div:has(> img)");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::PseudoClass(
+                    "has".to_string(),
+                    Some(vec![{
+                        let mut cs = ComplexSelector::default();
+                        cs.rest.push((Combinator::Child, {
+                            let mut comp = CompoundSelector::new();
+                            comp.push(SimpleSelector::Type("img".to_string()));
+                            comp
+                        }));
+                        cs
+                    }])
+                )
+            ]
+        );
+
+        let selector = parse_first_selector("div:not(:is(.a, .b))");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::PseudoClass(
+                    "not".to_string(),
+                    Some(vec![{
+                        let mut cs = ComplexSelector::default();
+                        cs.first.simple_selectors.push(SimpleSelector::PseudoClass(
+                            "is".to_string(),
+                            Some(vec![
+                                {
+                                    let mut inner = ComplexSelector::default();
+                                    inner
+                                        .first
+                                        .simple_selectors
+                                        .push(SimpleSelector::Class("a".to_string()));
+                                    inner
+                                },
+                                {
+                                    let mut inner = ComplexSelector::default();
+                                    inner
+                                        .first
+                                        .simple_selectors
+                                        .push(SimpleSelector::Class("b".to_string()));
+                                    inner
+                                },
+                            ]),
+                        ));
+                        cs
+                    }])
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn test_empty_functional_arguments() {
+        let selector = parse_first_selector("div:is()");
+        println!("{selector:#?}");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::PseudoClass("is".to_string(), Some(vec![])),
+            ]
+        );
+
+        let selector = parse_first_selector("div:not()");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::PseudoClass("not".to_string(), Some(vec![])),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_deeply_nested_parens() {
+        let selector = parse_first_selector("div:is(:not(:has(img)))");
+        assert_eq!(
+            selector.first.simple_selectors[0],
+            SimpleSelector::Type("div".to_string())
+        );
+        match &selector.first.simple_selectors[1] {
+            SimpleSelector::PseudoClass(name, Some(args)) if name == "is" => {
+                assert_eq!(args.len(), 1);
+                match &args[0].first.simple_selectors[0] {
+                    SimpleSelector::PseudoClass(inner_name, Some(inner_args))
+                        if inner_name == "not" =>
+                    {
+                        assert_eq!(inner_args.len(), 1);
+                        match &inner_args[0].first.simple_selectors[0] {
+                            SimpleSelector::PseudoClass(n, Some(has_args)) if n == "has" => {
+                                assert_eq!(has_args.len(), 1);
+                                assert_eq!(
+                                    has_args[0].first.simple_selectors[0],
+                                    SimpleSelector::Type("img".to_string())
+                                );
+                            }
+                            _ => panic!("Expected nested :has"),
+                        }
+                    }
+                    _ => panic!("Expected nested :not"),
+                }
+            }
+            _ => panic!("Expected outer :is"),
+        }
+    }
+
+    #[test]
+    fn test_attribute_selectors_with_spaces() {
+        let selector = parse_first_selector(r#"div[data-name = "hello"]"#);
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".into()),
+                SimpleSelector::Attribute {
+                    name: "data-name".into(),
+                    value: Some("hello".into()),
+                    operator: Some(AttrSelectorOperator::Equals)
+                }
+            ]
+        );
+        let selector = parse_first_selector(r#"div[ title ^= "abc" ]"#);
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".into()),
+                SimpleSelector::Attribute {
+                    name: "title".into(),
+                    value: Some("abc".into()),
+                    operator: Some(AttrSelectorOperator::PrefixMatch)
+                }
+            ]
+        );
+        let selector = parse_first_selector(r#"div[lang |= en]"#);
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".into()),
+                SimpleSelector::Attribute {
+                    name: "lang".into(),
+                    value: Some("en".into()),
+                    operator: Some(AttrSelectorOperator::DashMatch)
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiple_pseudo_classes() {
+        let selector = parse_first_selector("div:hover:focus:active");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".to_string()),
+                SimpleSelector::PseudoClass("hover".into(), None),
+                SimpleSelector::PseudoClass("focus".into(), None),
+                SimpleSelector::PseudoClass("active".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pseudo_element_after_pseudo_class() {
+        let selector = parse_first_selector("div:hover::before");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Type("div".into()),
+                SimpleSelector::PseudoClass("hover".into(), None),
+                SimpleSelector::PseudoElement("before".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_universal_mixed() {
+        let selector = parse_first_selector("*.foo");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Universal,
+                SimpleSelector::Class("foo".into()),
+            ]
+        );
+        let selector = parse_first_selector("*#id");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Universal, SimpleSelector::Id("id".into()),]
+        );
+        let selector = parse_first_selector("*[hidden]");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Universal,
+                SimpleSelector::Attribute {
+                    name: "hidden".into(),
+                    value: None,
+                    operator: None
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_compound_selector_without_type() {
+        let selector = parse_first_selector(".foo#bar[attr]:hover");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![
+                SimpleSelector::Class("foo".into()),
+                SimpleSelector::Id("bar".into()),
+                SimpleSelector::Attribute {
+                    name: "attr".into(),
+                    value: None,
+                    operator: None
+                },
+                SimpleSelector::PseudoClass("hover".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_long_combinator_chain() {
+        let selector = parse_first_selector("div > ul li + a ~ span");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".into())]
+        );
+        assert_eq!(selector.rest.len(), 4);
+        assert_eq!(selector.rest[0].0, Combinator::Child);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("ul".into())]
+        );
+        assert_eq!(selector.rest[1].0, Combinator::Descendant);
+        assert_eq!(
+            selector.rest[1].1.simple_selectors,
+            vec![SimpleSelector::Type("li".into())]
+        );
+        assert_eq!(selector.rest[2].0, Combinator::AdjacentSibling);
+        assert_eq!(
+            selector.rest[2].1.simple_selectors,
+            vec![SimpleSelector::Type("a".into())]
+        );
+        assert_eq!(selector.rest[3].0, Combinator::GeneralSibling);
+        assert_eq!(
+            selector.rest[3].1.simple_selectors,
+            vec![SimpleSelector::Type("span".into())]
+        );
+    }
+
+    #[test]
+    fn test_multiple_selector_list() {
+        let selectors = {
+            let (sender, receiver) = mpsc::channel();
+            let css = "div, .a, #id, span:hover".to_string();
+            std::thread::spawn(move || {
+                let tokens = Tokenizer::from_string(&css);
+                let mut parser = Parser::new(&tokens);
+                let result = parser.parse_selector_list();
+                sender.send(result).ok();
+            });
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(3))
+                .unwrap()
+        };
+        assert_eq!(selectors.len(), 4);
+
+        assert_eq!(
+            selectors[0].first.simple_selectors,
+            vec![SimpleSelector::Type("div".into())]
+        );
+        assert_eq!(
+            selectors[1].first.simple_selectors,
+            vec![SimpleSelector::Class("a".into())]
+        );
+        assert_eq!(
+            selectors[2].first.simple_selectors,
+            vec![SimpleSelector::Id("id".into())]
+        );
+        assert_eq!(
+            selectors[3].first.simple_selectors,
+            vec![
+                SimpleSelector::Type("span".into()),
+                SimpleSelector::PseudoClass("hover".into(), None)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_whitespace_variations() {
+        let selector = parse_first_selector("div    >    span");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".into())]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(selector.rest[0].0, Combinator::Child);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("span".into())]
+        );
+
+        let selector = parse_first_selector("div");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".into())]
+        );
+
+        let selector = parse_first_selector("span");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("span".into())]
+        );
+
+        let selector = parse_first_selector("div     +      p");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".into())]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(selector.rest[0].0, Combinator::AdjacentSibling);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("p".into())]
+        );
+
+        let selector = parse_first_selector("div~span");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::Type("div".into())]
+        );
+        assert_eq!(selector.rest.len(), 1);
+        assert_eq!(selector.rest[0].0, Combinator::GeneralSibling);
+        assert_eq!(
+            selector.rest[0].1.simple_selectors,
+            vec![SimpleSelector::Type("span".into())]
+        );
+    }
+
+    #[test]
+    fn test_functional_pseudo_with_selector_list() {
+        let selector = parse_first_selector(":is(div, span.foo, #id)");
+        assert_eq!(selector.first.simple_selectors.len(), 1);
+        match &selector.first.simple_selectors[0] {
+            SimpleSelector::PseudoClass(name, Some(args)) if name == "is" => {
+                assert_eq!(args.len(), 3);
+                assert_eq!(
+                    args[0].first.simple_selectors,
+                    vec![SimpleSelector::Type("div".into())]
+                );
+                assert_eq!(
+                    args[1].first.simple_selectors,
+                    vec![
+                        SimpleSelector::Type("span".into()),
+                        SimpleSelector::Class("foo".into())
+                    ]
+                );
+                assert_eq!(
+                    args[2].first.simple_selectors,
+                    vec![SimpleSelector::Id("id".into())]
+                );
+            }
+            _ => panic!("Expected :is with selector list"),
+        }
+    }
+
+    #[test]
+    fn test_functional_pseudo_inside_functional() {
+        let selector = parse_first_selector(":not(:is(.a, .b))");
+        assert_eq!(selector.first.simple_selectors.len(), 1);
+        match &selector.first.simple_selectors[0] {
+            SimpleSelector::PseudoClass(name, Some(args)) if name == "not" => {
+                assert_eq!(args.len(), 1);
+                match &args[0].first.simple_selectors[0] {
+                    SimpleSelector::PseudoClass(name, Some(is_args)) if name == "is" => {
+                        assert_eq!(is_args.len(), 2);
+                        assert_eq!(
+                            is_args[0].first.simple_selectors,
+                            vec![SimpleSelector::Class("a".into())]
+                        );
+                        assert_eq!(
+                            is_args[1].first.simple_selectors,
+                            vec![SimpleSelector::Class("b".into())]
+                        );
+                    }
+                    _ => panic!("Expected :is inside :not"),
+                }
+            }
+            _ => panic!("Expected :not at root"),
+        };
+
+        let selector = parse_first_selector(":has(:not(.foo))");
+        assert_eq!(selector.first.simple_selectors.len(), 1);
+        match &selector.first.simple_selectors[0] {
+            SimpleSelector::PseudoClass(name, Some(args)) if name == "has" => {
+                assert_eq!(args.len(), 1);
+                match &args[0].first.simple_selectors[0] {
+                    SimpleSelector::PseudoClass(name, Some(not_args)) if name == "not" => {
+                        assert_eq!(not_args.len(), 1);
+
+                        assert_eq!(
+                            not_args[0].first.simple_selectors,
+                            vec![SimpleSelector::Class("foo".into())]
+                        );
+                    }
+                    _ => panic!("Expected :not inside :has"),
+                }
+            }
+            _ => panic!("Expected :has at root"),
+        };
+    }
+    #[test]
+    fn test_empty_and_nonempty_where() {
+        // Test :where() with no arguments
+        let selector = parse_first_selector(":where()");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::PseudoClass("where".into(), Some(vec![]))]
+        );
+
+        // Test :where(.a, .b)
+        let selector = parse_first_selector(":where(.a, .b)");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::PseudoClass(
+                "where".into(),
+                Some(vec![
+                    {
+                        let mut cs = ComplexSelector::default();
+                        cs.first
+                            .simple_selectors
+                            .push(SimpleSelector::Class("a".into()));
+                        cs
+                    },
+                    {
+                        let mut cs = ComplexSelector::default();
+                        cs.first
+                            .simple_selectors
+                            .push(SimpleSelector::Class("b".into()));
+                        cs
+                    }
+                ])
+            )]
+        );
+    }
+
+    #[test]
+    fn test_not_no_args_and_multiple_args() {
+        // Test :not() with no arguments
+        let selector = parse_first_selector(":not()");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::PseudoClass("not".into(), Some(vec![]))]
+        );
+
+        // Test :not(.a, #id, div)
+        let selector = parse_first_selector(":not(.a, #id, div)");
+        assert_eq!(
+            selector.first.simple_selectors,
+            vec![SimpleSelector::PseudoClass(
+                "not".into(),
+                Some(vec![
+                    {
+                        let mut cs = ComplexSelector::default();
+                        cs.first
+                            .simple_selectors
+                            .push(SimpleSelector::Class("a".into()));
+                        cs
+                    },
+                    {
+                        let mut cs = ComplexSelector::default();
+                        cs.first
+                            .simple_selectors
+                            .push(SimpleSelector::Id("id".into()));
+                        cs
+                    },
+                    {
+                        let mut cs = ComplexSelector::default();
+                        cs.first
+                            .simple_selectors
+                            .push(SimpleSelector::Type("div".into()));
+                        cs
+                    }
+                ])
+            )]
+        );
+    }
 }

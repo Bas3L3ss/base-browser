@@ -40,7 +40,7 @@ pub enum SimpleSelector {
 
 /// A compound selector: one or more simple selectors without combinators.
 /// e.g. `div.foo#main[attr]:hover::before` is a single CompoundSelector.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CompoundSelector {
     pub simple_selectors: Vec<SimpleSelector>,
 }
@@ -80,7 +80,7 @@ pub enum Combinator {
 ///     ]
 /// }
 ///
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ComplexSelector {
     pub first: CompoundSelector,
     pub rest: Vec<(Combinator, CompoundSelector)>,
