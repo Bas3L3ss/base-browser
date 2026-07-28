@@ -61,15 +61,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn expect(&mut self, expected: CssToken) -> Option<()> {
-        if std::mem::discriminant(self.current()) == std::mem::discriminant(&expected) {
-            self.advance(1);
-            Some(())
-        } else {
-            None
-        }
-    }
-
     fn parse_selector_list(&mut self) -> Vec<ComplexSelector> {
         let mut selectors = Vec::new();
 
@@ -99,6 +90,7 @@ impl<'a> Parser<'a> {
 
         selectors
     }
+
     fn parse_declarations(&mut self) -> Vec<Declaration> {
         let mut declarations = Vec::new();
 
@@ -228,6 +220,15 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn peek(&self, n: usize) -> Option<&CssToken> {
         self.tokens.get(self.pos + n)
+    }
+
+    pub(crate) fn expect(&mut self, expected: CssToken) -> Option<()> {
+        if std::mem::discriminant(self.current()) == std::mem::discriminant(&expected) {
+            self.advance(1);
+            Some(())
+        } else {
+            None
+        }
     }
 }
 

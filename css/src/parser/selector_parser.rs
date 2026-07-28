@@ -34,45 +34,6 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
         }
     }
 
-    fn parse_combinator(&mut self) -> Option<Combinator> {
-        let saw_ws = self.parser.skip_whitespace();
-
-        match self.parser.current() {
-            CssToken::GreaterThan => {
-                self.parser.advance(1);
-                self.parser.skip_whitespace();
-                Some(Combinator::Child)
-            }
-            CssToken::Plus => {
-                self.parser.advance(1);
-                self.parser.skip_whitespace();
-                Some(Combinator::AdjacentSibling)
-            }
-            CssToken::Tilde => {
-                self.parser.advance(1);
-                self.parser.skip_whitespace();
-                Some(Combinator::GeneralSibling)
-            }
-            _ if saw_ws => Some(Combinator::Descendant),
-            _ => None,
-        }
-    }
-
-    fn parse_combinator_selector(&mut self) -> Option<(Combinator, CompoundSelector)> {
-        let start = self.parser.pos;
-
-        let combinator = self.parse_combinator()?;
-
-        let selector = self.parse_compound_selector();
-
-        if selector.is_empty() {
-            self.parser.pos = start;
-            return None;
-        }
-
-        Some((combinator, selector))
-    }
-
     fn parse_compound_selector(&mut self) -> CompoundSelector {
         let mut compound = CompoundSelector::new();
         while self.parser.pos < self.parser.tokens.len() {
@@ -144,6 +105,45 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
                     None
                 }
             }
+            _ => None,
+        }
+    }
+
+    fn parse_combinator_selector(&mut self) -> Option<(Combinator, CompoundSelector)> {
+        let start = self.parser.pos;
+
+        let combinator = self.parse_combinator()?;
+
+        let selector = self.parse_compound_selector();
+
+        if selector.is_empty() {
+            self.parser.pos = start;
+            return None;
+        }
+
+        Some((combinator, selector))
+    }
+
+    fn parse_combinator(&mut self) -> Option<Combinator> {
+        let saw_ws = self.parser.skip_whitespace();
+
+        match self.parser.current() {
+            CssToken::GreaterThan => {
+                self.parser.advance(1);
+                self.parser.skip_whitespace();
+                Some(Combinator::Child)
+            }
+            CssToken::Plus => {
+                self.parser.advance(1);
+                self.parser.skip_whitespace();
+                Some(Combinator::AdjacentSibling)
+            }
+            CssToken::Tilde => {
+                self.parser.advance(1);
+                self.parser.skip_whitespace();
+                Some(Combinator::GeneralSibling)
+            }
+            _ if saw_ws => Some(Combinator::Descendant),
             _ => None,
         }
     }
