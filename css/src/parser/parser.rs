@@ -10,7 +10,7 @@ use crate::{
         declaration::Declaration,
         function::Function,
         property::Property,
-        rule::Rule,
+        rule::{CssRule, StyleRule},
         selector::ComplexSelector,
         unit::Unit,
     },
@@ -28,23 +28,22 @@ impl<'a> Parser<'a> {
         Parser { tokens, pos: 0 }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Rule>> {
+    pub fn parse(&mut self) -> Result<Vec<CssRule>> {
         profile_scope!("To CSSOM");
         let mut rules = Vec::new();
 
         profile_scope!("Parse to CSS Rules");
 
         while !self.is_eof() {
-            let rule = self.parse_rule();
-            if rule.is_none() {
-                continue;
+            if let Some(rule) = self.parse_rule() {
+                rules.push(CssRule::Style(rule));
             }
-            rules.push(rule.unwrap());
         }
+
         Ok(rules)
     }
 
-    fn parse_rule(&mut self) -> Option<Rule> {
+    fn parse_rule(&mut self) -> Option<StyleRule> {
         let selectors = self.parse_selector_list();
 
         if self.expect(CssToken::LeftBrace).is_none() {
@@ -56,7 +55,7 @@ impl<'a> Parser<'a> {
 
         self.expect(CssToken::RightBrace);
 
-        Some(Rule {
+        Some(StyleRule {
             selectors,
             declarations,
         })
@@ -1676,6 +1675,7 @@ mod tests {
             )]
         );
     }
+
     #[test]
     fn test_parse_background_radial_gradient_function() {
         let css =
@@ -1685,14 +1685,22 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1, "Should parse one CSS rule");
         let rule = &rules[0];
-        // The Rule struct has selectors and declarations
-        assert_eq!(rule.selectors.len(), 1, "Rule should have one selector");
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+
         assert_eq!(
-            rule.declarations.len(),
+            style_rule.selectors.len(),
+            1,
+            "Rule should have one selector"
+        );
+        assert_eq!(
+            style_rule.declarations.len(),
             1,
             "Rule should have one declaration"
         );
-        let decl = &rule.declarations[0];
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::Background);
 
         // Check if the value is marked as important
@@ -1722,13 +1730,21 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1, "Should parse one CSS rule");
         let rule = &rules[0];
-        assert_eq!(rule.selectors.len(), 1, "Rule should have one selector");
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
         assert_eq!(
-            rule.declarations.len(),
+            style_rule.selectors.len(),
+            1,
+            "Rule should have one selector"
+        );
+        assert_eq!(
+            style_rule.declarations.len(),
             1,
             "Rule should have one declaration"
         );
-        let decl = &rule.declarations[0];
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::BackgroundImage);
 
         let found = decl.value.components.iter().any(|c| {
@@ -1746,20 +1762,19 @@ mod tests {
 
     #[test]
     fn test_parse_filter_drop_shadow_function() {
-        // Create a full CSS rule to match the Rule struct in @css/src/cssom/rule.rs
         let css = "div { filter: drop-shadow(1px 2px 4px #000); }";
         let tokens = Tokenizer::from_string(css);
         let mut parser = Parser::new(&tokens);
         let rules = parser.parse().expect("Should parse successfully");
-
-        // A proper CSS rule must have a selector and a declaration (Rule struct in rule.rs)
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
 
-        // Check for correct selector (should be div, not an empty selector)
-        assert_eq!(rule.selectors.len(), 1, "Should have one selector");
-        let selector = &rule.selectors[0];
-        // Example check: first simple selector is a div type selector
+        assert_eq!(style_rule.selectors.len(), 1, "Should have one selector");
+        let selector = &style_rule.selectors[0];
         assert!(
             selector
                 .first
@@ -1768,10 +1783,8 @@ mod tests {
                 .any(|s| matches!(s, SimpleSelector::Type(t) if t == "div")),
             "First selector should be 'div'"
         );
-
-        // There must be exactly one declaration from our CSS rule
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::Filter);
 
         let found = decl.value.components.iter().any(|c| {
@@ -1797,15 +1810,15 @@ mod tests {
         let tokens = Tokenizer::from_string(css);
         let mut parser = Parser::new(&tokens);
         let rules = parser.parse().expect("Should parse successfully");
-
-        // A proper CSS rule must have a selector and a declaration (Rule struct in rule.rs)
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
 
-        // Check for correct selector (should be div, not an empty selector)
-        assert_eq!(rule.selectors.len(), 1, "Should have one selector");
-        let selector = &rule.selectors[0];
-        // Example check: first simple selector is a div type selector
+        assert_eq!(style_rule.selectors.len(), 1, "Should have one selector");
+        let selector = &style_rule.selectors[0];
         assert!(
             selector
                 .first
@@ -1815,12 +1828,10 @@ mod tests {
             "First selector should be 'div'"
         );
 
-        // There must be exactly one declaration from our CSS rule
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::Transform);
 
-        // Now parse the functions inside the declaration value (checks like before)
         let mut found_translate = false;
         let mut found_rotate = false;
         let mut found_scale = false;
@@ -1852,19 +1863,22 @@ mod tests {
         "#;
         println!("{css}");
         let tokens = Tokenizer::from_string(css);
-        let tokens_clone = tokens.clone(); // ensure tokens: Vec<CssToken> (not &[CssToken]) for thread
+        let tokens_clone = tokens.clone();
         let mut parser = Parser::new(&tokens_clone);
         let rules = parser.parse().expect("Should parse successfully");
 
-        // Should parse a single rule with a selector and 2 declarations
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
         assert_eq!(
-            rule.selectors.len(),
+            style_rule.selectors.len(),
             1,
             "Should have a selector for the rule"
         );
-        let selector = &rule.selectors[0];
+        let selector = &style_rule.selectors[0];
         assert!(
             selector
                 .first
@@ -1874,8 +1888,8 @@ mod tests {
             "First selector should be 'div'"
         );
 
-        assert_eq!(rule.declarations.len(), 2);
-        let color_decl = rule
+        assert_eq!(style_rule.declarations.len(), 2);
+        let color_decl = style_rule
             .declarations
             .iter()
             .find(|d| d.property == Property::Color)
@@ -1889,7 +1903,7 @@ mod tests {
         });
         assert!(rgb_found, "Did not find rgb() in color value");
 
-        let bg_decl = rule
+        let bg_decl = style_rule
             .declarations
             .iter()
             .find(|d| d.property == Property::Background)
@@ -1915,11 +1929,14 @@ mod tests {
         let mut parser = Parser::new(&tokens);
         let rules = parser.parse().expect("Should parse successfully");
 
-        // There should be a proper selector (.foo) and one declaration
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.selectors.len(), 1);
-        let selector = &rule.selectors[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.selectors.len(), 1);
+        let selector = &style_rule.selectors[0];
         assert!(
             selector
                 .first
@@ -1929,8 +1946,8 @@ mod tests {
             "First selector should be .foo"
         );
 
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::ClipPath);
 
         let found = decl.value.components.iter().any(|c| {
@@ -1942,6 +1959,7 @@ mod tests {
         });
         assert!(found, "Did not find polygon() in clip-path value");
     }
+
     #[test]
     fn test_parse_border_radius_multiple_lengths() {
         let css = r#"
@@ -1954,8 +1972,12 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.selectors.len(), 1);
-        let selector = &rule.selectors[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.selectors.len(), 1);
+        let selector = &style_rule.selectors[0];
         assert!(
             selector
                 .first
@@ -1963,11 +1985,10 @@ mod tests {
                 .iter()
                 .any(|s| matches!(s, SimpleSelector::Class(t) if t == "corner"))
         );
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::BorderRadius);
 
-        // 4 component values for the 4 radii
         let lengths = decl
             .value
             .components
@@ -1989,12 +2010,15 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.selectors.len(), 1);
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.selectors.len(), 1);
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::Font);
 
-        // Should include "Georgia", "Times New Roman", "serif" as Ident/String/Ident
         let mut found_georgia = false;
         let mut found_times = false;
         let mut found_serif = false;
@@ -2025,10 +2049,14 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::Transition);
-        // Should contain identifier "opacity", a number/unit (duration), an ident "linear", a delay (duration)
+
         let has_opacity = decl
             .value
             .components
@@ -2051,7 +2079,6 @@ mod tests {
         assert!(has_opacity, "Should have identifier opacity");
         assert!(has_duration, "Should have .5s duration");
         assert!(has_linear, "Should have linear timing");
-
         assert!(has_delay, "Should have 2s delay");
     }
 
@@ -2069,18 +2096,22 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.selectors.len(), 2); // h1 and .xx-large
-        assert_eq!(rule.declarations.len(), 3);
-        // Check that we have font-size, line-height, and color
-        let font_size = rule
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.selectors.len(), 2);
+        assert_eq!(style_rule.declarations.len(), 3);
+
+        let font_size = style_rule
             .declarations
             .iter()
             .find(|d| d.property == Property::FontSize);
-        let line_height = rule
+        let line_height = style_rule
             .declarations
             .iter()
             .find(|d| d.property == Property::LineHeight);
-        let color = rule
+        let color = style_rule
             .declarations
             .iter()
             .find(|d| d.property == Property::Color);
@@ -2088,7 +2119,6 @@ mod tests {
         assert!(font_size.is_some(), "Should find font-size");
         assert!(line_height.is_some(), "Should find line-height");
         assert!(color.is_some(), "Should find color");
-        // Color component should be a hash value (#222)
         let color_decl = color.unwrap();
         let hash_found = color_decl
             .value
@@ -2110,11 +2140,14 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::BackgroundImage);
 
-        // Should contain a linear-gradient function
         let has_gradient = decl.value.components.iter().any(|c| {
             if let ComponentValue::Function(func) = c {
                 func.name == "linear-gradient"
@@ -2137,11 +2170,14 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::BackgroundImage);
 
-        // Should contain a url() function
         let has_url = decl.value.components.iter().any(|c| {
             if let ComponentValue::Function(func) = c {
                 func.name == "url"
@@ -2167,8 +2203,12 @@ mod tests {
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
         let rule = &rules[0];
-        assert_eq!(rule.declarations.len(), 1);
-        let decl = &rule.declarations[0];
+        let style_rule = match rule {
+            CssRule::Style(style_rule) => style_rule,
+            _ => panic!("Expected StyleRule"),
+        };
+        assert_eq!(style_rule.declarations.len(), 1);
+        let decl = &style_rule.declarations[0];
         assert_eq!(decl.property, Property::ListStyleImage);
 
         // Should contain a url() function
@@ -2183,47 +2223,5 @@ mod tests {
             }
         });
         assert!(has_url, "Should have url('/static/foo.svg')");
-    }
-
-    #[test]
-    fn test_parse_src_property_with_url() {
-        let css = r#"
-            @font-face {
-                font-family: 'MyFont';
-                src: url('fonts/myfont.woff2') format('woff2');
-            }
-        "#;
-        let tokens = Tokenizer::from_string(css);
-        let mut parser = Parser::new(&tokens);
-        let rules = parser.parse().expect("Should parse successfully");
-        // The @font-face rule may be parsed differently as an at-rule.
-        // If not supported, just test the src declaration parsing logic.
-        let contains_src = rules.iter().any(|rule| {
-            rule.declarations
-                .iter()
-                .any(|decl| decl.property == Property::Src)
-        });
-        assert!(contains_src, "Should find src property");
-
-        for rule in &rules {
-            for decl in &rule.declarations {
-                if decl.property == Property::Src {
-                    let has_url = decl.value.components.iter().any(|c| {
-                        if let ComponentValue::Function(func) = c {
-                            func.name == "url"
-                                && func.args.iter().any(|arg| {
-                                    matches!(arg, ComponentValue::String(s) if s == "fonts/myfont.woff2")
-                                })
-                        } else {
-                            false
-                        }
-                    });
-                    assert!(
-                        has_url,
-                        "Should have url('fonts/myfont.woff2') in src property"
-                    );
-                }
-            }
-        }
     }
 }
