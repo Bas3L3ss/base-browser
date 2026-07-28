@@ -1,4 +1,4 @@
-use std::{matches, println, vec};
+use std::{matches, println};
 
 use crate::{
     cssom::selector::{
