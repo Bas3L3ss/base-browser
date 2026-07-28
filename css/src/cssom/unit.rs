@@ -1,3 +1,6 @@
+use core::fmt;
+use std::write;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Unit {
     Px,   // Pixels
@@ -16,6 +19,39 @@ pub enum Unit {
     Vmin, // 1% of the viewport's smaller dimension
     Vmax, // 1% of the viewport's larger dimension
     Unknown(String),
+}
+
+impl fmt::Display for Unit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Unit::Px => "px",
+            Unit::Em => "em",
+            Unit::Rem => "rem",
+            Unit::Pt => "pt",
+            Unit::Pc => "pc",
+            Unit::In => "in",
+            Unit::Cm => "cm",
+            Unit::Mm => "mm",
+            Unit::Q => "q",
+            Unit::Ex => "ex",
+            Unit::Ch => "ch",
+            Unit::Vw => "vw",
+            Unit::Vh => "vh",
+            Unit::Vmin => "vmin",
+            Unit::Vmax => "vmax",
+            Unit::Unknown(u) => u,
+        };
+        write!(f, "{}", s)
+    }
+}
+
+// Implement FromStr to allow parsing from &str (will call from_str)
+impl std::str::FromStr for Unit {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Unit, Self::Err> {
+        Ok(Unit::from_str(s))
+    }
 }
 
 impl Unit {

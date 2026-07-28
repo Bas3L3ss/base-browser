@@ -1,6 +1,6 @@
-use crate::cssom::{declaration::Declaration, selector::Selector};
+use crate::cssom::{declaration::Declaration, selector::ComplexSelector};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rule {
-    pub selectors: Vec<Selector>,
+    pub selectors: Vec<ComplexSelector>,
     pub declarations: Vec<Declaration>,
 }

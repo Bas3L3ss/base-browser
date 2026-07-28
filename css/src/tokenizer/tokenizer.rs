@@ -691,4 +691,167 @@ mod tests {
         assert_eq!(tokens[5], CssToken::Delim('!'));
         assert_eq!(tokens[6], CssToken::Ident("important".into()));
     }
+
+    #[test]
+    fn test_universal_selector_token() {
+        let tokens = Tokenizer::from_string("*");
+        assert_eq!(tokens[0], CssToken::Star);
+    }
+
+    #[test]
+    fn test_class_selector_token() {
+        let tokens = Tokenizer::from_string(".my-class");
+        assert_eq!(tokens[0], CssToken::Dot);
+        assert_eq!(tokens[1], CssToken::Ident("my-class".into()));
+    }
+
+    #[test]
+    fn test_id_selector_token() {
+        let tokens = Tokenizer::from_string("#header");
+        assert_eq!(tokens[0], CssToken::Hash("header".into()));
+    }
+
+    #[test]
+    fn test_attribute_selector_token_simple() {
+        let tokens = Tokenizer::from_string("[type]");
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("type".into()));
+        assert_eq!(tokens[2], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_value() {
+        let tokens = Tokenizer::from_string(r#"[lang="en"]"#);
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("lang".into()));
+        assert_eq!(tokens[2], CssToken::Equals);
+        assert_eq!(tokens[3], CssToken::String("en".into()));
+        assert_eq!(tokens[4], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_value_no_quotes() {
+        let tokens = Tokenizer::from_string("[href=https]");
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("href".into()));
+        assert_eq!(tokens[2], CssToken::Equals);
+        assert_eq!(tokens[3], CssToken::Ident("https".into()));
+        assert_eq!(tokens[4], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_star_equal() {
+        let tokens = Tokenizer::from_string(r#"[data-attr*="abc"]"#);
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("data-attr".into()));
+        assert_eq!(tokens[2], CssToken::Star);
+        assert_eq!(tokens[3], CssToken::Equals);
+        assert_eq!(tokens[4], CssToken::String("abc".into()));
+        assert_eq!(tokens[5], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_tilde_equal() {
+        let tokens = Tokenizer::from_string(r#"[title~="foo"]"#);
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("title".into()));
+        assert_eq!(tokens[2], CssToken::Tilde);
+        assert_eq!(tokens[3], CssToken::Equals);
+        assert_eq!(tokens[4], CssToken::String("foo".into()));
+        assert_eq!(tokens[5], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_caret_equal() {
+        let tokens = Tokenizer::from_string(r#"[name^="bar"]"#);
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("name".into()));
+        assert_eq!(tokens[2], CssToken::Delim('^'));
+        assert_eq!(tokens[3], CssToken::Equals);
+        assert_eq!(tokens[4], CssToken::String("bar".into()));
+        assert_eq!(tokens[5], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_dollar_equal() {
+        let tokens = Tokenizer::from_string(r#"[data$="baz"]"#);
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("data".into()));
+        assert_eq!(tokens[2], CssToken::Delim('$'));
+        assert_eq!(tokens[3], CssToken::Equals);
+        assert_eq!(tokens[4], CssToken::String("baz".into()));
+        assert_eq!(tokens[5], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_attribute_selector_token_with_pipe_equal() {
+        let tokens = Tokenizer::from_string(r#"[lang|="en"]"#);
+        assert_eq!(tokens[0], CssToken::OpenBracket);
+        assert_eq!(tokens[1], CssToken::Ident("lang".into()));
+        assert_eq!(tokens[2], CssToken::Delim('|'));
+        assert_eq!(tokens[3], CssToken::Equals);
+        assert_eq!(tokens[4], CssToken::String("en".into()));
+        assert_eq!(tokens[5], CssToken::CloseBracket);
+    }
+
+    #[test]
+    fn test_type_selector_token() {
+        let tokens = Tokenizer::from_string("section");
+        assert_eq!(tokens[0], CssToken::Ident("section".into()));
+    }
+
+    #[test]
+    fn test_compound_selector_tokens() {
+        let tokens = Tokenizer::from_string("div.foo#main[attr=\"x\"]:hover::before");
+        assert_eq!(tokens[0], CssToken::Ident("div".into()));
+        assert_eq!(tokens[1], CssToken::Dot);
+        assert_eq!(tokens[2], CssToken::Ident("foo".into()));
+        assert_eq!(tokens[3], CssToken::Hash("main".into()));
+        assert_eq!(tokens[4], CssToken::OpenBracket);
+        assert_eq!(tokens[5], CssToken::Ident("attr".into()));
+        assert_eq!(tokens[6], CssToken::Equals);
+        assert_eq!(tokens[7], CssToken::String("x".into()));
+        assert_eq!(tokens[8], CssToken::CloseBracket);
+        assert_eq!(tokens[9], CssToken::Colon);
+        assert_eq!(tokens[10], CssToken::Ident("hover".into()));
+        assert_eq!(tokens[11], CssToken::Colon);
+        assert_eq!(tokens[12], CssToken::Colon);
+        assert_eq!(tokens[13], CssToken::Ident("before".into()));
+    }
+
+    #[test]
+    fn test_selector_combinator_tokens() {
+        let tokens = Tokenizer::from_string("div > p + span ~ a");
+        assert_eq!(tokens[0], CssToken::Ident("div".into()));
+        assert_eq!(tokens[1], CssToken::Whitespace);
+        assert_eq!(tokens[2], CssToken::GreaterThan);
+        assert_eq!(tokens[3], CssToken::Whitespace);
+        assert_eq!(tokens[4], CssToken::Ident("p".into()));
+        assert_eq!(tokens[5], CssToken::Whitespace);
+        assert_eq!(tokens[6], CssToken::Plus);
+        assert_eq!(tokens[7], CssToken::Whitespace);
+        assert_eq!(tokens[8], CssToken::Ident("span".into()));
+        assert_eq!(tokens[9], CssToken::Whitespace);
+        assert_eq!(tokens[10], CssToken::Tilde);
+        assert_eq!(tokens[11], CssToken::Whitespace);
+        assert_eq!(tokens[12], CssToken::Ident("a".into()));
+    }
+
+    #[test]
+    fn test_pseudo_class_and_element_tokens() {
+        let tokens = Tokenizer::from_string(":hover::after");
+        assert_eq!(tokens[0], CssToken::Colon);
+        assert_eq!(tokens[1], CssToken::Ident("hover".into()));
+        assert_eq!(tokens[2], CssToken::Colon);
+        assert_eq!(tokens[3], CssToken::Colon);
+        assert_eq!(tokens[4], CssToken::Ident("after".into()));
+    }
+
+    #[test]
+    fn test_selector_whitespace_combinator() {
+        let tokens = Tokenizer::from_string("ul li");
+        assert_eq!(tokens[0], CssToken::Ident("ul".into()));
+        assert_eq!(tokens[1], CssToken::Whitespace);
+        assert_eq!(tokens[2], CssToken::Ident("li".into()));
+    }
 }
