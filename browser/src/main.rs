@@ -1,9 +1,8 @@
-use std::{println, unimplemented};
-
 use base_browser::cli::command::Command;
-use html::{parser::parser::Parser, util::print_dom_tree::print_dom_tree};
+use css::style_engine::StyleEngine;
 use input_parser::traits::Parse;
-use network::http::client::HttpClient;
+use network::{http::client::HttpClient, resource_loader::resource_loader::ResourceLoader};
+use std::{println, unimplemented};
 use url::url::Url;
 use utils::profile_scope;
 
@@ -27,6 +26,7 @@ fn main() -> anyhow::Result<()> {
         // handle sub_command
         unimplemented!("Subcommand handling not yet implemented");
     } else if let Some(url_str) = command.opts.url {
+        profile_scope!("Load Page");
         let url = match Url::parse(&url_str) {
             Ok(parsed_out) => {
                 for warning in &parsed_out.warnings {
@@ -39,11 +39,15 @@ fn main() -> anyhow::Result<()> {
                 return Err(err.into());
             }
         };
-
         let http = HttpClient::new();
-        let response = http.get(&url)?;
-        profile_scope!("HTML to dom");
-        let html_parse_result = Parser::to_dom(&response.body_as_string())?;
+        let loader = ResourceLoader::new(http);
+
+        let html = loader.load_html(&url)?;
+        let dom = html::parser::parser::Parser::to_dom(&html)?;
+
+        let cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
+
+        println!("{cssom:#?}");
 
         Ok(())
     } else {

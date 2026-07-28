@@ -10,3 +10,4 @@ webpki-roots = "1.0.9"
 rand = "0.10.2"
 url ={ path = "../url"}
 utils = {path = "../utils"}
+html = {path ="../html"}

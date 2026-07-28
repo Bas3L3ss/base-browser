@@ -36,6 +36,7 @@ name = "base-browser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "css",
  "html",
  "input_parser",
  "network",
@@ -88,6 +89,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "css"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "html",
+ "input_parser",
+ "network",
+ "url",
+ "utils",
 ]
 
 [[package]]
@@ -174,6 +187,7 @@ name = "network"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "html",
  "rand",
  "rustls",
  "url",
