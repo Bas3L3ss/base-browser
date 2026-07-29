@@ -4,6 +4,7 @@ pub mod css_value;
 pub mod cssom;
 pub mod declaration;
 pub mod function;
+pub mod keyframe;
 pub mod property;
 pub mod rule;
 pub mod selector;

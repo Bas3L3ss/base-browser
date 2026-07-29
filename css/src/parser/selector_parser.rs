@@ -36,7 +36,7 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
 
     fn parse_compound_selector(&mut self) -> CompoundSelector {
         let mut compound = CompoundSelector::new();
-        while self.parser.pos < self.parser.tokens.len() {
+        while !self.parser.is_eof() {
             let before = self.parser.pos;
             if let Some(simple) = self.parse_simple_selector() {
                 compound.push(simple);
@@ -79,13 +79,12 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
                 self.parser.advance(1); // Skip '['
                 let (name, value, operator) = self.parse_attribute_selector();
                 // Advance to after closing ']'
-                while self.parser.pos < self.parser.tokens.len()
+                while !self.parser.is_eof()
                     && !matches!(self.parser.current(), CssToken::CloseBracket)
                 {
                     self.parser.advance(1);
                 }
-                if self.parser.pos < self.parser.tokens.len()
-                    && matches!(self.parser.current(), CssToken::CloseBracket)
+                if !self.parser.is_eof() && matches!(self.parser.current(), CssToken::CloseBracket)
                 {
                     self.parser.advance(1); // Move past ']'
                 }
@@ -192,93 +191,6 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
 
         Some(SimpleSelector::PseudoClass(name, Some(args)))
     }
-
-    // fn parse_pseudo_selector(&mut self) -> Option<SimpleSelector> {
-    //     // At ':' or '::'
-    //     let mut double_colon = false;
-    //     self.parser.advance(1);
-    //     if self.parser.pos < self.parser.tokens.len()
-    //         && matches!(self.parser.current(), CssToken::Colon)
-    //     {
-    //         double_colon = true;
-    //         self.parser.advance(1);
-    //     }
-    //     if self.parser.pos < self.parser.tokens.len() {
-    //         if let CssToken::Ident(pseudo_name) = self.parser.current() {
-    //             let pseudo_name = pseudo_name.clone();
-    //             self.parser.advance(1);
-    //             // Handle functional pseudo-class
-    //             if self.parser.pos < self.parser.tokens.len()
-    //                 && matches!(self.parser.current(), CssToken::LeftParen)
-    //             {
-    //                 self.parser.advance(1);
-    //                 while self.parser.pos < self.parser.tokens.len()
-    //                     && matches!(self.parser.current(), CssToken::Whitespace)
-    //                 {
-    //                     self.parser.advance(1);
-    //                 }
-    //                 let args_start = self.parser.pos;
-    //                 let mut paren_depth = 1;
-    //                 while self.parser.pos < self.parser.tokens.len() && paren_depth > 0 {
-    //                     match self.parser.current() {
-    //                         CssToken::LeftParen => {
-    //                             paren_depth += 1;
-    //                             self.parser.advance(1);
-    //                         }
-    //                         CssToken::RightParen => {
-    //                             paren_depth -= 1;
-    //                             self.parser.advance(1);
-    //                         }
-    //                         _ => self.parser.advance(1),
-    //                     }
-    //                 }
-    //                 let arg_end = if paren_depth == 0 {
-    //                     self.parser.pos.saturating_sub(1)
-    //                 } else {
-    //                     self.parser.tokens.len()
-    //                 };
-    //                 let arg_tokens = if args_start < arg_end && arg_end <= self.parser.tokens.len()
-    //                 {
-    //                     &self.parser.tokens[args_start..arg_end]
-    //                 } else {
-    //                     &[]
-    //                 };
-    //                 let args_list = (!arg_tokens.is_empty()).then(|| self.parse_args(arg_tokens));
-    //                 return Some(SimpleSelector::PseudoClass(pseudo_name, args_list));
-    //             } else if double_colon {
-    //                 return Some(SimpleSelector::PseudoElement(pseudo_name));
-    //             } else {
-    //                 return Some(SimpleSelector::PseudoClass(pseudo_name, None));
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
-
-    // fn parse_args(tokens: &[CssToken]) -> Vec<ComplexSelector> {
-    //     let mut selectors = Vec::new();
-    //     let mut cur_selector_tokens = Vec::new();
-    //     let mut i = 0;
-    //     while i < tokens.len() {
-    //         match &tokens[i] {
-    //             CssToken::Comma => {
-    //                 Self::push_selector_if_not_empty(&mut cur_selector_tokens, &mut selectors);
-    //                 i += 1;
-    //                 while matches!(tokens.get(i), Some(CssToken::Whitespace)) {
-    //                     i += 1;
-    //                 }
-    //             }
-    //             CssToken::EOF => break,
-    //             _ => {
-    //                 cur_selector_tokens.push(tokens[i].clone());
-    //                 i += 1;
-    //             }
-    //         }
-    //     }
-    //     Self::push_selector_if_not_empty(&mut cur_selector_tokens, &mut selectors);
-    //     selectors
-    // }
-
     fn parse_attribute_selector(
         &mut self,
     ) -> (Option<String>, Option<String>, Option<AttrSelectorOperator>) {
@@ -287,7 +199,7 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
         let mut operator = None;
 
         // Collect attribute name
-        while self.parser.pos < self.parser.tokens.len() {
+        while !self.parser.is_eof() {
             match self.parser.current() {
                 CssToken::Ident(attr_name) => {
                     name = Some(attr_name.clone());
@@ -298,7 +210,7 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
             }
         }
 
-        if self.parser.pos < self.parser.tokens.len() {
+        if !self.parser.is_eof() {
             operator = match self.parser.current() {
                 CssToken::Equals => {
                     self.parser.advance(1);
@@ -330,13 +242,11 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
 
         // Collect value if operator is found
         if operator.is_some() {
-            while self.parser.pos < self.parser.tokens.len()
-                && matches!(self.parser.current(), CssToken::Whitespace)
-            {
+            while !self.parser.is_eof() && matches!(self.parser.current(), CssToken::Whitespace) {
                 self.parser.advance(1);
             }
             let val_start = self.parser.pos;
-            while self.parser.pos < self.parser.tokens.len() {
+            while !self.parser.is_eof() {
                 match self.parser.current() {
                     CssToken::CloseBracket => break,
                     CssToken::Whitespace if val_start == self.parser.pos => self.parser.advance(1),

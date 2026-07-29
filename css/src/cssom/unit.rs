@@ -18,6 +18,9 @@ pub enum Unit {
     Vh,   // 1% of the viewport's height
     Vmin, // 1% of the viewport's smaller dimension
     Vmax, // 1% of the viewport's larger dimension
+    // Time units
+    S,  // Seconds
+    Ms, // Milliseconds
     Unknown(String),
 }
 
@@ -39,6 +42,8 @@ impl fmt::Display for Unit {
             Unit::Vh => "vh",
             Unit::Vmin => "vmin",
             Unit::Vmax => "vmax",
+            Unit::S => "s",
+            Unit::Ms => "ms",
             Unit::Unknown(u) => u,
         };
         write!(f, "{}", s)
@@ -72,6 +77,8 @@ impl Unit {
             "vh" => Unit::Vh,
             "vmin" => Unit::Vmin,
             "vmax" => Unit::Vmax,
+            "s" => Unit::S,
+            "ms" => Unit::Ms,
             _ => Unit::Unknown(s.to_string()),
         }
     }
