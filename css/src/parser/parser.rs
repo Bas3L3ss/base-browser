@@ -10,7 +10,7 @@ use crate::{
         declaration::Declaration,
         function::Function,
         property::Property,
-        rule::{CssRule, StyleRule},
+        rule::{AtRule, AtRuleBlock, CssRule, StyleRule},
         selector::ComplexSelector,
         unit::Unit,
     },
@@ -35,15 +35,43 @@ impl<'a> Parser<'a> {
         profile_scope!("Parse to CSS Rules");
 
         while !self.is_eof() {
-            if let Some(rule) = self.parse_rule() {
-                rules.push(CssRule::Style(rule));
+            if let Some(rule) = self.parse_css_rule() {
+                rules.push(rule);
+            } else {
+                self.advance(1);
             }
         }
 
         Ok(rules)
     }
+    fn parse_css_rule(&mut self) -> Option<CssRule> {
+        self.skip_whitespace();
 
-    fn parse_rule(&mut self) -> Option<StyleRule> {
+        match self.current() {
+            CssToken::AtKeyword(_) => self.parse_at_rule().map(CssRule::At),
+            _ => self.parse_style_rule().map(CssRule::Style),
+        }
+    }
+
+    fn parse_at_rule(&mut self) -> Option<AtRule> {
+        if let CssToken::AtKeyword(name) = self.current() {
+            let rule_name = name.clone();
+            self.advance(1);
+
+            let preludes: Vec<ComponentValue> = Vec::new();
+            let block: Option<AtRuleBlock> = None;
+
+            Some(AtRule {
+                rule_name,
+                preludes,
+                block,
+            })
+        } else {
+            return None;
+        }
+    }
+
+    fn parse_style_rule(&mut self) -> Option<StyleRule> {
         let selectors = self.parse_selector_list();
 
         if self.expect(CssToken::LeftBrace).is_none() {
@@ -51,7 +79,6 @@ impl<'a> Parser<'a> {
         }
 
         let declarations = self.parse_declarations();
-        println!("{:?}", declarations);
 
         self.expect(CssToken::RightBrace);
 
@@ -2223,5 +2250,231 @@ mod tests {
             }
         });
         assert!(has_url, "Should have url('/static/foo.svg')");
+    }
+    #[test]
+    fn test_parse_simple_at_rule_with_block() {
+        let css = r#"
+            @media screen and (max-width: 600px) {
+                body {
+                    background: red;
+                }
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1, "Should parse one at-rule");
+        match &rules[0] {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.rule_name, "media");
+                assert!(
+                    at_rule
+                        .preludes
+                        .iter()
+                        .any(|c| matches!(c, ComponentValue::Ident(s) if s == "screen"))
+                );
+                match &at_rule.block {
+                    Some(crate::cssom::rule::AtRuleBlock::RuleList(rule_list)) => {
+                        assert_eq!(rule_list.len(), 1);
+                        match &rule_list[0] {
+                            CssRule::Style(style_rule) => {
+                                assert_eq!(style_rule.selectors.len(), 1);
+                                assert!(
+                                    style_rule
+                                        .declarations
+                                        .iter()
+                                        .any(|decl| decl.property == Property::Background)
+                                );
+                            }
+                            _ => panic!("Expected StyleRule inside media block"),
+                        }
+                    }
+                    _ => panic!("Expected RuleList block in @media"),
+                }
+            }
+            _ => panic!("Expected AtRule variant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_at_rule_without_block() {
+        let css = r#"
+            @import url('foo.css');
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        match &rules[0] {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.rule_name, "import");
+                // Should contain a url() function
+                assert!(at_rule.preludes.iter().any(|c| {
+                    match c {
+                        ComponentValue::Function(f) => {
+                            f.name == "url"
+                                && f.args.iter().any(
+                                    |a| matches!(a, ComponentValue::String(s) if s == "foo.css"),
+                                )
+                        }
+                        _ => false,
+                    }
+                }));
+                assert!(
+                    at_rule.block.is_none(),
+                    "Import rule should not have a block"
+                );
+            }
+            _ => panic!("Expected AtRule"),
+        }
+    }
+
+    #[test]
+    fn test_parse_at_rule_with_declaration_block() {
+        let css = r#"
+            @font-face {
+                font-family: 'Open Sans';
+                src: url(OpenSans-Regular.ttf);
+                font-weight: 400;
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        match &rules[0] {
+            CssRule::At(at_rule) => {
+                assert_eq!(&at_rule.rule_name, "font-face");
+                match &at_rule.block {
+                    Some(crate::cssom::rule::AtRuleBlock::DeclarationList(decls)) => {
+                        assert!(
+                            decls
+                                .iter()
+                                .any(|d| matches!(d.property, Property::FontFamily))
+                        );
+                        assert!(decls.iter().any(|d| matches!(d.property, Property::Src)));
+                        assert!(
+                            decls
+                                .iter()
+                                .any(|d| matches!(d.property, Property::FontWeight))
+                        );
+                    }
+                    _ => panic!("Block should be DeclarationList"),
+                }
+            }
+            _ => panic!("Expected AtRule"),
+        }
+    }
+
+    #[test]
+    fn test_parse_at_rule_with_raw_block() {
+        let css = r#"
+            @unknown {
+                some strangle raw block;
+                with non-declaration-stuff;
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+        match &rules[0] {
+            CssRule::At(at_rule) => {
+                assert_eq!(&at_rule.rule_name, "unknown");
+                match &at_rule.block {
+                    Some(crate::cssom::rule::AtRuleBlock::Raw(raw_tokens)) => {
+                        // Should contain some delimiter or ident tokens.
+                        assert!(
+                            raw_tokens.iter().any(|t| matches!(
+                                t,
+                                crate::tokenizer::css_token::CssToken::Ident(_)
+                            ))
+                        );
+                    }
+                    _ => panic!("Block should be raw"),
+                }
+            }
+            _ => panic!("Expected AtRule"),
+        }
+    }
+
+    #[test]
+    fn test_multiple_at_rules() {
+        let css = r#"
+            @import url(style1.css);
+            @import url(style2.css);
+            @media (min-width: 800px) { .foo { color: blue; } }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 3);
+        assert!(matches!(&rules[0], CssRule::At(..)));
+        assert!(matches!(&rules[1], CssRule::At(..)));
+        match &rules[2] {
+            CssRule::At(at_rule) => {
+                assert_eq!(&at_rule.rule_name, "media");
+                assert!(matches!(
+                    &at_rule.block,
+                    Some(crate::cssom::rule::AtRuleBlock::RuleList(_))
+                ));
+            }
+            _ => panic!("Expected AtRule for the third rule"),
+        }
+    }
+
+    #[test]
+    fn test_nested_at_rule() {
+        let css = r#"
+            @media (min-width: 600px) {
+                @supports (display: grid) {
+                    .foo { display: grid; }
+                }
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+
+        match &rules[0] {
+            CssRule::At(media_at_rule) => {
+                assert_eq!(&media_at_rule.rule_name, "media");
+                match &media_at_rule.block {
+                    Some(crate::cssom::rule::AtRuleBlock::RuleList(inner_rules)) => {
+                        assert_eq!(inner_rules.len(), 1);
+                        match &inner_rules[0] {
+                            CssRule::At(supports_at_rule) => {
+                                assert_eq!(&supports_at_rule.rule_name, "supports");
+                                match &supports_at_rule.block {
+                                    Some(crate::cssom::rule::AtRuleBlock::RuleList(
+                                        supports_inner_rules,
+                                    )) => {
+                                        assert_eq!(supports_inner_rules.len(), 1);
+                                        match &supports_inner_rules[0] {
+                                            CssRule::Style(style_rule) => {
+                                                assert!(style_rule.selectors.iter().any(|sel| {
+                                                    format!("{:?}", sel).contains("foo")
+                                                }));
+                                                assert!(style_rule.declarations.iter().any(
+                                                    |decl| {
+                                                        format!("{:?}", decl).contains("display")
+                                                    }
+                                                ));
+                                            }
+                                            _ => panic!("Expected StyleRule inside supports"),
+                                        }
+                                    }
+                                    _ => panic!("Expected RuleList in supports block"),
+                                }
+                            }
+                            _ => panic!("Expected At(Supports) inside media"),
+                        }
+                    }
+                    _ => panic!("Expected RuleList in media block"),
+                }
+            }
+            _ => panic!("Expected At(Media) as the outermost rule"),
+        }
     }
 }

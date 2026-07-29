@@ -3,6 +3,12 @@ use crate::{
     tokenizer::css_token::CssToken,
 };
 #[derive(Debug, Clone, PartialEq)]
+pub enum CssRule {
+    Style(StyleRule),
+    At(AtRule),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct StyleRule {
     pub selectors: Vec<ComplexSelector>,
     pub declarations: Vec<Declaration>,
@@ -10,8 +16,8 @@ pub struct StyleRule {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AtRule {
-    pub name: String,
-    pub prelude: Vec<ComponentValue>,
+    pub rule_name: String,
+    pub preludes: Vec<ComponentValue>,
     pub block: Option<AtRuleBlock>,
 }
 
@@ -20,10 +26,4 @@ pub enum AtRuleBlock {
     RuleList(Vec<CssRule>),
     DeclarationList(Vec<Declaration>),
     Raw(Vec<CssToken>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CssRule {
-    Style(StyleRule),
-    At(AtRule),
 }
