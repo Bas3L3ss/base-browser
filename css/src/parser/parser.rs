@@ -1,4 +1,4 @@
-use std::{matches, println};
+use std::{matches, unimplemented};
 
 use anyhow::{Ok, Result};
 use utils::profile_scope;
@@ -10,7 +10,7 @@ use crate::{
         declaration::Declaration,
         function::Function,
         property::Property,
-        rule::{AtRule, AtRuleBlock, CssRule, StyleRule},
+        rule::{AtRule, AtRuleBlock, AtRuleKind, CssRule, StyleRule},
         selector::ComplexSelector,
         unit::Unit,
     },
@@ -55,20 +55,75 @@ impl<'a> Parser<'a> {
 
     fn parse_at_rule(&mut self) -> Option<AtRule> {
         if let CssToken::AtKeyword(name) = self.current() {
-            let rule_name = name.clone();
+            let name = name.clone();
             self.advance(1);
 
-            let preludes: Vec<ComponentValue> = Vec::new();
-            let block: Option<AtRuleBlock> = None;
+            let prelude: Vec<CssToken> = self.parse_prelude();
+
+            let block: Option<AtRuleBlock> = if self.expect(CssToken::LeftBrace).is_some() {
+                Some(self.parse_block(&name))
+            } else {
+                None
+            };
+
+            self.expect(CssToken::RightBrace);
 
             Some(AtRule {
-                rule_name,
-                preludes,
+                name,
+                prelude,
                 block,
             })
         } else {
             return None;
         }
+    }
+
+    fn parse_block(&mut self, name: &str) -> AtRuleBlock {
+        match Self::classify(name) {
+            AtRuleKind::RuleList => {
+                let mut rules = Vec::new();
+                while let Some(rule) = self.parse_css_rule() {
+                    rules.push(rule);
+                }
+
+                AtRuleBlock::RuleList(rules)
+            }
+
+            AtRuleKind::DeclarationList => AtRuleBlock::DeclarationList(self.parse_declarations()),
+
+            AtRuleKind::SpecialGrammar => {
+                unimplemented!()
+            }
+        }
+    }
+
+    fn classify(name: &str) -> AtRuleKind {
+        match name {
+            // { style rules / nested at-rules }
+            "media" | "supports" | "layer" | "scope" => AtRuleKind::RuleList,
+
+            // { declarations }
+            "font-face" | "page" | "property" => AtRuleKind::DeclarationList,
+
+            // unknown/future CSS
+            _ => AtRuleKind::SpecialGrammar,
+        }
+    }
+
+    fn parse_prelude(&mut self) -> Vec<CssToken> {
+        let mut prelude = Vec::new();
+
+        self.skip_whitespace();
+        while !matches!(
+            self.current(),
+            CssToken::LeftBrace | CssToken::Semicolon | CssToken::EOF
+        ) {
+            prelude.push(self.current().clone());
+            self.advance(1);
+            self.skip_whitespace();
+        }
+
+        prelude
     }
 
     fn parse_style_rule(&mut self) -> Option<StyleRule> {
@@ -144,7 +199,6 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     let value = self.parse_css_value();
-                    println!("{value:?}");
                     declarations.push(Declaration { property, value });
                 }
                 _ => {
@@ -252,6 +306,7 @@ impl<'a> Parser<'a> {
                 self.advance(1);
                 Some(ComponentValue::Delim('~'))
             }
+            // If not known, try to put them in Delim
             _ => None,
         }
     }
@@ -308,6 +363,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn current(&self) -> &CssToken {
         &self.tokens[self.pos]
     }
+
     pub(crate) fn skip_whitespace(&mut self) -> bool {
         let mut saw_ws = false;
         while !self.is_eof() && matches!(self.current(), CssToken::Whitespace) {
@@ -2257,6 +2313,10 @@ mod tests {
             @media screen and (max-width: 600px) {
                 body {
                     background: red;
+                    color: blue;
+                }
+                p, a {
+                    margin: 0;
                 }
             }
         "#;
@@ -2266,16 +2326,17 @@ mod tests {
         assert_eq!(rules.len(), 1, "Should parse one at-rule");
         match &rules[0] {
             CssRule::At(at_rule) => {
-                assert_eq!(at_rule.rule_name, "media");
+                assert_eq!(at_rule.name, "media");
                 assert!(
                     at_rule
-                        .preludes
+                        .prelude
                         .iter()
-                        .any(|c| matches!(c, ComponentValue::Ident(s) if s == "screen"))
+                        .any(|c| matches!(c, CssToken::Ident(s) if s == "screen"))
                 );
                 match &at_rule.block {
                     Some(crate::cssom::rule::AtRuleBlock::RuleList(rule_list)) => {
-                        assert_eq!(rule_list.len(), 1);
+                        assert_eq!(rule_list.len(), 2);
+                        // body rule
                         match &rule_list[0] {
                             CssRule::Style(style_rule) => {
                                 assert_eq!(style_rule.selectors.len(), 1);
@@ -2283,7 +2344,33 @@ mod tests {
                                     style_rule
                                         .declarations
                                         .iter()
-                                        .any(|decl| decl.property == Property::Background)
+                                        .any(|decl| decl.property == Property::Background),
+                                    "Body rule should have 'background' declaration"
+                                );
+                                assert!(
+                                    style_rule
+                                        .declarations
+                                        .iter()
+                                        .any(|decl| decl.property == Property::Color),
+                                    "Body rule should have 'color' declaration"
+                                );
+                            }
+                            _ => panic!("Expected StyleRule inside media block"),
+                        }
+                        // p, a rule
+                        match &rule_list[1] {
+                            CssRule::Style(style_rule) => {
+                                assert_eq!(
+                                    style_rule.selectors.len(),
+                                    2,
+                                    "Second rule should have two selectors (p, a)"
+                                );
+                                assert!(
+                                    style_rule
+                                        .declarations
+                                        .iter()
+                                        .any(|decl| decl.property == Property::Margin),
+                                    "Second rule should have 'margin' declaration"
                                 );
                             }
                             _ => panic!("Expected StyleRule inside media block"),
@@ -2307,19 +2394,17 @@ mod tests {
         assert_eq!(rules.len(), 1);
         match &rules[0] {
             CssRule::At(at_rule) => {
-                assert_eq!(at_rule.rule_name, "import");
-                // Should contain a url() function
-                assert!(at_rule.preludes.iter().any(|c| {
-                    match c {
-                        ComponentValue::Function(f) => {
-                            f.name == "url"
-                                && f.args.iter().any(
-                                    |a| matches!(a, ComponentValue::String(s) if s == "foo.css"),
-                                )
-                        }
+                assert_eq!(at_rule.name, "import");
+                // Should contain a url() function represented as a CssToken
+                assert!(
+                    at_rule.prelude.iter().any(|c| match c {
+                        CssToken::Ident(s) if s == "url" => true,
+                        CssToken::LeftParen => true,
+                        CssToken::String(s) if s == "foo.css" => true,
                         _ => false,
-                    }
-                }));
+                    }),
+                    "Prelude should contain a url('foo.css') as CssToken"
+                );
                 assert!(
                     at_rule.block.is_none(),
                     "Import rule should not have a block"
@@ -2342,9 +2427,10 @@ mod tests {
         let mut parser = Parser::new(&tokens);
         let rules = parser.parse().expect("Should parse successfully");
         assert_eq!(rules.len(), 1);
+
         match &rules[0] {
             CssRule::At(at_rule) => {
-                assert_eq!(&at_rule.rule_name, "font-face");
+                assert_eq!(&at_rule.name, "font-face");
                 match &at_rule.block {
                     Some(crate::cssom::rule::AtRuleBlock::DeclarationList(decls)) => {
                         assert!(
@@ -2380,7 +2466,7 @@ mod tests {
         assert_eq!(rules.len(), 1);
         match &rules[0] {
             CssRule::At(at_rule) => {
-                assert_eq!(&at_rule.rule_name, "unknown");
+                assert_eq!(&at_rule.name, "unknown");
                 match &at_rule.block {
                     Some(crate::cssom::rule::AtRuleBlock::Raw(raw_tokens)) => {
                         // Should contain some delimiter or ident tokens.
@@ -2413,7 +2499,7 @@ mod tests {
         assert!(matches!(&rules[1], CssRule::At(..)));
         match &rules[2] {
             CssRule::At(at_rule) => {
-                assert_eq!(&at_rule.rule_name, "media");
+                assert_eq!(&at_rule.name, "media");
                 assert!(matches!(
                     &at_rule.block,
                     Some(crate::cssom::rule::AtRuleBlock::RuleList(_))
@@ -2430,6 +2516,12 @@ mod tests {
                 @supports (display: grid) {
                     .foo { display: grid; }
                 }
+                @supports (display: flex) {
+                    .bar { display: flex; }
+                }
+                @supports (color: var(--main-color)) {
+                    .baz { color: var(--main-color); }
+                }
             }
         "#;
         let tokens = Tokenizer::from_string(css);
@@ -2439,36 +2531,118 @@ mod tests {
 
         match &rules[0] {
             CssRule::At(media_at_rule) => {
-                assert_eq!(&media_at_rule.rule_name, "media");
+                assert_eq!(&media_at_rule.name, "media");
                 match &media_at_rule.block {
-                    Some(crate::cssom::rule::AtRuleBlock::RuleList(inner_rules)) => {
-                        assert_eq!(inner_rules.len(), 1);
+                    Some(AtRuleBlock::RuleList(inner_rules)) => {
+                        assert_eq!(inner_rules.len(), 3);
+
+                        // 1st @supports
                         match &inner_rules[0] {
                             CssRule::At(supports_at_rule) => {
-                                assert_eq!(&supports_at_rule.rule_name, "supports");
+                                assert_eq!(&supports_at_rule.name, "supports");
                                 match &supports_at_rule.block {
-                                    Some(crate::cssom::rule::AtRuleBlock::RuleList(
-                                        supports_inner_rules,
-                                    )) => {
+                                    Some(AtRuleBlock::RuleList(supports_inner_rules)) => {
+                                        assert_eq!(supports_inner_rules.len(), 1);
+                                        match &supports_inner_rules[0] {
+                                            CssRule::Style(style_rule) => {
+                                                // Ensure the selector includes 'foo'
+                                                assert!(style_rule.selectors.iter().any(|sel| {
+                                                    format!("{:?}", sel).contains("foo")
+                                                }));
+                                                // Ensure a declaration contains property 'display'
+                                                assert!(
+                                                    style_rule
+                                                        .declarations
+                                                        .iter()
+                                                        .any(|decl| decl.property == crate::cssom::property::Property::Display)
+                                                );
+                                                // Ensure a declaration contains value 'grid'
+                                                assert!(style_rule.declarations.iter().any(
+                                                    |decl| decl.value.components.iter().any(|component| match component {
+                                                        crate::cssom::component_value::ComponentValue::Ident(s) => s == "grid",
+                                                        _ => false,
+                                                    })
+                                                ));
+                                            }
+                                            _ => panic!("Expected StyleRule inside supports (1)"),
+                                        }
+                                    }
+                                    _ => panic!("Expected RuleList in supports block (1)"),
+                                }
+                            }
+                            _ => panic!("Expected At(Supports) inside media (1)"),
+                        }
+
+                        // 2nd @supports
+                        match &inner_rules[1] {
+                            CssRule::At(supports_at_rule) => {
+                                assert_eq!(&supports_at_rule.name, "supports");
+                                match &supports_at_rule.block {
+                                    Some(AtRuleBlock::RuleList(supports_inner_rules)) => {
                                         assert_eq!(supports_inner_rules.len(), 1);
                                         match &supports_inner_rules[0] {
                                             CssRule::Style(style_rule) => {
                                                 assert!(style_rule.selectors.iter().any(|sel| {
-                                                    format!("{:?}", sel).contains("foo")
+                                                    format!("{:?}", sel).contains("bar")
                                                 }));
+                                                assert!(
+                                                    style_rule
+                                                        .declarations
+                                                        .iter()
+                                                        .any(|decl| decl.property == crate::cssom::property::Property::Display)
+                                                );
                                                 assert!(style_rule.declarations.iter().any(
-                                                    |decl| {
-                                                        format!("{:?}", decl).contains("display")
-                                                    }
+                                                    |decl| decl.value.components.iter().any(|component| match component {
+                                                        crate::cssom::component_value::ComponentValue::Ident(s) => s == "flex",
+                                                        _ => false,
+                                                    })
                                                 ));
                                             }
-                                            _ => panic!("Expected StyleRule inside supports"),
+                                            _ => panic!("Expected StyleRule inside supports (2)"),
                                         }
                                     }
-                                    _ => panic!("Expected RuleList in supports block"),
+                                    _ => panic!("Expected RuleList in supports block (2)"),
                                 }
                             }
-                            _ => panic!("Expected At(Supports) inside media"),
+                            _ => panic!("Expected At(Supports) inside media (2)"),
+                        }
+
+                        // 3rd @supports
+                        match &inner_rules[2] {
+                            CssRule::At(supports_at_rule) => {
+                                assert_eq!(&supports_at_rule.name, "supports");
+                                match &supports_at_rule.block {
+                                    Some(AtRuleBlock::RuleList(supports_inner_rules)) => {
+                                        assert_eq!(supports_inner_rules.len(), 1);
+                                        match &supports_inner_rules[0] {
+                                            CssRule::Style(style_rule) => {
+                                                assert!(style_rule.selectors.iter().any(|sel| {
+                                                    format!("{:?}", sel).contains("baz")
+                                                }));
+                                                assert!(style_rule.declarations.iter().any(
+                                                    |decl| decl.property
+                                                        == crate::cssom::property::Property::Color
+                                                ));
+                                                assert!(style_rule.declarations.iter().any(
+                                                    |decl| decl.value.components.iter().any(|component| match component {
+                                                        crate::cssom::component_value::ComponentValue::Function(function) => {
+                                                            function.name == "var"
+                                                                && function.args.iter().any(|arg| match arg {
+                                                                    crate::cssom::component_value::ComponentValue::Ident(s) => s == "--main-color",
+                                                                    _ => false,
+                                                                })
+                                                        }
+                                                        _ => false,
+                                                    })
+                                                ));
+                                            }
+                                            _ => panic!("Expected StyleRule inside supports (3)"),
+                                        }
+                                    }
+                                    _ => panic!("Expected RuleList in supports block (3)"),
+                                }
+                            }
+                            _ => panic!("Expected At(Supports) inside media (3)"),
                         }
                     }
                     _ => panic!("Expected RuleList in media block"),

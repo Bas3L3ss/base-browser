@@ -1,5 +1,5 @@
 use crate::{
-    cssom::{component_value::ComponentValue, declaration::Declaration, selector::ComplexSelector},
+    cssom::{declaration::Declaration, selector::ComplexSelector},
     tokenizer::css_token::CssToken,
 };
 #[derive(Debug, Clone, PartialEq)]
@@ -16,8 +16,8 @@ pub struct StyleRule {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AtRule {
-    pub rule_name: String,
-    pub preludes: Vec<ComponentValue>,
+    pub name: String,
+    pub prelude: Vec<CssToken>,
     pub block: Option<AtRuleBlock>,
 }
 
@@ -26,4 +26,10 @@ pub enum AtRuleBlock {
     RuleList(Vec<CssRule>),
     DeclarationList(Vec<Declaration>),
     Raw(Vec<CssToken>),
+}
+
+pub enum AtRuleKind {
+    RuleList,
+    DeclarationList,
+    SpecialGrammar,
 }
