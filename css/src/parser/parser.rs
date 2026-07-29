@@ -9,6 +9,7 @@ use crate::{
         css_value::CssValue,
         declaration::Declaration,
         function::Function,
+        keyframe::Keyframe,
         property::Property,
         rule::{AtRule, AtRuleBlock, AtRuleKind, CssRule, StyleRule},
         selector::ComplexSelector,
@@ -89,13 +90,135 @@ impl<'a> Parser<'a> {
                 Some(AtRuleBlock::RuleList(rules))
             }
 
+            AtRuleKind::KeyFrames => {
+                unimplemented!();
+                let mut rules = Vec::new();
+                while let Some(rule) = self.parse_keyframe() {
+                    rules.push(rule);
+                }
+
+                Some(AtRuleBlock::KeyframesRule(rules))
+            }
+
             AtRuleKind::DeclarationList => {
                 Some(AtRuleBlock::DeclarationList(self.parse_declarations()))
             }
 
-            AtRuleKind::SpecialGrammar => {
-                unimplemented!()
+            AtRuleKind::Unknown => match self.classify_unknown_rule() {
+                AtRuleKind::RuleList => {
+                    let mut rules = Vec::new();
+                    while let Some(rule) = self.parse_css_rule() {
+                        rules.push(rule);
+                    }
+
+                    Some(AtRuleBlock::RuleList(rules))
+                }
+                AtRuleKind::DeclarationList => {
+                    Some(AtRuleBlock::DeclarationList(self.parse_declarations()))
+                }
+
+                AtRuleKind::Unknown => {
+                    let mut raw = Vec::new();
+                    let mut brace_depth = 0;
+
+                    self.skip_whitespace();
+
+                    while !self.is_eof() {
+                        match self.current() {
+                            CssToken::LeftBrace => {
+                                brace_depth += 1;
+                                raw.push(self.current().clone());
+                                self.advance(1);
+                            }
+
+                            CssToken::RightBrace => {
+                                if brace_depth == 0 {
+                                    break;
+                                }
+
+                                brace_depth -= 1;
+                                raw.push(self.current().clone());
+                                self.advance(1);
+                            }
+
+                            _ => {
+                                raw.push(self.current().clone());
+                                self.advance(1);
+                            }
+                        }
+                    }
+
+                    Some(AtRuleBlock::Raw(raw))
+                }
+                _ => None,
+            },
+        }
+    }
+
+    fn parse_keyframe(&mut self) -> Option<Keyframe> {
+        None
+    }
+
+    /// Classifies an unknown at-rule block by looking ahead at its tokens.
+    /// Heuristics:
+    ///   - If a `{` is found first (before a colon valid for a declaration), it's a RuleList (block contains rules).
+    ///   - If a colon followed by semicolon (i.e. looks like "property: value;"), or just "property: value", with no `{`, it's likely a DeclarationList.
+    ///   - Otherwise Unknown.
+    fn classify_unknown_rule(&mut self) -> AtRuleKind {
+        let start_pos = self.pos;
+        let mut seen_colon = false;
+        let mut seen_semicolon_after_colon = false;
+        let mut seen_left_brace = false;
+
+        while !self.is_eof() {
+            match self.current() {
+                CssToken::LeftBrace => {
+                    seen_left_brace = true;
+                    break;
+                }
+                CssToken::Colon => {
+                    seen_colon = true;
+                    self.advance(1);
+                    // Optionally skip whitespace after colon.
+                    while matches!(self.current(), CssToken::Whitespace) {
+                        self.advance(1);
+                    }
+                }
+                CssToken::Semicolon => {
+                    if seen_colon {
+                        seen_semicolon_after_colon = true;
+                        break;
+                    } else {
+                        self.advance(1);
+                    }
+                }
+                CssToken::RightBrace | CssToken::EOF => {
+                    break;
+                }
+                _ => {
+                    self.advance(1);
+                }
             }
+        }
+
+        self.pos = start_pos;
+
+        // Heuristics:
+        // - If a left brace is seen before a colon/semicolon pattern, treat as RuleList.
+        if seen_left_brace && !seen_semicolon_after_colon {
+            AtRuleKind::RuleList
+        }
+        // - If saw a colon and then a semicolon (property: value;), treat as DeclarationList.
+        else if seen_colon && seen_semicolon_after_colon && !seen_left_brace {
+            AtRuleKind::DeclarationList
+        }
+        // - If only saw a colon and no brace, can be a single declaration.
+        else if seen_colon && !seen_left_brace {
+            AtRuleKind::DeclarationList
+        }
+        // - Otherwise, unknown.
+        else {
+            AtRuleKind::Unknown
         }
     }
 
@@ -107,8 +230,10 @@ impl<'a> Parser<'a> {
             // { declarations }
             "font-face" | "page" | "property" => AtRuleKind::DeclarationList,
 
+            "keyframes" => AtRuleKind::KeyFrames,
+
             // unknown/future CSS
-            _ => AtRuleKind::SpecialGrammar,
+            _ => AtRuleKind::Unknown,
         }
     }
 
@@ -403,8 +528,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        cssom::selector::{
-            AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, SimpleSelector,
+        cssom::{
+            keyframe::KeyframeSelector,
+            selector::{
+                AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, SimpleSelector,
+            },
         },
         tokenizer::tokenizer::Tokenizer,
     };
@@ -2127,7 +2255,6 @@ mod tests {
                 transition: opacity 0.5s linear 2s;
             }
         "#;
-        use crate::cssom::{property::Property, unit::Unit};
 
         let tokens = Tokenizer::from_string(css);
         let mut parser = Parser::new(&tokens);
@@ -2487,6 +2614,71 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_unknown_at_rule_with_rule_block() {
+        let css = r#"
+            @unknown {
+                .test {
+                    color: red;
+                }
+                .foo {
+                    background: blue;
+                }
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+
+        match &rules[0] {
+            CssRule::At(at_rule) => {
+                assert_eq!(&at_rule.name, "unknown");
+                match &at_rule.block {
+                    Some(crate::cssom::rule::AtRuleBlock::RuleList(rule_list)) => {
+                        assert_eq!(rule_list.len(), 2);
+                        // Check that both are style rules
+                        for rule in rule_list {
+                            assert!(matches!(rule, CssRule::Style(_)));
+                        }
+                    }
+                    _ => panic!("Block should be RuleList"),
+                }
+            }
+            _ => panic!("Expected AtRule"),
+        }
+    }
+
+    #[test]
+    fn test_parse_unknown_at_rule_with_declaration_list_block() {
+        let css = r#"
+            @unknown {
+                color: green;
+                margin: 0;
+            }
+        "#;
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse().expect("Should parse successfully");
+        assert_eq!(rules.len(), 1);
+
+        match &rules[0] {
+            CssRule::At(at_rule) => {
+                assert_eq!(&at_rule.name, "unknown");
+                match &at_rule.block {
+                    Some(crate::cssom::rule::AtRuleBlock::DeclarationList(decls)) => {
+                        assert_eq!(decls.len(), 2);
+                        let properties: Vec<_> = decls.iter().map(|d| &d.property).collect();
+                        assert!(properties.contains(&&Property::Color));
+                        assert!(properties.contains(&&Property::Margin));
+                    }
+                    _ => panic!("Block should be DeclarationList"),
+                }
+            }
+            _ => panic!("Expected AtRule"),
+        }
+    }
+
+    #[test]
     fn test_multiple_at_rules() {
         let css = r#"
             @import url(style1.css);
@@ -2651,6 +2843,238 @@ mod tests {
                 }
             }
             _ => panic!("Expected At(Media) as the outermost rule"),
+        }
+    }
+
+    #[test]
+    fn test_parser_keyframes_rule() {
+        let css = r#"
+            @keyframes fadein {
+                from { opacity: 0; }
+                50%  { opacity: 0.5; }
+                to   { opacity: 1; }
+            }
+        "#;
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse().expect("Should parse without error");
+
+        // Should parse as one at-rule, with name "keyframes"
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        match rule {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.name, "keyframes");
+                assert_eq!(at_rule.prelude.len(), 1);
+                assert_eq!(
+                    &at_rule.prelude[0],
+                    &crate::tokenizer::css_token::CssToken::Ident("fadein".into())
+                );
+
+                let block = at_rule
+                    .block
+                    .as_ref()
+                    .expect("keyframes rule should have a block");
+                match block {
+                    AtRuleBlock::KeyframesRule(frames) => {
+                        assert_eq!(frames.len(), 3);
+
+                        // from
+                        let from = &frames[0];
+                        assert_eq!(from.selectors, vec![KeyframeSelector::From]);
+                        assert_eq!(from.declarations.len(), 1);
+                        assert_eq!(from.declarations[0].property, Property::Opacity);
+
+                        // Check value: opacity: 0;
+                        {
+                            let value = &from.declarations[0].value;
+                            assert_eq!(value.is_important, false);
+                            assert_eq!(value.components.len(), 1);
+                            match &value.components[0] {
+                                crate::cssom::component_value::ComponentValue::Number(x) => {
+                                    assert_eq!(*x, 0.0)
+                                }
+                                other => {
+                                    panic!("Expected Number(0.0) for opacity, got {:?}", other)
+                                }
+                            }
+                        }
+
+                        // 50%
+                        let pct = &frames[1];
+                        assert_eq!(pct.selectors, vec![KeyframeSelector::Percentage(50.0)]);
+                        assert_eq!(pct.declarations.len(), 1);
+                        assert_eq!(pct.declarations[0].property, Property::Opacity);
+
+                        // Check value: opacity: 0.5;
+                        {
+                            let value = &pct.declarations[0].value;
+                            assert_eq!(value.is_important, false);
+                            assert_eq!(value.components.len(), 1);
+                            match &value.components[0] {
+                                crate::cssom::component_value::ComponentValue::Number(x) => {
+                                    assert_eq!(*x, 0.5)
+                                }
+                                other => {
+                                    panic!("Expected Number(0.5) for opacity, got {:?}", other)
+                                }
+                            }
+                        }
+
+                        // to
+                        let to = &frames[2];
+                        assert_eq!(to.selectors, vec![KeyframeSelector::To]);
+                        assert_eq!(to.declarations.len(), 1);
+                        assert_eq!(to.declarations[0].property, Property::Opacity);
+
+                        // Check value: opacity: 1;
+                        {
+                            let value = &to.declarations[0].value;
+                            assert_eq!(value.is_important, false);
+                            assert_eq!(value.components.len(), 1);
+                            match &value.components[0] {
+                                crate::cssom::component_value::ComponentValue::Number(x) => {
+                                    assert_eq!(*x, 1.0)
+                                }
+                                other => {
+                                    panic!("Expected Number(1.0) for opacity, got {:?}", other)
+                                }
+                            }
+                        }
+                    }
+                    other => panic!("Expected KeyframesRule, got {other:?}"),
+                }
+            }
+            other => panic!("Expected at-rule, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parser_keyframes_with_multiple_selectors_and_multiple_properties() {
+        let css = r#"
+            @keyframes bounce {
+                0%, 100% {
+                    opacity: 0;
+                    transform: scale(0.5);
+                }
+                50% {
+                    opacity: 1;
+                }
+            }
+        "#;
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse().expect("Should parse without error");
+
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        match rule {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.name, "keyframes");
+                assert_eq!(
+                    at_rule.prelude[0],
+                    crate::tokenizer::css_token::CssToken::Ident("bounce".into())
+                );
+
+                let block = at_rule
+                    .block
+                    .as_ref()
+                    .expect("keyframes rule should have a block");
+                match block {
+                    AtRuleBlock::KeyframesRule(frames) => {
+                        assert_eq!(frames.len(), 2);
+
+                        // 0%, 100%
+                        let combined = &frames[0];
+                        assert_eq!(
+                            combined.selectors,
+                            vec![
+                                KeyframeSelector::Percentage(0.0),
+                                KeyframeSelector::Percentage(100.0)
+                            ]
+                        );
+                        // Should have two declarations
+                        assert_eq!(combined.declarations.len(), 2);
+                        assert_eq!(combined.declarations[0].property, Property::Opacity);
+
+                        // Check value: opacity: 0;
+                        {
+                            let value = &combined.declarations[0].value;
+                            assert_eq!(value.is_important, false);
+                            assert_eq!(value.components.len(), 1);
+                            match &value.components[0] {
+                                crate::cssom::component_value::ComponentValue::Number(x) => {
+                                    assert_eq!(*x, 0.0)
+                                }
+                                other => {
+                                    panic!("Expected Number(0.0) for opacity, got {:?}", other)
+                                }
+                            }
+                        }
+
+                        assert_eq!(combined.declarations[1].property, Property::Transform);
+                        // We could check transform value further if needed
+
+                        // 50%
+                        let fifty = &frames[1];
+                        assert_eq!(fifty.selectors, vec![KeyframeSelector::Percentage(50.0)]);
+                        assert_eq!(fifty.declarations.len(), 1);
+                        assert_eq!(fifty.declarations[0].property, Property::Opacity);
+
+                        // Check value: opacity: 1;
+                        {
+                            let value = &fifty.declarations[0].value;
+                            assert_eq!(value.is_important, false);
+                            assert_eq!(value.components.len(), 1);
+                            match &value.components[0] {
+                                crate::cssom::component_value::ComponentValue::Number(x) => {
+                                    assert_eq!(*x, 1.0)
+                                }
+                                other => {
+                                    panic!("Expected Number(1.0) for opacity, got {:?}", other)
+                                }
+                            }
+                        }
+                    }
+                    other => panic!("Expected KeyframesRule, got {other:?}"),
+                }
+            }
+            other => panic!("Expected at-rule, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parser_keyframes_empty_block() {
+        let css = r#"
+            @keyframes empty { }
+        "#;
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse().expect("Should parse without error");
+
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        match rule {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.name, "keyframes");
+                let block = at_rule
+                    .block
+                    .as_ref()
+                    .expect("keyframes rule should have a block");
+                match block {
+                    AtRuleBlock::KeyframesRule(frames) => {
+                        assert_eq!(frames.len(), 0, "No keyframes in empty block");
+                    }
+                    other => panic!("Expected KeyframesRule, got {other:?}"),
+                }
+            }
+            other => panic!("Expected at-rule, got {other:?}"),
         }
     }
 }
