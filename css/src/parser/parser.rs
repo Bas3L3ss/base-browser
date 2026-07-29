@@ -54,31 +54,31 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_at_rule(&mut self) -> Option<AtRule> {
-        if let CssToken::AtKeyword(name) = self.current() {
-            let name = name.clone();
-            self.advance(1);
-
-            let prelude: Vec<CssToken> = self.parse_prelude();
-
-            let block: Option<AtRuleBlock> = if self.expect(CssToken::LeftBrace).is_some() {
-                Some(self.parse_block(&name))
-            } else {
-                None
-            };
-
-            self.expect(CssToken::RightBrace);
-
-            Some(AtRule {
-                name,
-                prelude,
-                block,
-            })
-        } else {
+        let CssToken::AtKeyword(name) = self.current() else {
             return None;
-        }
+        };
+        let name = name.clone();
+        self.advance(1);
+
+        let prelude = self.parse_prelude();
+
+        let block = if self.expect(CssToken::LeftBrace).is_some() {
+            let block = self.parse_block(&name);
+            self.expect(CssToken::RightBrace)?;
+            block
+        } else {
+            self.expect(CssToken::Semicolon)?;
+            None
+        };
+
+        Some(AtRule {
+            name,
+            prelude,
+            block,
+        })
     }
 
-    fn parse_block(&mut self, name: &str) -> AtRuleBlock {
+    fn parse_block(&mut self, name: &str) -> Option<AtRuleBlock> {
         match Self::classify(name) {
             AtRuleKind::RuleList => {
                 let mut rules = Vec::new();
@@ -86,10 +86,12 @@ impl<'a> Parser<'a> {
                     rules.push(rule);
                 }
 
-                AtRuleBlock::RuleList(rules)
+                Some(AtRuleBlock::RuleList(rules))
             }
 
-            AtRuleKind::DeclarationList => AtRuleBlock::DeclarationList(self.parse_declarations()),
+            AtRuleKind::DeclarationList => {
+                Some(AtRuleBlock::DeclarationList(self.parse_declarations()))
+            }
 
             AtRuleKind::SpecialGrammar => {
                 unimplemented!()
@@ -135,7 +137,7 @@ impl<'a> Parser<'a> {
 
         let declarations = self.parse_declarations();
 
-        self.expect(CssToken::RightBrace);
+        self.expect(CssToken::RightBrace)?;
 
         Some(StyleRule {
             selectors,
