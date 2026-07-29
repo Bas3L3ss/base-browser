@@ -1,4 +1,4 @@
-use std::{matches, unimplemented};
+use std::matches;
 
 use anyhow::{Ok, Result};
 use utils::profile_scope;
@@ -9,7 +9,7 @@ use crate::{
         css_value::CssValue,
         declaration::Declaration,
         function::Function,
-        keyframe::Keyframe,
+        keyframe::{Keyframe, KeyframeSelector},
         property::Property,
         rule::{AtRule, AtRuleBlock, AtRuleKind, CssRule, StyleRule},
         selector::ComplexSelector,
@@ -86,17 +86,14 @@ impl<'a> Parser<'a> {
                 while let Some(rule) = self.parse_css_rule() {
                     rules.push(rule);
                 }
-
                 Some(AtRuleBlock::RuleList(rules))
             }
 
             AtRuleKind::KeyFrames => {
-                unimplemented!();
                 let mut rules = Vec::new();
                 while let Some(rule) = self.parse_keyframe() {
                     rules.push(rule);
                 }
-
                 Some(AtRuleBlock::KeyframesRule(rules))
             }
 
@@ -110,13 +107,11 @@ impl<'a> Parser<'a> {
                     while let Some(rule) = self.parse_css_rule() {
                         rules.push(rule);
                     }
-
                     Some(AtRuleBlock::RuleList(rules))
                 }
                 AtRuleKind::DeclarationList => {
                     Some(AtRuleBlock::DeclarationList(self.parse_declarations()))
                 }
-
                 AtRuleKind::Unknown => {
                     let mut raw = Vec::new();
                     let mut brace_depth = 0;
@@ -156,7 +151,70 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_keyframe(&mut self) -> Option<Keyframe> {
-        None
+        self.skip_whitespace();
+        let selectors = self.parse_keyframe_selectors()?;
+        self.expect(CssToken::LeftBrace)?;
+
+        let declarations = self.parse_declarations();
+
+        self.expect(CssToken::RightBrace)?;
+
+        Some(Keyframe {
+            selectors,
+            declarations,
+        })
+    }
+
+    fn parse_keyframe_selectors(&mut self) -> Option<Vec<KeyframeSelector>> {
+        let mut selectors = Vec::new();
+        let mut expect_selector = true;
+
+        loop {
+            self.skip_whitespace();
+            if self.is_eof() {
+                break;
+            }
+
+            if expect_selector {
+                match self.current() {
+                    CssToken::Ident(s) => {
+                        if s.eq_ignore_ascii_case("from") {
+                            selectors.push(KeyframeSelector::From);
+                        } else if s.eq_ignore_ascii_case("to") {
+                            selectors.push(KeyframeSelector::To);
+                        } else {
+                            // Reject unexpected identifiers.
+                            return None;
+                        }
+                        self.advance(1);
+                    }
+                    CssToken::Percentage(val) => {
+                        // Validate percentage in range [0.0, 100.0]
+                        if !(0.0..=100.0).contains(val) {
+                            return None;
+                        }
+                        selectors.push(KeyframeSelector::Percentage(*val));
+                        self.advance(1);
+                    }
+                    _ => break,
+                }
+                expect_selector = false;
+            } else {
+                match self.current() {
+                    CssToken::Comma => {
+                        self.advance(1);
+                        expect_selector = true;
+                    }
+                    _ => break,
+                }
+            }
+        }
+
+        if selectors.is_empty() || expect_selector {
+            None
+        } else {
+            Some(selectors)
+        }
     }
 
     /// Classifies an unknown at-rule block by looking ahead at its tokens.
@@ -256,9 +314,7 @@ impl<'a> Parser<'a> {
     fn parse_style_rule(&mut self) -> Option<StyleRule> {
         let selectors = self.parse_selector_list();
 
-        if self.expect(CssToken::LeftBrace).is_none() {
-            return None;
-        }
+        self.expect(CssToken::LeftBrace)?;
 
         let declarations = self.parse_declarations();
 
