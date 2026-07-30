@@ -172,7 +172,6 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
 
         loop {
             if let Some(selector) = self.parse_complex_selector() {
-                println!("hi");
                 args.push(selector);
             } else {
                 break;
