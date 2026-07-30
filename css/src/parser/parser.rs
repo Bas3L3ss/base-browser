@@ -3140,4 +3140,203 @@ mod tests {
             other => panic!("Expected at-rule, got {other:?}"),
         }
     }
+
+    #[test]
+    fn test_parser_vendor_specific_at_rule_webkit_keyframes() {
+        let css = r#"
+            @-webkit-keyframes fadein {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+        "#;
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse().expect("Should parse without error");
+
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        match rule {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.name, "-webkit-keyframes");
+                // the prelude is a Vec<CssToken>, expect identifier "fadein"
+                assert_eq!(
+                    at_rule.prelude.len(),
+                    1,
+                    "prelude should have exactly 1 token"
+                );
+                match &at_rule.prelude[0] {
+                    crate::tokenizer::css_token::CssToken::Ident(s) => assert_eq!(s, "fadein"),
+                    other => panic!("Expected Ident token in prelude, got {:?}", other),
+                }
+                let block = at_rule.block.as_ref().expect("Should have block");
+                match block {
+                    AtRuleBlock::KeyframesRule(frames) => {
+                        assert_eq!(frames.len(), 2);
+                        let mut found_from = false;
+                        let mut found_to = false;
+                        for f in frames {
+                            for selector in &f.selectors {
+                                match selector {
+                                    KeyframeSelector::From => found_from = true,
+                                    KeyframeSelector::To => found_to = true,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        assert!(found_from, "Expected to find a 'from' keyframe");
+                        assert!(found_to, "Expected to find a 'to' keyframe");
+                    }
+                    other => panic!("Expected KeyframesRule, got {other:?}"),
+                }
+            }
+            other => panic!("Expected at-rule, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parser_vendor_specific_property() {
+        let css = r#"
+            .example {
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                user-select: none;
+            }
+        "#;
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse().expect("Should parse without error");
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0];
+        match rule {
+            CssRule::Style(style_rule) => {
+                assert_eq!(style_rule.selectors.len(), 1);
+                let selector = &style_rule.selectors[0];
+                let sel_string = format!("{:?}", selector);
+                assert!(
+                    sel_string.contains("example"),
+                    "Expected selector to reference '.example', got {sel_string:?}"
+                );
+
+                let decls = &style_rule.declarations;
+
+                let expected_props = [
+                    Property::Unknown("-webkit-user-select".to_owned()),
+                    Property::Unknown("-moz-user-select".to_owned()),
+                    Property::UserSelect,
+                ];
+                for expected_prop in expected_props.iter() {
+                    assert!(
+                        decls.iter().any(|d| &d.property == expected_prop),
+                        "Expected property '{:?}' in declarations: {:?}",
+                        expected_prop,
+                        decls.iter().map(|d| &d.property).collect::<Vec<_>>()
+                    );
+                }
+
+                use crate::cssom::component_value::ComponentValue;
+                use crate::cssom::css_value::CssValue;
+
+                for d in decls {
+                    match &d.property {
+                        Property::Unknown(s)
+                            if s == "-webkit-user-select" || s == "-moz-user-select" =>
+                        {
+                            // Value should be a CssValue with one ident: "none"
+                            if let CssValue { components, .. } = &d.value {
+                                assert_eq!(components.len(), 1);
+                                match &components[0] {
+                                    ComponentValue::Ident(val) => {
+                                        assert_eq!(val, "none");
+                                    }
+                                    v => panic!("Expected Ident('none'), got {:?}", v),
+                                }
+                            } else {
+                                panic!("Expected CssValue struct");
+                            }
+                        }
+                        Property::UserSelect => {
+                            if let CssValue { components, .. } = &d.value {
+                                assert_eq!(components.len(), 1);
+                                match &components[0] {
+                                    ComponentValue::Ident(val) => {
+                                        assert_eq!(val, "none");
+                                    }
+                                    v => panic!("Expected Ident('none'), got {:?}", v),
+                                }
+                            } else {
+                                panic!("Expected CssValue struct");
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            other => panic!("Expected style rule, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parser_vendor_specific_at_rule_moz_document() {
+        let css = r#"
+            @-moz-document url-prefix() {
+                body { color: red; }
+            }
+        "#;
+
+        let tokens = Tokenizer::from_string(css);
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse().expect("Should parse without error");
+        assert_eq!(rules.len(), 1);
+
+        let rule = &rules[0];
+        match rule {
+            CssRule::At(at_rule) => {
+                assert_eq!(at_rule.name, "-moz-document");
+                let block = at_rule.block.as_ref().expect("Should have block");
+                match block {
+                    AtRuleBlock::RuleList(rules) => {
+                        assert_eq!(rules.len(), 1);
+                        match &rules[0] {
+                            CssRule::Style(style_rule) => {
+                                assert_eq!(style_rule.selectors.len(), 1);
+                                let selector = &style_rule.selectors[0];
+                                let sel_string = format!("{:?}", selector);
+                                assert!(
+                                    sel_string.contains("body"),
+                                    "Expected selector to reference 'body', got {sel_string:?}"
+                                );
+                                let decls = &style_rule.declarations;
+                                assert_eq!(decls.len(), 1);
+
+                                // check property is Property::Color
+                                assert!(
+                                    matches!(&decls[0].property, Property::Color),
+                                    "Expected 'color' property"
+                                );
+                                if let CssValue { components, .. } = &decls[0].value {
+                                    assert_eq!(components.len(), 1);
+                                    match &components[0] {
+                                        ComponentValue::Ident(val) => {
+                                            assert_eq!(val, "red");
+                                        }
+                                        v => panic!("Expected Ident('red'), got {:?}", v),
+                                    }
+                                } else {
+                                    panic!("Expected CssValue for value of color");
+                                }
+                            }
+                            other => panic!("Expected style rule, got {other:?}"),
+                        }
+                    }
+                    other => panic!("Expected Rules, got {other:?}"),
+                }
+            }
+            other => panic!("Expected at-rule, got {other:?}"),
+        }
+    }
 }
