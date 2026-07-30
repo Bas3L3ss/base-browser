@@ -281,7 +281,14 @@ impl<'a> Parser<'a> {
     }
 
     fn classify(name: &str) -> AtRuleKind {
-        match name {
+        let canonical = name
+            .strip_prefix("-webkit-")
+            .or_else(|| name.strip_prefix("-moz-"))
+            .or_else(|| name.strip_prefix("-ms-"))
+            .or_else(|| name.strip_prefix("-o-"))
+            .unwrap_or(name);
+
+        match canonical {
             // { style rules / nested at-rules }
             "media" | "supports" | "layer" | "scope" => AtRuleKind::RuleList,
 
