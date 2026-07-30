@@ -45,9 +45,7 @@ fn main() -> anyhow::Result<()> {
         let html = loader.load_html(&url)?;
         let dom = html::parser::parser::Parser::to_dom(&html)?;
 
-        let cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
-
-        println!("{cssom:#?}");
+        let mut cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
 
         Ok(())
     } else {

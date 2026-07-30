@@ -85,3 +85,12 @@ pub struct ComplexSelector {
     pub first: CompoundSelector,
     pub rest: Vec<(Combinator, CompoundSelector)>,
 }
+
+impl ComplexSelector {
+    pub fn rightmost(&self) -> &CompoundSelector {
+        self.rest
+            .last()
+            .map(|(_, compound)| compound)
+            .unwrap_or(&self.first)
+    }
+}

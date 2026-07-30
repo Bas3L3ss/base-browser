@@ -8,4 +8,5 @@ pub mod keyframe;
 pub mod property;
 pub mod rule;
 pub mod selector;
+pub mod selector_index;
 pub mod unit;
