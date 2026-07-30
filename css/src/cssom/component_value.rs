@@ -26,3 +26,18 @@ pub enum ComponentValue {
     // Used by shorthand properties
     Delim(char),
 }
+
+impl ToString for ComponentValue {
+    fn to_string(&self) -> String {
+        match self {
+            ComponentValue::Ident(ident) => ident.clone(),
+            ComponentValue::String(s) => format!("\"{}\"", s),
+            ComponentValue::Hash(hash) => format!("#{}", hash),
+            ComponentValue::Number(n) => format!("{}", n),
+            ComponentValue::Dimension { value, unit } => format!("{}{}", value, unit.to_string()),
+            ComponentValue::Percentage(p) => format!("{}%", p),
+            ComponentValue::Delim(c) => c.to_string(),
+            ComponentValue::Function(f) => f.to_string(),
+        }
+    }
+}

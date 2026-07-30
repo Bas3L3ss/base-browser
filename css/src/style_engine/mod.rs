@@ -4,7 +4,7 @@ use network::resource_loader::resource_loader::ResourceLoader;
 use url::url::Url;
 
 use crate::{
-    cssom::{cssom::CssOm, selector_index::SelectorIndex},
+    cssom::{css_indexes::CssIndexes, cssom::CssOm},
     parser::parser::Parser,
     tokenizer::tokenizer::Tokenizer,
 };
@@ -24,7 +24,7 @@ impl StyleEngine {
             cssom.append_stylesheet(rules);
         }
 
-        cssom.selector_index = SelectorIndex::build(&cssom);
+        cssom.append_indexes(CssIndexes::build(&cssom));
 
         Ok(cssom)
     }

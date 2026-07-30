@@ -1,5 +1,6 @@
 pub mod color;
 pub mod component_value;
+pub mod css_indexes;
 pub mod css_value;
 pub mod cssom;
 pub mod declaration;
@@ -8,5 +9,4 @@ pub mod keyframe;
 pub mod property;
 pub mod rule;
 pub mod selector;
-pub mod selector_index;
 pub mod unit;
