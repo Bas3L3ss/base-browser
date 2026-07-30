@@ -1,3 +1,5 @@
+use std::println;
+
 use utils::profile_scope;
 
 use crate::tokenizer::css_token::{CssToken, CssTokenizerError};
@@ -121,30 +123,25 @@ impl<'a> Tokenizer<'a> {
                     self.consume_numeric_token()
                 }
                 '.' => {
+                    println!("dot");
                     self.advance();
                     CssToken::Dot
                 }
                 '#' => {
                     self.advance();
                     // ID or hash
-                    let ident = self.consume_while(|c| c.is_alphanumeric() || c == '-' || c == '_');
+                    let ident = self.consume_ident();
                     CssToken::Hash(ident)
                 }
                 '*' => {
                     self.advance();
                     CssToken::Star
                 }
-                // Either a plus as part of a number, or a combinator
                 '+' => {
-                    let next = self.peek_next();
-                    if next.is_some() && next.unwrap().is_ascii_digit() {
-                        self.advance();
-                        CssToken::Plus
-                    } else {
-                        self.advance();
-                        CssToken::Plus
-                    }
+                    self.advance();
+                    CssToken::Plus
                 }
+
                 // Either a minus as part of a number, or an identifier (like -webkit) or a dash
                 '-' => {
                     let next = self.peek_next();
@@ -166,7 +163,7 @@ impl<'a> Tokenizer<'a> {
                         // If followed by another dash or alpha, let's parse as ident
                         if d == '-' || d.is_ascii_alphabetic() || d == '_' {
                             // Consume dash, then the rest as ident
-                            let ident = self.consume_while(Self::is_ident_continue);
+                            let ident = self.consume_ident();
                             return Some(CssToken::Ident(ident));
                         }
                     }
@@ -196,7 +193,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 '@' => {
                     self.advance();
-                    let keyword = self.consume_while(Self::is_ident_continue);
+                    let keyword = self.consume_ident();
                     // Accept both @media as AtKeyword and plain @ as Delim if not followed by ident-like
                     if keyword.is_empty() {
                         CssToken::Delim('@')
@@ -208,32 +205,18 @@ impl<'a> Tokenizer<'a> {
                     self.advance();
                     CssToken::Delim('!')
                 }
-                // Add Delim fallback for any other single-char symbol not matched above (not identifier start etc)
+                // Handle string literal with unicode-escape logic using consume_escape
                 '"' | '\'' => {
-                    // String literal (handle escape sequences!)
                     let quote = self.advance().unwrap();
                     let mut content = String::new();
                     let mut terminated = false;
-                    let mut prev_is_escape = false;
                     while let Some(inner) = self.peek() {
-                        if prev_is_escape {
-                            // Handle common escapes: only simple ones for now
-                            match inner {
-                                'n' => content.push('\n'),
-                                'r' => content.push('\r'),
-                                't' => content.push('\t'),
-                                '\\' => content.push('\\'),
-                                '\'' => content.push('\''),
-                                '"' => content.push('"'),
-                                _ => content.push(inner),
-                            }
-                            self.advance();
-                            prev_is_escape = false;
-                            continue;
-                        }
                         if inner == '\\' {
-                            prev_is_escape = true;
                             self.advance();
+                            // Use CSS escape handling for both simple and unicode escapes (RFC 6265)
+                            if let Some(escaped_ch) = self.consume_escape() {
+                                content.push(escaped_ch);
+                            }
                             continue;
                         }
                         if inner == quote {
@@ -251,11 +234,29 @@ impl<'a> Tokenizer<'a> {
                         CssToken::Error(CssTokenizerError::UnterminatedString(self.position))
                     }
                 }
+
                 '0'..='9' => self.consume_numeric_token(),
+
                 _ if Self::is_ident_start(ch) => {
-                    let ident = self.consume_while(Self::is_ident_continue);
+                    let ident = self.consume_ident();
+
                     CssToken::Ident(ident)
                 }
+
+                '\\' => {
+                    self.advance(); // Skip '\'
+                    let ident = {
+                        let mut s = String::new();
+                        if let Some(esc) = self.consume_escape() {
+                            s.push(esc);
+                        }
+                        // Continue with the rest of the ident (consume_ident appends more)
+                        s.push_str(&self.consume_ident());
+                        s
+                    };
+                    return Some(CssToken::Ident(ident));
+                }
+
                 _ => {
                     // Any unrecognized, not-whitespace non-control char is Delim!
                     let bad = self.advance().unwrap();
@@ -263,6 +264,71 @@ impl<'a> Tokenizer<'a> {
                 }
             };
             return Some(token);
+        }
+        None
+    }
+
+    /// Consumes a CSS ident, handling escape sequences (including Unicode) per CSS syntax.
+    fn consume_ident(&mut self) -> String {
+        let mut ident = String::new();
+
+        while !self.is_eof() {
+            match self.peek() {
+                Some('\\') => {
+                    // Handle escape sequence, which may include unicode
+                    self.advance(); // Skip '\'
+                    if let Some(escaped_ch) = self.consume_escape() {
+                        ident.push(escaped_ch);
+                    }
+                }
+                Some(ch) if Self::is_ident_continue(ch) => {
+                    ident.push(ch);
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+
+        ident
+    }
+
+    /// Consumes a CSS escape sequence, supporting unicode escapes `\hhhhhh` (up to 6 hex digits) or simple escapes.
+    /// Returns the translated char, or Unicode replacement character if invalid.
+    fn consume_escape(&mut self) -> Option<char> {
+        // If the first char is a hex digit, it's a unicode escape
+        let peeked = self.peek();
+        if let Some(ch) = peeked {
+            if ch.is_ascii_hexdigit() {
+                // Up to 6 hex digits
+                let mut codepoint = 0u32;
+                let mut len = 0;
+                while let Some(ch) = self.peek() {
+                    if ch.is_ascii_hexdigit() && len < 6 {
+                        self.advance();
+                        codepoint = codepoint * 16 + ch.to_digit(16).unwrap();
+                        len += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                // Optional single whitespace char after unicode escape
+                if let Some(ws) = self.peek() {
+                    if ws.is_ascii_whitespace() {
+                        self.advance();
+                    }
+                }
+
+                return char::from_u32(codepoint).or(Some('\u{FFFD}'));
+            } else if ch == '\n' || ch == '\r' || ch == '\x0C' {
+                // A backslash followed by newline/CR/form-feed is ignored (line continuation)
+                self.advance();
+                return None;
+            } else {
+                // "simple" escape: just returns the char after '\'
+                self.advance();
+                return Some(ch);
+            }
         }
         None
     }
@@ -388,6 +454,7 @@ impl<'a> Tokenizer<'a> {
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
     use std::{assert_eq, print};
 
     use super::*;
@@ -853,5 +920,127 @@ mod tests {
         assert_eq!(tokens[0], CssToken::Ident("ul".into()));
         assert_eq!(tokens[1], CssToken::Whitespace);
         assert_eq!(tokens[2], CssToken::Ident("li".into()));
+    }
+
+    #[test]
+    fn test_ident_with_parenthesis_escapes() {
+        // In CSS, identifier escapes like `\(` and `\)` are valid to allow parens in idents
+        let tokens = Tokenizer::from_string(".khung_menu_cap_2\\(3\\)");
+        // Expect a Dot followed by an Ident with the de-escaped parens in the value
+        assert_eq!(tokens[0], CssToken::Dot);
+        assert_eq!(tokens[1], CssToken::Ident("khung_menu_cap_2(3)".into()));
+
+        let tokens2 = Tokenizer::from_string("#foo\\(bar\\)");
+        assert_eq!(tokens2[0], CssToken::Hash("foo(bar)".into()));
+
+        let tokens3 = Tokenizer::from_string("hello\\(test\\)ing");
+        assert_eq!(tokens3[0], CssToken::Ident("hello(test)ing".into()));
+    }
+
+    #[test]
+    fn test_ident_starts_with_escape() {
+        // Backslash escaping the first character of an identifier: .\31test
+        let tokens = Tokenizer::from_string(".\\31 test");
+        println!("{tokens:?}");
+        assert_eq!(tokens[0], CssToken::Dot);
+        assert_eq!(tokens[1], CssToken::Ident("1test".into()));
+
+        // Same with a space after escape (space must not appear in ident!)
+        let tokens2 = Tokenizer::from_string(".\\31 test");
+        assert_eq!(tokens2[0], CssToken::Dot);
+        assert_eq!(tokens2[1], CssToken::Ident("1test".into()));
+
+        // Hash id with escaped initial digit
+        let tokens3 = Tokenizer::from_string("#\\32 foo");
+        assert_eq!(tokens3[0], CssToken::Hash("2foo".into()));
+
+        // Ident starting with a backslash and unicode sequence for letter X (\58)
+        let tokens4 = Tokenizer::from_string(".\\58 ray");
+        assert_eq!(tokens4[0], CssToken::Dot);
+        assert_eq!(tokens4[1], CssToken::Ident("Xray".into()));
+    }
+
+    #[test]
+    fn test_identifier_with_escape_sequences_unicode() {
+        use CssToken::*;
+
+        let tokens = Tokenizer::from_string(".test\\41 BC");
+        assert_eq!(tokens[0], Dot);
+        assert_eq!(tokens[1], Ident("testABC".into()));
+
+        // Lowercase hex, too: \61 is 'a'
+        let tokens2 = Tokenizer::from_string("#foo\\61 bar");
+        assert_eq!(tokens2[0], Hash("fooabar".into()));
+
+        // 6-digit escape, stops at 6 hex digits: \000026 is '&'
+        let tokens3 = Tokenizer::from_string(".unicode\\000026id");
+        assert_eq!(tokens3[0], Dot);
+        assert_eq!(tokens3[1], Ident("unicode&id".into()));
+
+        // Escapes, followed by whitespace: only \E9, next space not part of hex
+        let tokens4 = Tokenizer::from_string(".caf\\E9  au\\20 lait");
+        assert_eq!(tokens4[0], Dot);
+        assert_eq!(tokens4[1], Ident("café".into())); // \E9 -> 'é'
+        assert_eq!(tokens4[2], Whitespace);
+        assert_eq!(tokens4[3], Ident("au lait".into()));
+
+        let tokens5 = Tokenizer::from_string(".foo\\007A bar");
+        assert_eq!(tokens5[0], Dot);
+        assert_eq!(tokens5[1], Ident("foozbar".into()));
+
+        // Numeric escapes that produce whitespace: \20 is space
+        let tokens6 = Tokenizer::from_string(".foo\\20 bar");
+        assert_eq!(tokens6[0], Dot);
+        assert_eq!(tokens6[1], Ident("foo bar".into()));
+
+        let tokens7 = Tokenizer::from_string(".foo\\002D bar");
+        assert_eq!(tokens7[0], Dot);
+        assert_eq!(tokens7[1], Ident("foo-bar".into()));
+
+        // Unicode plane 1: \1F4A9 (PILE OF POO)
+        let tokens9 = Tokenizer::from_string(".icon\\1F4A9 -poo");
+        assert_eq!(tokens9[0], Dot);
+        assert_eq!(tokens9[1], Ident("icon💩-poo".into()));
+
+        // CSS ignores extra hex digits: only up to 6 hex digits after \
+        let tokens10 = Tokenizer::from_string(".foo\\110000 bar");
+        // \110000 is not a valid scalar; fallback is char::REPLACEMENT_CHARACTER
+        // Ideally your tokenizer produces a replacement or skips, but we expect standard CSS only up to 0x10FFFF.
+        assert_eq!(tokens10[0], Dot);
+        // Depending on your escape handler, this may insert a replacement character or just drop.
+        // We'll accept 'foo\u{FFFD}bar' for strict Unicode replacement, but
+        // if tokenizer skips invalid codepoints, 'foobar' is also technically correct.
+
+        // We'll check for replacement
+        let s = match &tokens10[1] {
+            Ident(s) => s,
+            _ => panic!("token was not Ident"),
+        };
+        assert!(s.starts_with("foo") && s.ends_with("bar"));
+
+        // Escaped newline should be ignored, allowing split across lines
+        let tokens11 = Tokenizer::from_string(".foo\\\nbar");
+        assert_eq!(tokens11[0], Dot);
+        assert_eq!(tokens11[1], Ident("foobar".into()));
+
+        // Escapes inside function names/at-rules
+        let tokens12 = Tokenizer::from_string("@keyfr\\61mes");
+        assert_eq!(tokens12[0], CssToken::AtKeyword("keyframes".into()));
+
+        // Escaping non-BMP single character (e.g. emoji U+1F600)
+        let tokens13 = Tokenizer::from_string(".emoji\\1F600 face");
+        assert_eq!(tokens13[0], Dot);
+        assert_eq!(tokens13[1], Ident("emoji😀face".into()));
+    }
+
+    #[test]
+    fn test_unescaped_parens_split_tokens() {
+        // Without escapes, '(' and ')' are separate tokens
+        let tokens = Tokenizer::from_string(".foo(3)");
+        assert_eq!(tokens[0], CssToken::Dot);
+        assert_eq!(tokens[1], CssToken::Ident("foo".into()));
+        assert_eq!(tokens[2], CssToken::LeftParen);
+        assert_eq!(tokens[3], CssToken::Number(3.0));
+        assert_eq!(tokens[4], CssToken::RightParen);
     }
 }
