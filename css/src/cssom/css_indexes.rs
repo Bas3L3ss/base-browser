@@ -49,29 +49,6 @@ pub struct CssIndexes {
 }
 
 impl CssIndexes {
-    pub fn append_indexes(&mut self, mut indexes: CssIndexes) {
-        macro_rules! extend_map_vec {
-            ($dst:expr, $src:expr) => {
-                for (k, v) in $src.drain() {
-                    $dst.entry(k).or_default().extend(v);
-                }
-            };
-        }
-
-        extend_map_vec!(self.selectors.by_tag, indexes.selectors.by_tag);
-        extend_map_vec!(self.selectors.by_class, indexes.selectors.by_class);
-        extend_map_vec!(self.selectors.by_attribute, indexes.selectors.by_attribute);
-        extend_map_vec!(self.selectors.by_id, indexes.selectors.by_id);
-
-        self.selectors
-            .universal
-            .extend(indexes.selectors.universal.drain(..));
-
-        self.keyframes.extend(indexes.keyframes.into_iter());
-        self.fonts.extend(indexes.fonts.into_iter());
-        self.media.extend(indexes.media);
-    }
-
     /// Builds and returns `CssIndexes` for efficient style rule lookup by fast paths.
     /// Traverses the CSSOM's rule list.
     pub fn build(cssom: &CssOm) -> Self {

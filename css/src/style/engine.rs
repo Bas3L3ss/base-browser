@@ -4,8 +4,11 @@ use network::resource_loader::resource_loader::ResourceLoader;
 use url::url::Url;
 
 use crate::{
-    cssom::{css_indexes::CssIndexes, cssom::CssOm},
+    cssom::cssom::CssOm,
     parser::parser::Parser,
+    style::{
+        cascade::Cascade, inheritence::Inheritance, matcher::Matcher, styled_node::StyledNode,
+    },
     tokenizer::tokenizer::Tokenizer,
 };
 
@@ -24,8 +27,25 @@ impl StyleEngine {
             cssom.append_stylesheet(rules);
         }
 
-        cssom.append_indexes(CssIndexes::build(&cssom));
+        cssom.build_indexes();
 
         Ok(cssom)
+    }
+    pub fn resolve_styles(dom: &Dom, cssom: &CssOm) -> Vec<StyledNode> {
+        let mut styled_nodes = Vec::new();
+
+        for (node_id, node) in dom.nodes.iter().enumerate() {
+            let candidates = cssom.lookup_candidates(node);
+
+            let matching = Matcher::match_rules(node, dom, &candidates);
+
+            let mut style = Cascade::compute(node, dom, &matching);
+
+            Inheritance::apply(node, dom, &mut style);
+
+            styled_nodes.push(StyledNode::new(node_id, style));
+        }
+
+        styled_nodes
     }
 }
