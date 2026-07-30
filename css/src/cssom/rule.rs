@@ -8,13 +8,13 @@ pub enum CssRule {
     At(AtRule),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StyleRule {
     pub selectors: Vec<ComplexSelector>,
     pub declarations: Vec<Declaration>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AtRule {
     pub name: String,
     pub prelude: Vec<CssToken>,

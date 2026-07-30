@@ -195,3 +195,175 @@ impl CssIndexes {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::assert_eq;
+
+    use super::*;
+    use crate::cssom::{
+        component_value::ComponentValue,
+        css_value::CssValue,
+        property::Property,
+        rule::{AtRule, AtRuleBlock, CssRule, StyleRule},
+        selector::{AttrSelectorOperator, ComplexSelector, CompoundSelector, SimpleSelector},
+    };
+    use crate::tokenizer::css_token::CssToken;
+
+    fn style_rule_with_simple_selector(selector: SimpleSelector) -> CssRule {
+        CssRule::Style(StyleRule {
+            selectors: vec![ComplexSelector {
+                first: {
+                    let mut c = CompoundSelector::new();
+                    c.push(selector);
+                    c
+                },
+                rest: vec![],
+            }],
+            declarations: vec![],
+        })
+    }
+
+    #[test]
+    fn test_index_simple_type_selector() {
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![style_rule_with_simple_selector(SimpleSelector::Type(
+                "div".into(),
+            ))],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        assert_eq!(indexes.selectors.by_tag.get("div").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_index_by_id_and_class() {
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![
+                style_rule_with_simple_selector(SimpleSelector::Id("main".into())),
+                style_rule_with_simple_selector(SimpleSelector::Class("foo".into())),
+            ],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        assert_eq!(indexes.selectors.by_id.get("main").unwrap().len(), 1);
+        assert_eq!(indexes.selectors.by_class.get("foo").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_index_by_attribute() {
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![style_rule_with_simple_selector(SimpleSelector::Attribute {
+                name: "data-x".into(),
+                value: Some("test".into()),
+                operator: Some(AttrSelectorOperator::Equals),
+            })],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        assert_eq!(
+            indexes.selectors.by_attribute.get("data-x").unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_index_universal_selector() {
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![style_rule_with_simple_selector(SimpleSelector::Universal)],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        assert_eq!(indexes.selectors.universal.len(), 1);
+    }
+
+    #[test]
+    fn test_index_specificity_priority() {
+        // Should index in by_id, not by_class/attribute/tag/universal
+        let complex_sel = ComplexSelector {
+            first: {
+                let mut c = CompoundSelector::new();
+                c.push(SimpleSelector::Id("super".into()));
+                c.push(SimpleSelector::Class("c1".into()));
+                c
+            },
+            rest: vec![],
+        };
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![CssRule::Style(StyleRule {
+                selectors: vec![complex_sel],
+                declarations: vec![],
+            })],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        assert!(indexes.selectors.by_id.get("super").is_some());
+        // Should only be present in by_id, not in by_class
+        assert!(indexes.selectors.by_class.get("c1").is_none());
+    }
+
+    #[test]
+    fn test_index_at_font_face() {
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![CssRule::At(AtRule {
+                name: "font-face".into(),
+                prelude: vec![],
+                block: Some(AtRuleBlock::DeclarationList(vec![
+                    crate::cssom::declaration::Declaration {
+                        property: Property::FontFamily,
+                        value: CssValue {
+                            components: vec![ComponentValue::String("Roboto".into())],
+                            is_important: false,
+                        },
+                    },
+                ])),
+            })],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        let fonts = indexes.fonts.get("\"Roboto\"");
+        assert!(fonts.is_some());
+        assert_eq!(fonts.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_index_at_keyframes() {
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![CssRule::At(AtRule {
+                name: "keyframes".into(),
+                prelude: vec![CssToken::Ident("spin".into())],
+                block: None,
+            })],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        let keyf = indexes.keyframes.get("spin");
+        assert!(keyf.is_some());
+    }
+
+    #[test]
+    fn test_index_at_media_nested_rules() {
+        let inner_rule = style_rule_with_simple_selector(SimpleSelector::Type("span".into()));
+        let cssom = crate::cssom::cssom::CssOm {
+            rules: vec![CssRule::At(AtRule {
+                name: "media".into(),
+                prelude: vec![CssToken::Ident("screen".into())],
+                block: Some(AtRuleBlock::RuleList(vec![inner_rule.clone()])),
+            })],
+            indexes: Default::default(),
+        };
+        let indexes = CssIndexes::build(&cssom);
+        assert_eq!(indexes.media.len(), 1);
+        let media_idx = &indexes.media[0];
+        assert_eq!(
+            media_idx
+                .indexes
+                .selectors
+                .by_tag
+                .get("span")
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}
