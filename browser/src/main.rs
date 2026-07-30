@@ -2,7 +2,7 @@ use base_browser::cli::command::Command;
 use css::style::engine::StyleEngine;
 use input_parser::traits::Parse;
 use network::{http::client::HttpClient, resource_loader::resource_loader::ResourceLoader};
-use std::unimplemented;
+use std::{println, unimplemented};
 use url::url::Url;
 use utils::profile_scope;
 
@@ -48,6 +48,8 @@ fn main() -> anyhow::Result<()> {
         let cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
 
         let styled_dom = StyleEngine::resolve_styles(&dom.value, &cssom);
+
+        println!("{styled_dom:#?}");
 
         Ok(())
     } else {

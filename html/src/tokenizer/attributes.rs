@@ -64,7 +64,6 @@ impl Attributes {
                     _ => Some(true),
                 }
             }
-
             "checked" => self.checked = Some(true),
             "readonly" => self.readonly = Some(true),
             "selected" => self.selected = Some(true),
@@ -89,6 +88,84 @@ impl Attributes {
                 let mut map = self.custom.take().unwrap_or_default();
                 map.insert(key.to_string(), value.to_string());
                 self.custom = Some(map);
+            }
+        }
+    }
+
+    /// Returns Some(attribute_value) if present for the given key, or if the attribute is a boolean
+    /// and true, returns Some(attribute_key) as a string, otherwise returns None.
+    pub fn contains(&self, key: &str) -> Option<String> {
+        match key {
+            "id" => self.id.clone(),
+            "class" => self.class.clone(),
+            "style" => self.style.clone(),
+            "title" => self.title.clone(),
+            "name" => self.name.clone(),
+            "value" => self.value.clone(),
+            "href" => self.href.clone(),
+            "src" => self.src.clone(),
+            "alt" => self.alt.clone(),
+            "type" => self.type_attr.clone(),
+            "placeholder" => self.placeholder.clone(),
+            "tabindex" => self.tabindex.clone(),
+            "disabled" => self.disabled.and_then(|b| {
+                if b {
+                    Some("disabled".to_string())
+                } else {
+                    None
+                }
+            }),
+            "checked" => self
+                .checked
+                .and_then(|b| if b { Some("checked".to_string()) } else { None }),
+            "readonly" => self.readonly.and_then(|b| {
+                if b {
+                    Some("readonly".to_string())
+                } else {
+                    None
+                }
+            }),
+            "selected" => self.selected.and_then(|b| {
+                if b {
+                    Some("selected".to_string())
+                } else {
+                    None
+                }
+            }),
+            "required" => self.required.and_then(|b| {
+                if b {
+                    Some("required".to_string())
+                } else {
+                    None
+                }
+            }),
+            "maxlength" => self.maxlength.clone(),
+            "minlength" => self.minlength.clone(),
+            "width" => self.width.clone(),
+            "height" => self.height.clone(),
+            "rel" => self.rel.clone(),
+            "action" => self.action.clone(),
+            "method" => self.method.clone(),
+            "enctype" => self.enctype.clone(),
+            "for" => self.for_attr.clone(),
+            "target" => self.target.clone(),
+            "pattern" => self.pattern.clone(),
+            "autocomplete" => self.autocomplete.clone(),
+            "multiple" => self.multiple.and_then(|b| {
+                if b {
+                    Some("multiple".to_string())
+                } else {
+                    None
+                }
+            }),
+            "hidden" => self
+                .hidden
+                .and_then(|b| if b { Some("hidden".to_string()) } else { None }),
+            "role" => self.role.clone(),
+            "aria-label" => self.aria_label.clone(),
+            _ => {
+                // custom attributes
+                self.custom.as_ref().and_then(|map| map.get(key).cloned())
             }
         }
     }
