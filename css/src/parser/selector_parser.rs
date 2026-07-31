@@ -39,6 +39,10 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
         while !self.parser.is_eof() {
             let before = self.parser.pos;
             if let Some(simple) = self.parse_simple_selector() {
+                if !simple.is_subject_selector() && compound.is_empty() {
+                    compound.push(SimpleSelector::Universal);
+                }
+
                 compound.push(simple);
             } else if before == self.parser.pos {
                 break;
@@ -96,7 +100,9 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
             }
             CssToken::Colon => {
                 let start_pos = self.parser.pos;
+
                 let selector = self.parse_pseudo_selector();
+
                 if selector.is_some() {
                     selector
                 } else {

@@ -35,6 +35,8 @@ pub struct Attributes {
     pub hidden: Option<bool>,
     pub role: Option<String>,
     pub aria_label: Option<String>,
+    pub dir: Option<String>,
+    pub lang: Option<String>,
     pub custom: Option<HashMap<String, String>>,
 }
 
@@ -84,6 +86,8 @@ impl Attributes {
             "hidden" => self.hidden = Some(true),
             "role" => self.role = Some(value.to_string()),
             "aria-label" => self.aria_label = Some(value.to_string()),
+            "dir" => self.dir = Some(value.to_string()),
+            "lang" => self.lang = Some(value.to_string()),
             _ => {
                 let mut map = self.custom.take().unwrap_or_default();
                 map.insert(key.to_string(), value.to_string());
@@ -163,6 +167,8 @@ impl Attributes {
                 .and_then(|b| if b { Some("hidden".to_string()) } else { None }),
             "role" => self.role.clone(),
             "aria-label" => self.aria_label.clone(),
+            "dir" => self.dir.clone(),
+            "lang" => self.lang.clone(),
             _ => {
                 // custom attributes
                 self.custom.as_ref().and_then(|map| map.get(key).cloned())

@@ -1,3 +1,5 @@
+use std::matches;
+
 /// Operators for attribute selectors, e.g. [attr=value], [attr^="foo"], etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttrSelectorOperator {
@@ -36,6 +38,13 @@ pub enum SimpleSelector {
 
     /// Pseudo-element selector: ::before, ::after
     PseudoElement(String),
+}
+
+impl SimpleSelector {
+    /// Returns true if this is a universal or type selector.
+    pub fn is_subject_selector(&self) -> bool {
+        matches!(self, Self::Universal | Self::Type(_))
+    }
 }
 
 /// A compound selector: one or more simple selectors without combinators.
