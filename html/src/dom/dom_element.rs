@@ -1,5 +1,3 @@
-use std::format;
-
 use crate::tokenizer::{attributes::Attributes, html_tags::HtmlTag};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -15,7 +13,7 @@ impl DomElement {
 
     /// Returns a string representation of the tag name.
     pub fn tag_name(&self) -> String {
-        format!("{:?}", self.tag)
+        self.tag.to_tag_string()
     }
 
     /// Returns the value of the "id" attribute if present.

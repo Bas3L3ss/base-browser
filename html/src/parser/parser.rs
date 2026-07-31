@@ -29,7 +29,7 @@ impl Parser {
         let mut tokenizer = Tokenizer::new(html);
         let tokens = tokenizer.tokenize();
         profile_scope!("HTML Parse");
-        let mut arena = vec![Node::new(NodeType::Document, None, vec![])];
+        let mut arena = vec![Node::new(0, NodeType::Document, None, vec![])];
         let mut style_sheets: Vec<StyleSheetRef> = vec![];
         let mut errors = vec![];
         let mut token_idx = 0;
@@ -44,13 +44,6 @@ impl Parser {
         Ok(ParsedOutput::new(Dom::new(arena, style_sheets), errors))
     }
 
-    fn push_child(arena: &mut Vec<Node>, parent_id: usize, node: Node) -> usize {
-        arena.push(node);
-        let node_id = arena.len() - 1;
-        arena[parent_id].children.push(node_id);
-        node_id
-    }
-
     fn parse_element(
         tokens: &[Token],
         arena: &mut Vec<Node>,
@@ -62,6 +55,7 @@ impl Parser {
         style_sheets: &mut Vec<StyleSheetRef>,
     ) {
         let node = Node::new(
+            arena.len(),
             NodeType::Element(DomElement::new(tag.clone(), attributes.clone())),
             Some(parent_id),
             vec![],
@@ -88,6 +82,13 @@ impl Parser {
 
         *token_idx += 1;
         Self::parse_children(tokens, arena, token_idx, node_id, errors, style_sheets);
+    }
+
+    fn push_child(arena: &mut Vec<Node>, parent_id: usize, node: Node) -> usize {
+        let node_id = node.id;
+        arena.push(node);
+        arena[parent_id].children.push(node_id);
+        node_id
     }
 
     /// Depth-first traversal to consume tokens and build node tree into arena.
@@ -162,6 +163,7 @@ impl Parser {
 
                 Token::SelfClose(tag, attributes) => {
                     let node = Node::new(
+                        arena.len(),
                         NodeType::Element(DomElement::new(tag.clone(), attributes.clone())),
                         Some(parent_id),
                         vec![],
@@ -188,6 +190,7 @@ impl Parser {
                         arena,
                         parent_id,
                         Node::new(
+                            arena.len(),
                             NodeType::Doctype(attribute.clone()),
                             Some(parent_id),
                             vec![],
@@ -200,7 +203,12 @@ impl Parser {
                     Self::push_child(
                         arena,
                         parent_id,
-                        Node::new(NodeType::Comment(comment.clone()), Some(parent_id), vec![]),
+                        Node::new(
+                            arena.len(),
+                            NodeType::Comment(comment.clone()),
+                            Some(parent_id),
+                            vec![],
+                        ),
                     );
                     *token_idx += 1;
                 }
@@ -209,7 +217,12 @@ impl Parser {
                     Self::push_child(
                         arena,
                         parent_id,
-                        Node::new(NodeType::Text(content.clone()), Some(parent_id), vec![]),
+                        Node::new(
+                            arena.len(),
+                            NodeType::Text(content.clone()),
+                            Some(parent_id),
+                            vec![],
+                        ),
                     );
                     *token_idx += 1;
                 }

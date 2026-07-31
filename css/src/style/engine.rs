@@ -36,7 +36,7 @@ impl StyleEngine {
     pub fn resolve_styles(dom: &Dom, cssom: &CssOm) -> Vec<StyledNode> {
         let mut styled_nodes = Vec::new();
 
-        for (node_id, node) in dom.nodes.iter().enumerate() {
+        for node in &dom.nodes {
             match &node.ntype {
                 NodeType::Element(element) => {
                     let candidates = cssom.lookup_candidates(element);
