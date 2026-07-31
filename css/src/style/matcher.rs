@@ -1,4 +1,4 @@
-use std::{collections::HashSet, println};
+use std::{collections::HashSet, unimplemented};
 
 use html::{
     dom::{dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType},
@@ -10,7 +10,8 @@ use crate::cssom::{
     cssom::CssOm,
     rule::CssRule,
     selector::{
-        AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, SimpleSelector,
+        AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, PseudoArg,
+        SimpleSelector,
     },
 };
 
@@ -24,13 +25,13 @@ impl Matcher {
         cssom: &CssOm,
     ) -> Option<Vec<u32>> {
         let mut matched: HashSet<u32> = HashSet::new();
+
         for candidate in candidates {
             let rule = match cssom.rules.get(candidate.rule_index as usize) {
                 Some(r) => r,
                 None => continue,
             };
 
-            println!("{rule:#?}");
             // This must be a style rule, get as StyleRule variant and access its selectors
             let complex_selector = match rule {
                 CssRule::Style(style_rule) => {
@@ -45,7 +46,7 @@ impl Matcher {
             };
 
             if complex_selector.rest.is_empty() {
-                if Self::match_compound(node, complex_selector.rightmost()) {
+                if Self::match_compound(node, complex_selector.rightmost(), dom) {
                     matched.insert(candidate.rule_index);
                 }
             } else {
@@ -74,12 +75,12 @@ impl Matcher {
         rest_index: isize,
     ) -> bool {
         if rest_index < 0 {
-            return Self::match_compound(node, &complex_selector.first);
+            return Self::match_compound(node, &complex_selector.first, dom);
         }
 
         let (ref combinator, ref right_compound) = complex_selector.rest[rest_index as usize];
 
-        if !Self::match_compound(node, right_compound) {
+        if !Self::match_compound(node, right_compound, dom) {
             return false;
         }
 
@@ -95,7 +96,7 @@ impl Matcher {
 
                 while let Some(ancestor) = cur_node {
                     let parent = &dom.nodes[ancestor];
-                    if Self::match_compound(parent, left_compound) {
+                    if Self::match_compound(parent, left_compound, dom) {
                         return Self::matches_complex_selector_from(
                             parent,
                             dom,
@@ -117,7 +118,7 @@ impl Matcher {
 
                 if let Some(ancestor) = node.parent {
                     let parent = &dom.nodes[ancestor];
-                    if Self::match_compound(parent, left_compound)
+                    if Self::match_compound(parent, left_compound, dom)
                         && parent.children.contains(&node.id)
                     {
                         return Self::matches_complex_selector_from(
@@ -139,7 +140,7 @@ impl Matcher {
                 };
                 if let Some(sibling) = node.previous_sibling(&dom.nodes) {
                     let sibling = &dom.nodes[sibling];
-                    if Self::match_compound(sibling, left_compound) {
+                    if Self::match_compound(sibling, left_compound, dom) {
                         return Self::matches_complex_selector_from(
                             sibling,
                             dom,
@@ -161,7 +162,7 @@ impl Matcher {
                 let mut cur_node = node.previous_sibling(&dom.nodes);
                 while let Some(sibling_id) = cur_node {
                     let sibling = &dom.nodes[sibling_id];
-                    if Self::match_compound(sibling, left_compound) {
+                    if Self::match_compound(sibling, left_compound, dom) {
                         return Self::matches_complex_selector_from(
                             sibling,
                             dom,
@@ -177,17 +178,22 @@ impl Matcher {
         }
     }
 
-    fn match_compound(node: &Node, compound_selector: &CompoundSelector) -> bool {
+    fn match_compound(node: &Node, compound_selector: &CompoundSelector, dom: &Dom) -> bool {
         match &node.ntype {
             NodeType::Element(element) => compound_selector
                 .simple_selectors
                 .iter()
-                .all(|selector| Self::match_simple(element, selector)),
+                .all(|selector| Self::match_simple(element, selector, node, dom)),
             _ => false,
         }
     }
 
-    fn match_simple(element: &DomElement, selector: &SimpleSelector) -> bool {
+    fn match_simple(
+        element: &DomElement,
+        selector: &SimpleSelector,
+        node: &Node,
+        dom: &Dom,
+    ) -> bool {
         match selector {
             SimpleSelector::Class(classname) => element.classes().contains(&classname.as_str()),
             SimpleSelector::Id(id) => element.id().map_or(false, |my_id: &str| my_id == id),
@@ -200,8 +206,53 @@ impl Matcher {
                 Self::match_attribute_operators(value, operator, attr_val)
             }),
             SimpleSelector::Universal => true,
-            _ => false, // TODO: #IDEA 4
+            SimpleSelector::PseudoClass(name, pseudo_args) => {
+                Self::match_pseudo_class(name, pseudo_args.as_ref(), element, node, dom)
+            }
+            SimpleSelector::PseudoElement(_) => false,
         }
+    }
+
+    fn match_pseudo_class(
+        name: &str,
+        pseudo_args: Option<&PseudoArg>,
+        element: &DomElement,
+        node: &Node,
+        dom: &Dom,
+    ) -> bool {
+        match name {
+            "root" => match element.tag {
+                HtmlTag::Html => true,
+                _ => false,
+            },
+            "empty" => {
+                return node.children.is_empty();
+            }
+
+            "first-child" => match node.siblings(&dom.nodes) {
+                Some(sb) => sb.get(0).map_or(false, |first_id| *first_id == node.id),
+                None => false,
+            },
+            "last-child" => match node.siblings(&dom.nodes) {
+                Some(sb) => sb.last().map_or(false, |last_id| *last_id == node.id),
+                None => false,
+            },
+            "only-child" => match node.siblings(&dom.nodes) {
+                Some(sb) => sb.len() == 1 && sb[0] == node.id,
+                None => false,
+            },
+            "nth-child" => {
+                unimplemented!()
+            }
+            "nth-last-child" => {
+                unimplemented!()
+            }
+
+            _ => false,
+        }
+    }
+    fn match_pseudo_element() -> bool {
+        unimplemented!()
     }
 
     fn match_attribute_operators(
@@ -904,37 +955,47 @@ mod tests {
                     <span id="p" class="side-span"></span>
                 </aside>
                 <footer id="q" class="footer"></footer>
+                <footer id="r" class="tag z"></footer>
+                <footer id="s" class="z tag"></footer>
+                <footer id="t" class=""></footer>
+                <footer id="u" class="tag z"></footer>
+                <footer id="v" class="hi tag z"></footer>
             </div>
         "#;
 
-        // Remove pseudo-classes/elements from CSS: Only use type, class, id, attribute, descendant, child, and sibling selectors
+        // Note: The index for CSS matching and expectations refers to the rule index,
+        // not the selector index—selectors are not rules; each rule is a full semantic unit.
+        // Each rule is marked below with its zero-based index for reference:
+
         let css = r#"
-            div { color: blue; }
-            section.content { border: 1px solid red; }
-            ul.list > li.item { font-weight: bold; }
+            /*  0 */ div { color: blue; }
+            /*  1 */ section.content { border: 1px solid red; }
+            /*  2 */ ul.list > li.item { font-weight: bold; }
 
-            div.parent section > article .header { background: yellow; }
-            .parent > section > article.depth-0 > header.main-header { padding: 2px; }
+            /*  3 */ div.parent section > article .header { background: yellow; }
+            /*  4 */ .parent > section > article.depth-0 > header.main-header { padding: 2px; }
 
-            [data-test="foo"] { font-size: 120%; }
-            [data-role^="call"] { outline: 2px dashed green; }
-            [lang|="en"] { text-transform: uppercase; }
-            [class~="special"] { text-decoration: underline; }
+            /*  5 */ [data-role^="call"] { outline: 2px dashed green; }
+            /*  6 */ [data-test="foo"] { font-size: 120%; }
+            /*  7 */ [lang|="en"] { text-transform: uppercase; }
+            /*  8 */ [class~="special"] { text-decoration: underline; }
 
-            #h { opacity: 0.8; }
+            /*  9 */ #h { opacity: 0.8; }
 
-            .target.z, #h.special { color: orange; }
-            .foo.bar { font-style: italic; }
-            .article.ancestor > .box { margin: 4px; }
+            /* 10 */ .target.z, #h.special { color: orange; }
+            /* 11 */ .foo.bar { font-style: italic; }
+            /* 12 */ .article.ancestor > .box { margin: 4px; }
 
-            #e, .side-span, .deep.child { border-radius: 6px; }
-            article > header, article > div { min-height: 20px; }
+            /* 13 */ #e, .side-span, .deep.child { border-radius: 6px; }
+            /* 14 */ article > header, article > div { min-height: 20px; }
 
-            * > .main-header { box-shadow: 1px 1px gray; }
+            /* 15 */ * > .main-header { box-shadow: 1px 1px gray; }
 
-            .parent article .deep.child { color: rebeccapurple; }
+            /* 16 */ .parent article .deep.child { color: rebeccapurple; }
+            /* 17 */ .tag.z  { color: orange; }
+            /* 18 */ .tag.z.hi  { color: orange; }
+
         "#;
-
         let result = Parser::to_dom(html).unwrap();
         let dom = result.value;
 
@@ -945,6 +1006,7 @@ mod tests {
             rules,
             indexes: CssIndexes::default(),
         };
+        println!("{}", cssom.rules.len());
         cssom.build_indexes();
 
         // Helper to get Node and DomElement by id
@@ -966,26 +1028,29 @@ mod tests {
                 (node, el)
             };
 
-        // Define a much nerfed expectation set:
-        // Only rules that do not involve pseudo-classes or pseudo-elements (or :is/:where/:not etc.)
+        // Expectations, double-checked to match indexes above:
         let expected_matched_rules = [
-            ("a", vec![0]),               // div
-            ("b", vec![1, 7, 8]),         // section.content, [lang|="en"], [class~="special"]
-            ("c", vec![0, 6]),            // div, [data-test="foo"]
-            ("d", vec![0]),               // div (descendant/ancestor rules not supported here)
-            ("e", vec![12, 15]),          // #e, article > header
-            ("f", vec![0, 7, 17]),        // div, [data-role^="call"], article > div
-            ("g", vec![]),                // no rule without pseudo
-            ("h", vec![0, 8, 9, 10, 13]), // div, [class~="special"], [lang|="en"], #h, .target.z
-            ("i", vec![0, 12]),           // div, .foo.bar
-            ("j", vec![]),                // no rule
-            ("k", vec![]),                // no rule
-            ("l", vec![12]), // .item.special becomes just .item .special but only .item is dropped
-            ("m", vec![]),   // no rule
-            ("n", vec![14]), // .deep.child
-            ("o", vec![]),   // aside, but no matching rule
-            ("p", vec![12]), // .side-span
-            ("q", vec![]),   // footer, no rule
+            ("e", vec![13, 14]), // #e, article > header
+            ("d", vec![]),
+            ("c", vec![0, 6]),     // div, [data-test="foo"]
+            ("a", vec![0]),        // div
+            ("b", vec![1, 7, 8]),  // section.content, [lang|="en"], [class~="special"]
+            ("f", vec![0, 5, 14]), // div, [data-role^="call"], article > div
+            ("g", vec![10]),       // no rule without pseudo
+            ("h", vec![9, 10, 8]), // #h, .target.z, [class~="special"]
+            ("i", vec![0, 11]),    // div, .foo.bar
+            ("j", vec![]),         // ul, no rule
+            ("k", vec![2]),        // li, no rule
+            ("l", vec![8, 2]),     // li, .item.special (should not match .side-span or others)
+            ("m", vec![2]),        // li, no rule
+            ("n", vec![13]),       // .deep.child, .parent article .deep.child
+            ("o", vec![]),         // aside, no rule
+            ("p", vec![13]),       // .side-span
+            ("r", vec![17]),       // footer, no rule
+            ("s", vec![17]),       // footer, no rule
+            ("t", vec![]),         // footer, no rule
+            ("u", vec![17]),       // footer, no rule
+            ("v", vec![18]),       // footer, no rule
         ];
 
         for (id, expected) in expected_matched_rules {
@@ -1251,6 +1316,7 @@ mod tests {
         let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
+        println!("{rules:#?}");
         let mut cssom = CssOm {
             rules,
             indexes: CssIndexes::default(),
@@ -1474,8 +1540,6 @@ mod tests {
         let e = find("e");
         let ul1 = find("ul1");
         let ul2 = find("ul2");
-        let li1 = find("li1");
-        let li2 = find("li2");
         let sec1 = find("sec1");
 
         let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);

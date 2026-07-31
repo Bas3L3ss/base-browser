@@ -175,4 +175,138 @@ impl Attributes {
             }
         }
     }
+
+    /// Returns a vector of all attribute keys currently set on this element, including standard and custom attributes.
+    /// Only the names of attributes that are set will be returned.
+    pub fn keys(&self) -> Vec<&str> {
+        let mut keys = Vec::new();
+
+        if self.id.is_some() {
+            keys.push("id");
+        }
+        if self.class.is_some() {
+            keys.push("class");
+        }
+        if self.style.is_some() {
+            keys.push("style");
+        }
+        if self.title.is_some() {
+            keys.push("title");
+        }
+        if self.name.is_some() {
+            keys.push("name");
+        }
+        if self.value.is_some() {
+            keys.push("value");
+        }
+        if self.href.is_some() {
+            keys.push("href");
+        }
+        if self.src.is_some() {
+            keys.push("src");
+        }
+        if self.alt.is_some() {
+            keys.push("alt");
+        }
+        if self.type_attr.is_some() {
+            keys.push("type");
+        }
+        if self.placeholder.is_some() {
+            keys.push("placeholder");
+        }
+        if self.tabindex.is_some() {
+            keys.push("tabindex");
+        }
+        if let Some(disabled) = self.disabled {
+            if disabled {
+                keys.push("disabled");
+            }
+        }
+        if let Some(checked) = self.checked {
+            if checked {
+                keys.push("checked");
+            }
+        }
+        if let Some(readonly) = self.readonly {
+            if readonly {
+                keys.push("readonly");
+            }
+        }
+        if let Some(selected) = self.selected {
+            if selected {
+                keys.push("selected");
+            }
+        }
+        if let Some(required) = self.required {
+            if required {
+                keys.push("required");
+            }
+        }
+        if self.maxlength.is_some() {
+            keys.push("maxlength");
+        }
+        if self.minlength.is_some() {
+            keys.push("minlength");
+        }
+        if self.width.is_some() {
+            keys.push("width");
+        }
+        if self.height.is_some() {
+            keys.push("height");
+        }
+        if self.rel.is_some() {
+            keys.push("rel");
+        }
+        if self.action.is_some() {
+            keys.push("action");
+        }
+        if self.method.is_some() {
+            keys.push("method");
+        }
+        if self.enctype.is_some() {
+            keys.push("enctype");
+        }
+        if self.for_attr.is_some() {
+            keys.push("for");
+        }
+        if self.target.is_some() {
+            keys.push("target");
+        }
+        if self.pattern.is_some() {
+            keys.push("pattern");
+        }
+        if self.autocomplete.is_some() {
+            keys.push("autocomplete");
+        }
+        if let Some(multiple) = self.multiple {
+            if multiple {
+                keys.push("multiple");
+            }
+        }
+        if let Some(hidden) = self.hidden {
+            if hidden {
+                keys.push("hidden");
+            }
+        }
+        if self.role.is_some() {
+            keys.push("role");
+        }
+        if self.aria_label.is_some() {
+            keys.push("aria-label");
+        }
+        if self.dir.is_some() {
+            keys.push("dir");
+        }
+        if self.lang.is_some() {
+            keys.push("lang");
+        }
+        // Add custom keys
+        if let Some(custom) = &self.custom {
+            for key in custom.keys() {
+                keys.push(key.as_str());
+            }
+        }
+
+        keys
+    }
 }

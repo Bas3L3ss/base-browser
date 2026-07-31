@@ -1,5 +1,7 @@
 use std::matches;
 
+use crate::cssom::component_value::ComponentValue;
+
 /// Operators for attribute selectors, e.g. [attr=value], [attr^="foo"], etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttrSelectorOperator {
@@ -9,6 +11,12 @@ pub enum AttrSelectorOperator {
     PrefixMatch,    // ^=
     SuffixMatch,    // $=
     SubstringMatch, // *=
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PseudoArg {
+    SelectorList(Vec<ComplexSelector>),
+    Values(Vec<ComponentValue>), // or Vec<ComponentValue>, etc.
 }
 
 /// Represents an indivisible simple selector.
@@ -34,7 +42,7 @@ pub enum SimpleSelector {
     },
 
     /// Pseudo-class selector (optionally with argument): :hover, :nth-child(2)
-    PseudoClass(String, Option<Vec<ComplexSelector>>),
+    PseudoClass(String, Option<PseudoArg>),
 
     /// Pseudo-element selector: ::before, ::after
     PseudoElement(String),

@@ -20,6 +20,23 @@ impl Node {
         }
     }
 
+    pub fn siblings(&self, dom_nodes: &[Node]) -> Option<Vec<NodeID>> {
+        let parent_id = self.parent?;
+        let parent = dom_nodes.get(parent_id)?;
+        let siblings: Vec<NodeID> = parent
+            .children
+            .iter()
+            .filter_map(|&cid| {
+                let node = dom_nodes.get(cid)?;
+                match node.ntype {
+                    NodeType::Element(_) => Some(cid),
+                    _ => None,
+                }
+            })
+            .collect();
+        Some(siblings)
+    }
+
     pub fn previous_sibling(&self, dom_nodes: &[Node]) -> Option<NodeID> {
         self.parent.and_then(|parent_id| {
             dom_nodes.get(parent_id).and_then(|parent| {

@@ -32,8 +32,7 @@ impl CssOm {
         // Extract class list (split by whitespace)
         let classes = element.classes();
 
-        // Extract all attribute names except id and class
-        let attributes = element.attribute_keys();
+        let attributes = element.attributes.keys();
 
         // Lookup by id
         if let Some(id_val) = id {

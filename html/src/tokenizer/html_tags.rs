@@ -64,7 +64,6 @@ pub enum HtmlTag {
     Span, // <span>
     Br,
     Wbr,
-    // Extend with more inline/phrasing tags as needed
     // Ruby annotation tags (some modern HTML)
     Ruby,
     Rt,
@@ -212,7 +211,6 @@ impl HtmlTag {
             "span" => HtmlTag::Span,
             "br" => HtmlTag::Br,
             "wbr" => HtmlTag::Wbr,
-            // More phrasing tags
             "ruby" => HtmlTag::Ruby,
             "rt" => HtmlTag::Rt,
             "rp" => HtmlTag::Rp,

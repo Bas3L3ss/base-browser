@@ -401,7 +401,7 @@ impl<'a> Parser<'a> {
         declarations
     }
 
-    fn parse_component_value(&mut self) -> Option<ComponentValue> {
+    pub(crate) fn parse_component_value(&mut self) -> Option<ComponentValue> {
         match self.current() {
             CssToken::Ident(s) => {
                 // Could be the start of a function, e.g., rgb(, url(
@@ -594,7 +594,8 @@ mod tests {
         cssom::{
             keyframe::KeyframeSelector,
             selector::{
-                AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, SimpleSelector,
+                AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, PseudoArg,
+                SimpleSelector,
             },
         },
         tokenizer::tokenizer::Tokenizer,
@@ -844,7 +845,7 @@ mod tests {
             selector.first.simple_selectors[1],
             SimpleSelector::PseudoClass(
                 "not".to_string(),
-                Some(vec![{
+                Some(PseudoArg::SelectorList(vec![{
                     let mut comp = CompoundSelector::new();
                     comp.push(SimpleSelector::Universal);
                     comp.push(SimpleSelector::Class("foo".to_string()));
@@ -852,7 +853,7 @@ mod tests {
                         first: comp,
                         rest: Vec::new(),
                     }
-                }])
+                }])),
             )
         );
     }
@@ -865,7 +866,7 @@ mod tests {
             selector.first.simple_selectors[1],
             SimpleSelector::PseudoClass(
                 "not".to_string(),
-                Some(vec![{
+                Some(PseudoArg::SelectorList(vec![{
                     let mut comp = CompoundSelector::new();
                     comp.push(SimpleSelector::Universal);
                     comp.push(SimpleSelector::Class("foo".to_string()));
@@ -875,7 +876,7 @@ mod tests {
                         first: comp,
                         rest: Vec::new(),
                     }
-                }])
+                }])),
             )
         );
     }
@@ -883,7 +884,8 @@ mod tests {
     #[test]
     fn test_is_and_where_with_multiple() {
         let selector = parse_first_selector(":is(.a, #b)");
-        if let SimpleSelector::PseudoClass(name, Some(groups)) = &selector.first.simple_selectors[1]
+        if let SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(groups))) =
+            &selector.first.simple_selectors[1]
         {
             // :is .a matches a universal and a class
             assert_eq!(name, "is");
@@ -908,7 +910,8 @@ mod tests {
         }
 
         let selector = parse_first_selector(":where(.foo, #bar)");
-        if let SimpleSelector::PseudoClass(name, Some(groups)) = &selector.first.simple_selectors[1]
+        if let SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(groups))) =
+            &selector.first.simple_selectors[1]
         {
             assert_eq!(name, "where");
             assert_eq!(groups.len(), 2);
@@ -1382,7 +1385,7 @@ mod tests {
                 SimpleSelector::Universal,
                 SimpleSelector::PseudoClass(
                     "is".to_string(),
-                    Some(vec![ComplexSelector {
+                    Some(PseudoArg::SelectorList(vec![ComplexSelector {
                         first: {
                             let mut comp = CompoundSelector::new();
                             comp.push(SimpleSelector::Type("div".to_string()));
@@ -1393,7 +1396,7 @@ mod tests {
                             comp.push(SimpleSelector::Type("p".to_string()));
                             comp
                         })]
-                    }])
+                    }]))
                 )
             ]
         );
@@ -1410,7 +1413,7 @@ mod tests {
                 SimpleSelector::Universal,
                 SimpleSelector::PseudoClass(
                     "is".to_string(),
-                    Some(vec![
+                    Some(PseudoArg::SelectorList(vec![
                         ComplexSelector {
                             first: {
                                 let mut comp = CompoundSelector::new();
@@ -1431,7 +1434,7 @@ mod tests {
                                 comp
                             })]
                         }
-                    ])
+                    ]))
                 )
             ]
         );
@@ -1481,14 +1484,14 @@ mod tests {
                 SimpleSelector::Type("div".to_string()),
                 SimpleSelector::PseudoClass(
                     "is".to_string(),
-                    Some(vec![
+                    Some(PseudoArg::SelectorList(vec![
                         {
                             let mut s = ComplexSelector::default();
                             s.first.push(SimpleSelector::Universal);
 
                             s.first.simple_selectors.push(SimpleSelector::PseudoClass(
                                 "not".to_string(),
-                                Some(vec![{
+                                Some(PseudoArg::SelectorList(vec![{
                                     let mut s2 = ComplexSelector::default();
 
                                     s2.first.push(SimpleSelector::Universal);
@@ -1496,7 +1499,7 @@ mod tests {
                                         .simple_selectors
                                         .push(SimpleSelector::Class("a".to_string()));
                                     s2
-                                }]),
+                                }])),
                             ));
                             s
                         },
@@ -1510,7 +1513,7 @@ mod tests {
                                 .push(SimpleSelector::Class("b".to_string()));
                             s
                         }
-                    ])
+                    ]))
                 )
             ]
         );
@@ -1522,7 +1525,7 @@ mod tests {
                 SimpleSelector::Type("div".to_string()),
                 SimpleSelector::PseudoClass(
                     "has".to_string(),
-                    Some(vec![{
+                    Some(PseudoArg::SelectorList(vec![{
                         let mut cs = ComplexSelector::default();
                         cs.rest.push((Combinator::Child, {
                             let mut comp = CompoundSelector::new();
@@ -1530,7 +1533,7 @@ mod tests {
                             comp
                         }));
                         cs
-                    }])
+                    }]))
                 )
             ]
         );
@@ -1542,12 +1545,12 @@ mod tests {
                 SimpleSelector::Type("div".to_string()),
                 SimpleSelector::PseudoClass(
                     "not".to_string(),
-                    Some(vec![{
+                    Some(PseudoArg::SelectorList(vec![{
                         let mut cs = ComplexSelector::default();
                         cs.first.push(SimpleSelector::Universal);
                         cs.first.simple_selectors.push(SimpleSelector::PseudoClass(
                             "is".to_string(),
-                            Some(vec![
+                            Some(PseudoArg::SelectorList(vec![
                                 {
                                     let mut inner = ComplexSelector::default();
                                     inner.first.push(SimpleSelector::Universal);
@@ -1568,10 +1571,10 @@ mod tests {
                                         .push(SimpleSelector::Class("b".to_string()));
                                     inner
                                 },
-                            ]),
+                            ])),
                         ));
                         cs
-                    }])
+                    }]))
                 )
             ]
         );
@@ -1585,7 +1588,10 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Type("div".to_string()),
-                SimpleSelector::PseudoClass("is".to_string(), Some(vec![])),
+                SimpleSelector::PseudoClass(
+                    "is".to_string(),
+                    Some(PseudoArg::SelectorList(vec![]))
+                ),
             ]
         );
 
@@ -1594,7 +1600,10 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Type("div".to_string()),
-                SimpleSelector::PseudoClass("not".to_string(), Some(vec![])),
+                SimpleSelector::PseudoClass(
+                    "not".to_string(),
+                    Some(PseudoArg::SelectorList(vec![]))
+                ),
             ]
         );
     }
@@ -1607,27 +1616,42 @@ mod tests {
             SimpleSelector::Type("div".to_string())
         );
         match &selector.first.simple_selectors[1] {
-            SimpleSelector::PseudoClass(name, Some(args)) if name == "is" => {
-                assert_eq!(args.len(), 1);
-                match &args[0].first.simple_selectors[1] {
-                    SimpleSelector::PseudoClass(inner_name, Some(inner_args))
-                        if inner_name == "not" =>
-                    {
-                        assert_eq!(inner_args.len(), 1);
-                        match &inner_args[0].first.simple_selectors[1] {
-                            SimpleSelector::PseudoClass(n, Some(has_args)) if n == "has" => {
-                                assert_eq!(has_args.len(), 1);
-                                assert_eq!(
-                                    has_args[0].first.simple_selectors[0],
-                                    SimpleSelector::Type("img".to_string())
-                                );
+            SimpleSelector::PseudoClass(name, Some(args)) if name == "is" => match args {
+                PseudoArg::SelectorList(is_args) => {
+                    assert_eq!(is_args.len(), 1);
+                    match &is_args[0].first.simple_selectors[1] {
+                        SimpleSelector::PseudoClass(inner_name, Some(inner_args))
+                            if inner_name == "not" =>
+                        {
+                            match inner_args {
+                                PseudoArg::SelectorList(not_args) => {
+                                    assert_eq!(not_args.len(), 1);
+                                    match &not_args[0].first.simple_selectors[1] {
+                                        SimpleSelector::PseudoClass(n, Some(has_args))
+                                            if n == "has" =>
+                                        {
+                                            match has_args {
+                                                PseudoArg::SelectorList(has_args_list) => {
+                                                    assert_eq!(has_args_list.len(), 1);
+                                                    assert_eq!(
+                                                        has_args_list[0].first.simple_selectors[0],
+                                                        SimpleSelector::Type("img".to_string())
+                                                    );
+                                                }
+                                                _ => panic!("Expected SelectorList for :has"),
+                                            }
+                                        }
+                                        _ => panic!("Expected nested :has"),
+                                    }
+                                }
+                                _ => panic!("Expected SelectorList for :not"),
                             }
-                            _ => panic!("Expected nested :has"),
                         }
+                        _ => panic!("Expected nested :not"),
                     }
-                    _ => panic!("Expected nested :not"),
                 }
-            }
+                _ => panic!("Expected SelectorList for :is"),
+            },
             _ => panic!("Expected outer :is"),
         }
     }
@@ -1871,7 +1895,9 @@ mod tests {
         let selector = parse_first_selector(":is(div, span.foo, #id)");
         assert_eq!(selector.first.simple_selectors.len(), 2);
         match &selector.first.simple_selectors[1] {
-            SimpleSelector::PseudoClass(name, Some(args)) if name == "is" => {
+            SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(args)))
+                if name == "is" =>
+            {
                 assert_eq!(args.len(), 3);
                 // Add Universal for tag selector (div)
                 assert_eq!(
@@ -1901,10 +1927,14 @@ mod tests {
         let selector = parse_first_selector(":not(:is(.a, .b))");
         assert_eq!(selector.first.simple_selectors.len(), 2);
         match &selector.first.simple_selectors[1] {
-            SimpleSelector::PseudoClass(name, Some(args)) if name == "not" => {
+            SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(args)))
+                if name == "not" =>
+            {
                 assert_eq!(args.len(), 1);
                 match &args[0].first.simple_selectors[1] {
-                    SimpleSelector::PseudoClass(name, Some(is_args)) if name == "is" => {
+                    SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(is_args)))
+                        if name == "is" =>
+                    {
                         assert_eq!(is_args.len(), 2);
                         assert_eq!(
                             is_args[0].first.simple_selectors,
@@ -1924,10 +1954,14 @@ mod tests {
         let selector = parse_first_selector(":has(:not(.foo))");
         assert_eq!(selector.first.simple_selectors.len(), 2);
         match &selector.first.simple_selectors[1] {
-            SimpleSelector::PseudoClass(name, Some(args)) if name == "has" => {
+            SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(args)))
+                if name == "has" =>
+            {
                 assert_eq!(args.len(), 1);
                 match &args[0].first.simple_selectors[1] {
-                    SimpleSelector::PseudoClass(name, Some(not_args)) if name == "not" => {
+                    SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(not_args)))
+                        if name == "not" =>
+                    {
                         assert_eq!(not_args.len(), 1);
 
                         assert_eq!(
@@ -1952,7 +1986,7 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Universal,
-                SimpleSelector::PseudoClass("where".into(), Some(vec![]))
+                SimpleSelector::PseudoClass("where".into(), Some(PseudoArg::SelectorList(vec![])))
             ]
         );
 
@@ -1964,7 +1998,7 @@ mod tests {
                 SimpleSelector::Universal,
                 SimpleSelector::PseudoClass(
                     "where".into(),
-                    Some(vec![
+                    Some(PseudoArg::SelectorList(vec![
                         {
                             let mut cs = ComplexSelector::default();
                             cs.first.push(SimpleSelector::Universal);
@@ -1977,7 +2011,7 @@ mod tests {
                             cs.first.push(SimpleSelector::Class("b".into()));
                             cs
                         }
-                    ])
+                    ]))
                 )
             ]
         );
@@ -1991,7 +2025,7 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Universal,
-                SimpleSelector::PseudoClass("not".into(), Some(vec![]))
+                SimpleSelector::PseudoClass("not".into(), Some(PseudoArg::SelectorList(vec![])))
             ]
         );
 
@@ -2003,7 +2037,7 @@ mod tests {
                 SimpleSelector::Universal,
                 SimpleSelector::PseudoClass(
                     "not".into(),
-                    Some(vec![
+                    Some(PseudoArg::SelectorList(vec![
                         {
                             let mut cs = ComplexSelector::default();
                             cs.first.simple_selectors.push(SimpleSelector::Universal);
@@ -2027,7 +2061,7 @@ mod tests {
                                 .push(SimpleSelector::Type("div".into()));
                             cs
                         }
-                    ])
+                    ]))
                 )
             ]
         );
