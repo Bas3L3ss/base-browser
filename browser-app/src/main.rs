@@ -1,8 +1,6 @@
 use base_browser::cli::command::Command;
-use css::style::engine::StyleEngine;
+use browser_core::browser::browser::Browser;
 use input_parser::traits::Parse;
-use network::{http::client::HttpClient, resource_loader::resource_loader::ResourceLoader};
-use std::{println, unimplemented};
 use url::url::Url;
 use utils::profile_scope;
 
@@ -24,7 +22,7 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(_sub_command) = command.sub_command {
         // handle sub_command
-        unimplemented!("Subcommand handling not yet implemented");
+        std::unimplemented!("Subcommand handling not yet implemented");
     } else if let Some(url_str) = command.opts.url {
         profile_scope!("Load Page");
         let url = match Url::parse(&url_str) {
@@ -39,17 +37,10 @@ fn main() -> anyhow::Result<()> {
                 return Err(err.into());
             }
         };
-        let http = HttpClient::new();
-        let loader = ResourceLoader::new(http);
 
-        let html = loader.load_html(&url)?;
-
-        let dom = html::parser::parser::Parser::to_dom(&html)?;
-        let cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
-
-        let styled_dom = StyleEngine::resolve_styles(&dom.value, &cssom);
-
-        println!("{styled_dom:#?}");
+        let mut browser = Browser::new();
+        browser.open_tab(url)?;
+        browser.run()?;
 
         Ok(())
     } else {
