@@ -2981,7 +2981,6 @@ mod tests {
         };
         // Instead of Vec<usize>, match_rules now returns Vec<RuleRef>. For the asserts we need to check
         // if any RuleRef.0 == index
-        let rule_idx = |n: usize| n;
 
         let m_a = match_for(a);
         let m_b = match_for(b);
