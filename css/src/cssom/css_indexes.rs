@@ -196,7 +196,9 @@ mod tests {
                     c
                 },
                 rest: vec![],
+                ..Default::default()
             }],
+
             declarations: vec![],
         })
     }
@@ -265,6 +267,7 @@ mod tests {
                 c
             },
             rest: vec![],
+            ..Default::default()
         };
         let cssom = crate::cssom::cssom::CssOm {
             rules: vec![CssRule::Style(StyleRule {

@@ -1,9 +1,12 @@
-use std::matches;
+use std::{matches, panic};
 
 use crate::{
-    cssom::selector::{
-        AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, PseudoArg,
-        SimpleSelector,
+    cssom::{
+        selector::{
+            AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, PseudoArg,
+            SimpleSelector,
+        },
+        specificity::Specificity,
     },
     parser::parser::Parser,
     tokenizer::css_token::CssToken,
@@ -28,7 +31,13 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
             rest.push(selector);
         }
         if !first.is_empty() || !rest.is_empty() {
-            Some(ComplexSelector { first, rest })
+            let specificity: Specificity = Specificity::compute_complex_selector(&first, &rest);
+
+            Some(ComplexSelector {
+                first,
+                rest,
+                specificity,
+            })
         } else {
             None
         }

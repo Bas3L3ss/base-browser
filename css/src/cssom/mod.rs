@@ -9,4 +9,5 @@ pub mod keyframe;
 pub mod property;
 pub mod rule;
 pub mod selector;
+pub mod specificity;
 pub mod unit;

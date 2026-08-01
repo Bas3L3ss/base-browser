@@ -849,10 +849,7 @@ mod tests {
                     let mut comp = CompoundSelector::new();
                     comp.push(SimpleSelector::Universal);
                     comp.push(SimpleSelector::Class("foo".to_string()));
-                    ComplexSelector {
-                        first: comp,
-                        rest: Vec::new(),
-                    }
+                    ComplexSelector::new(comp, Vec::new())
                 }])),
             )
         );
@@ -872,10 +869,7 @@ mod tests {
                     comp.push(SimpleSelector::Class("foo".to_string()));
                     comp.push(SimpleSelector::Class("bar".to_string()));
                     comp.push(SimpleSelector::Id("baz".to_string()));
-                    ComplexSelector {
-                        first: comp,
-                        rest: Vec::new(),
-                    }
+                    ComplexSelector::new(comp, Vec::new())
                 }])),
             )
         );
@@ -1385,18 +1379,18 @@ mod tests {
                 SimpleSelector::Universal,
                 SimpleSelector::PseudoClass(
                     "is".to_string(),
-                    Some(PseudoArg::SelectorList(vec![ComplexSelector {
-                        first: {
+                    Some(PseudoArg::SelectorList(vec![ComplexSelector::new(
+                        {
                             let mut comp = CompoundSelector::new();
                             comp.push(SimpleSelector::Type("div".to_string()));
                             comp
                         },
-                        rest: vec![(Combinator::Child, {
+                        vec![(Combinator::Child, {
                             let mut comp = CompoundSelector::new();
                             comp.push(SimpleSelector::Type("p".to_string()));
                             comp
                         })]
-                    }]))
+                    )]))
                 )
             ]
         );
@@ -1406,6 +1400,7 @@ mod tests {
     fn test_is_pseudo_class_with_comma_and_combinator() {
         // CSS selector input: ":is(div, span > a)"
         // Should parse :is with arg [div], [span > a]
+
         let selector = parse_first_selector(":is(div, span > a)");
         assert_eq!(
             selector.first.simple_selectors,
@@ -1414,26 +1409,26 @@ mod tests {
                 SimpleSelector::PseudoClass(
                     "is".to_string(),
                     Some(PseudoArg::SelectorList(vec![
-                        ComplexSelector {
-                            first: {
+                        ComplexSelector::new(
+                            {
                                 let mut comp = CompoundSelector::new();
                                 comp.push(SimpleSelector::Type("div".to_string()));
                                 comp
                             },
-                            rest: vec![]
-                        },
-                        ComplexSelector {
-                            first: {
+                            vec![]
+                        ),
+                        ComplexSelector::new(
+                            {
                                 let mut comp = CompoundSelector::new();
                                 comp.push(SimpleSelector::Type("span".to_string()));
                                 comp
                             },
-                            rest: vec![(Combinator::Child, {
+                            vec![(Combinator::Child, {
                                 let mut comp = CompoundSelector::new();
                                 comp.push(SimpleSelector::Type("a".to_string()));
                                 comp
                             })]
-                        }
+                        )
                     ]))
                 )
             ]
@@ -1485,34 +1480,36 @@ mod tests {
                 SimpleSelector::PseudoClass(
                     "is".to_string(),
                     Some(PseudoArg::SelectorList(vec![
-                        {
-                            let mut s = ComplexSelector::default();
-                            s.first.push(SimpleSelector::Universal);
-
-                            s.first.simple_selectors.push(SimpleSelector::PseudoClass(
-                                "not".to_string(),
-                                Some(PseudoArg::SelectorList(vec![{
-                                    let mut s2 = ComplexSelector::default();
-
-                                    s2.first.push(SimpleSelector::Universal);
-                                    s2.first
-                                        .simple_selectors
-                                        .push(SimpleSelector::Class("a".to_string()));
-                                    s2
-                                }])),
-                            ));
-                            s
-                        },
-                        {
-                            let mut s = ComplexSelector::default();
-
-                            s.first.push(SimpleSelector::Universal);
-
-                            s.first
-                                .simple_selectors
-                                .push(SimpleSelector::Class("b".to_string()));
-                            s
-                        }
+                        ComplexSelector::new(
+                            {
+                                let mut first = CompoundSelector::new();
+                                first.push(SimpleSelector::Universal);
+                                first.push(SimpleSelector::PseudoClass(
+                                    "not".to_string(),
+                                    Some(PseudoArg::SelectorList(vec![ComplexSelector::new(
+                                        {
+                                            let mut inner_first = CompoundSelector::new();
+                                            inner_first.push(SimpleSelector::Universal);
+                                            inner_first
+                                                .push(SimpleSelector::Class("a".to_string()));
+                                            inner_first
+                                        },
+                                        vec![],
+                                    )])),
+                                ));
+                                first
+                            },
+                            vec![]
+                        ),
+                        ComplexSelector::new(
+                            {
+                                let mut first = CompoundSelector::new();
+                                first.push(SimpleSelector::Universal);
+                                first.push(SimpleSelector::Class("b".to_string()));
+                                first
+                            },
+                            vec![]
+                        )
                     ]))
                 )
             ]
@@ -1525,15 +1522,14 @@ mod tests {
                 SimpleSelector::Type("div".to_string()),
                 SimpleSelector::PseudoClass(
                     "has".to_string(),
-                    Some(PseudoArg::SelectorList(vec![{
-                        let mut cs = ComplexSelector::default();
-                        cs.rest.push((Combinator::Child, {
+                    Some(PseudoArg::SelectorList(vec![ComplexSelector::new(
+                        CompoundSelector::new(),
+                        vec![(Combinator::Child, {
                             let mut comp = CompoundSelector::new();
                             comp.push(SimpleSelector::Type("img".to_string()));
                             comp
-                        }));
-                        cs
-                    }]))
+                        })]
+                    )]))
                 )
             ]
         );
@@ -1545,36 +1541,39 @@ mod tests {
                 SimpleSelector::Type("div".to_string()),
                 SimpleSelector::PseudoClass(
                     "not".to_string(),
-                    Some(PseudoArg::SelectorList(vec![{
-                        let mut cs = ComplexSelector::default();
-                        cs.first.push(SimpleSelector::Universal);
-                        cs.first.simple_selectors.push(SimpleSelector::PseudoClass(
-                            "is".to_string(),
-                            Some(PseudoArg::SelectorList(vec![
-                                {
-                                    let mut inner = ComplexSelector::default();
-                                    inner.first.push(SimpleSelector::Universal);
-
-                                    inner
-                                        .first
-                                        .simple_selectors
-                                        .push(SimpleSelector::Class("a".to_string()));
-                                    inner
-                                },
-                                {
-                                    let mut inner = ComplexSelector::default();
-                                    inner.first.push(SimpleSelector::Universal);
-
-                                    inner
-                                        .first
-                                        .simple_selectors
-                                        .push(SimpleSelector::Class("b".to_string()));
-                                    inner
-                                },
-                            ])),
-                        ));
-                        cs
-                    }]))
+                    Some(PseudoArg::SelectorList(vec![ComplexSelector::new(
+                        {
+                            let mut first = CompoundSelector::new();
+                            first.push(SimpleSelector::Universal);
+                            first.push(SimpleSelector::PseudoClass(
+                                "is".to_string(),
+                                Some(PseudoArg::SelectorList(vec![
+                                    ComplexSelector::new(
+                                        {
+                                            let mut inner_first = CompoundSelector::new();
+                                            inner_first.push(SimpleSelector::Universal);
+                                            inner_first
+                                                .push(SimpleSelector::Class("a".to_string()));
+                                            inner_first
+                                        },
+                                        vec![],
+                                    ),
+                                    ComplexSelector::new(
+                                        {
+                                            let mut inner_first = CompoundSelector::new();
+                                            inner_first.push(SimpleSelector::Universal);
+                                            inner_first
+                                                .push(SimpleSelector::Class("b".to_string()));
+                                            inner_first
+                                        },
+                                        vec![],
+                                    ),
+                                ])),
+                            ));
+                            first
+                        },
+                        vec![]
+                    )]))
                 )
             ]
         );
@@ -1995,18 +1994,28 @@ mod tests {
                 SimpleSelector::PseudoClass(
                     "where".into(),
                     Some(PseudoArg::SelectorList(vec![
-                        {
-                            let mut cs = ComplexSelector::default();
-                            cs.first.push(SimpleSelector::Universal);
-                            cs.first.push(SimpleSelector::Class("a".into()));
-                            cs
-                        },
-                        {
-                            let mut cs = ComplexSelector::default();
-                            cs.first.push(SimpleSelector::Universal);
-                            cs.first.push(SimpleSelector::Class("b".into()));
-                            cs
-                        }
+                        ComplexSelector::new(
+                            {
+                                let mut first = CompoundSelector::default();
+                                first.simple_selectors.push(SimpleSelector::Universal);
+                                first
+                                    .simple_selectors
+                                    .push(SimpleSelector::Class("a".into()));
+                                first
+                            },
+                            vec![]
+                        ),
+                        ComplexSelector::new(
+                            {
+                                let mut first = CompoundSelector::default();
+                                first.simple_selectors.push(SimpleSelector::Universal);
+                                first
+                                    .simple_selectors
+                                    .push(SimpleSelector::Class("b".into()));
+                                first
+                            },
+                            vec![]
+                        )
                     ]))
                 )
             ]
@@ -2035,27 +2044,25 @@ mod tests {
                     "not".into(),
                     Some(PseudoArg::SelectorList(vec![
                         {
-                            let mut cs = ComplexSelector::default();
-                            cs.first.simple_selectors.push(SimpleSelector::Universal);
-                            cs.first
+                            let mut first = CompoundSelector::default();
+                            first.simple_selectors.push(SimpleSelector::Universal);
+                            first
                                 .simple_selectors
                                 .push(SimpleSelector::Class("a".into()));
-                            cs
+                            ComplexSelector::new(first, vec![])
                         },
                         {
-                            let mut cs = ComplexSelector::default();
-                            cs.first.simple_selectors.push(SimpleSelector::Universal);
-                            cs.first
-                                .simple_selectors
-                                .push(SimpleSelector::Id("id".into()));
-                            cs
+                            let mut first = CompoundSelector::default();
+                            first.simple_selectors.push(SimpleSelector::Universal);
+                            first.simple_selectors.push(SimpleSelector::Id("id".into()));
+                            ComplexSelector::new(first, vec![])
                         },
                         {
-                            let mut cs = ComplexSelector::default();
-                            cs.first
+                            let mut first = CompoundSelector::default();
+                            first
                                 .simple_selectors
                                 .push(SimpleSelector::Type("div".into()));
-                            cs
+                            ComplexSelector::new(first, vec![])
                         }
                     ]))
                 )
@@ -3433,9 +3440,8 @@ mod tests {
                                     matches!(&decls[0].property, Property::Color),
                                     "Expected 'color' property"
                                 );
-                                let CssValue { components, .. } = &decls[0].value else {
-                                    panic!("Expected CssValue for value of color");
-                                };
+                                let CssValue { components, .. } = &decls[0].value;
+
                                 assert_eq!(components.len(), 1);
                                 match &components[0] {
                                     ComponentValue::Ident(val) => {

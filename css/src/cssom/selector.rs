@@ -1,6 +1,6 @@
 use std::matches;
 
-use crate::cssom::component_value::ComponentValue;
+use crate::cssom::{component_value::ComponentValue, specificity::Specificity};
 
 /// Operators for attribute selectors, e.g. [attr=value], [attr^="foo"], etc.
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +101,7 @@ pub enum Combinator {
 pub struct ComplexSelector {
     pub first: CompoundSelector,
     pub rest: Vec<(Combinator, CompoundSelector)>,
+    pub specificity: Specificity,
 }
 
 impl ComplexSelector {
@@ -109,5 +110,15 @@ impl ComplexSelector {
             .last()
             .map(|(_, compound)| compound)
             .unwrap_or(&self.first)
+    }
+
+    /// Create a new ComplexSelector, automatically computing specificity
+    pub fn new(first: CompoundSelector, rest: Vec<(Combinator, CompoundSelector)>) -> Self {
+        let specificity = Specificity::compute_complex_selector(&first, &rest);
+        Self {
+            first,
+            rest,
+            specificity,
+        }
     }
 }

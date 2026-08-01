@@ -1,4 +1,4 @@
-use std::{collections::HashSet, format, matches};
+use std::{format, matches};
 
 use html::{
     dom::{dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType},
@@ -29,10 +29,10 @@ impl Matcher {
         dom: &Dom,
         candidates: &[RuleRef],
         cssom: &CssOm,
-    ) -> Option<Vec<u32>> {
+    ) -> Option<Vec<RuleRef>> {
         let mut matcher = Matcher {};
 
-        let mut matched: HashSet<u32> = HashSet::new();
+        let mut matched: Vec<RuleRef> = Vec::new();
 
         for candidate in candidates {
             let rule = match cssom.rules.get(candidate.rule_index as usize) {
@@ -54,7 +54,7 @@ impl Matcher {
             };
             if complex_selector.rest.is_empty() {
                 if matcher.match_compound(node, complex_selector.rightmost(), dom) {
-                    matched.insert(candidate.rule_index);
+                    matched.push(candidate.clone());
                 }
             } else {
                 if matcher.matches_complex_selector(
@@ -63,7 +63,7 @@ impl Matcher {
                     complex_selector,
                     (complex_selector.rest.len() - 1) as isize,
                 ) {
-                    matched.insert(candidate.rule_index);
+                    matched.push(candidate.clone());
                 }
             }
         }
@@ -71,7 +71,10 @@ impl Matcher {
         if matched.is_empty() {
             None
         } else {
-            Some(matched.into_iter().collect())
+            let mut matched = matched;
+            matched.sort_unstable_by_key(|r| (r.rule_index, r.selector_index));
+            matched.dedup();
+            Some(matched)
         }
     }
 
@@ -1041,6 +1044,7 @@ mod tests {
         let complex = ComplexSelector {
             first: compound,
             rest: vec![],
+            ..Default::default()
         };
         let style_rule = StyleRule {
             selectors: vec![complex],
@@ -1072,11 +1076,11 @@ mod tests {
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Class("foo".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Class("bar".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Class("baz".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
@@ -1091,7 +1095,7 @@ mod tests {
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Id("myid".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Id("other".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
@@ -1120,6 +1124,7 @@ mod tests {
         let selector = selector::ComplexSelector {
             first: compound.clone(),
             rest: vec![],
+            ..Default::default()
         };
 
         let style_rule = CssRule::Style(StyleRule {
@@ -1138,7 +1143,7 @@ mod tests {
         }];
 
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         // Negative test: use wrong ID
         let compound_wrong_id = CompoundSelector {
@@ -1156,6 +1161,7 @@ mod tests {
         let selector_wrong_id = selector::ComplexSelector {
             first: compound_wrong_id,
             rest: vec![],
+            ..Default::default()
         };
 
         let style_rule_wrong_id = CssRule::Style(StyleRule {
@@ -1185,7 +1191,7 @@ mod tests {
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Type("div".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Type("span".to_string()));
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
@@ -1200,7 +1206,7 @@ mod tests {
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Universal);
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
     }
 
     #[test]
@@ -1215,7 +1221,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::Equals),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
             name: "title".into(),
@@ -1238,7 +1244,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::Includes),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
             name: "title".into(),
@@ -1261,7 +1267,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::DashMatch),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
             name: "title".into(),
@@ -1269,7 +1275,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::DashMatch),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
             name: "title".into(),
@@ -1293,7 +1299,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::PrefixMatch),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         // SuffixMatch
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
@@ -1302,7 +1308,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::SuffixMatch),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         // SubstringMatch
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
@@ -1311,7 +1317,7 @@ mod tests {
             operator: Some(AttrSelectorOperator::SubstringMatch),
         });
         let matched = Matcher::match_rules(node, &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         // Negative
         let (cssom, candidates) = single_candidate_for(SimpleSelector::Attribute {
@@ -1358,6 +1364,7 @@ mod tests {
                 (Combinator::Descendant, div_compound.clone()),
                 (Combinator::Descendant, span_compound.clone()),
             ],
+            ..Default::default()
         };
 
         let style_rule = CssRule::Style(StyleRule {
@@ -1376,7 +1383,7 @@ mod tests {
         }];
 
         let matched = Matcher::match_rules(&dom.nodes[span_idx], &dom, &candidates, &cssom);
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
     }
 
     #[test]
@@ -1449,7 +1456,7 @@ mod tests {
         );
 
         // Expect: should match, because all combinators strictly apply.
-        assert_eq!(matched, Some(vec![0]));
+        assert_eq!(matched, Some(vec![candidates[0].clone()]));
 
         // Negative: Try a similar span not matching descendant/child chain.
         let span_wrong_idx = dom
@@ -1496,12 +1503,12 @@ mod tests {
         let dom = Parser::to_dom(html).unwrap().value;
 
         let css = r#"
-            div + span { color: red; }
-            p + span { color: blue; }
-            span + h1 { color: green; }
+            div + span { color: red; }    /* Rule 0 */
+            p + span { color: blue; }     /* Rule 1 */
+            span + h1 { color: green; }   /* Rule 2 */
         "#;
 
-        // Parse CSS using Parser so we're exercising the CSSOM and style/engine/parser machinery.
+        // Parse CSS
         let tokens = Tokenizer::from_string(css);
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
@@ -1509,7 +1516,7 @@ mod tests {
         cssom.append_stylesheet(rules);
         cssom.build_indexes();
 
-        // Utility: get (node index, &Node, &DomElement) by id
+        // Utility: get (&Node, &DomElement) by id
         let get_node_and_element = |id: &str| {
             let idx = dom
                 .nodes
@@ -1527,42 +1534,73 @@ mod tests {
             (node, element)
         };
 
-        let (node_a, _el_a) = get_node_and_element("a");
-
+        // Find needed node references
+        let (node_a, el_a) = get_node_and_element("a");
         let (node_b, el_b) = get_node_and_element("b");
+        let (node_c, el_c) = get_node_and_element("c");
         let (node_d, el_d) = get_node_and_element("d");
         let (node_e, el_e) = get_node_and_element("e");
         let (node_f, el_f) = get_node_and_element("f");
 
-        // Now just use el_* for lookup_candidates, no more pattern matching!
         let b_candidates = cssom.lookup_candidates(el_b);
         let d_candidates = cssom.lookup_candidates(el_d);
         let e_candidates = cssom.lookup_candidates(el_e);
         let f_candidates = cssom.lookup_candidates(el_f);
 
-        // div + span should match #b only (color: red)
+        // Rule 0: div + span should match #b only
         let matched_b = Matcher::match_rules(&node_b, &dom, &b_candidates, &cssom);
-        assert_eq!(matched_b, Some(vec![0]));
+        assert_eq!(
+            matched_b,
+            Some(vec![
+                b_candidates
+                    .iter()
+                    .find(|r| r.selector_index == 0)
+                    .unwrap()
+                    .clone()
+            ])
+        );
 
-        // p + span should match #d only (color: blue)
+        // Rule 1: p + span should match #d only
+        println!("{cssom:#?}");
         let matched_d = Matcher::match_rules(&node_d, &dom, &d_candidates, &cssom);
-        assert_eq!(matched_d, Some(vec![1]));
+        println!("{matched_d:#?}");
+        assert_eq!(
+            matched_d,
+            Some(vec![
+                d_candidates
+                    .iter()
+                    .find(|r| r.rule_index == 1 && r.selector_index == 0)
+                    .unwrap()
+                    .clone()
+            ])
+        );
 
-        // span + span should match #e (not matched by any rule, so should be None)
+        // #e has a previous sibling (#d), but no rule matches "span + span"
         let matched_e = Matcher::match_rules(&node_e, &dom, &e_candidates, &cssom);
         assert_eq!(matched_e, None);
 
-        // span + h1 should match #f (color: green)
+        // Rule 2: span + h1 should match #f only
         let matched_f = Matcher::match_rules(&node_f, &dom, &f_candidates, &cssom);
-        assert_eq!(matched_f, Some(vec![2]));
+        assert_eq!(
+            matched_f,
+            Some(vec![
+                f_candidates
+                    .iter()
+                    .find(|r| r.selector_index == 0)
+                    .unwrap()
+                    .clone()
+            ])
+        );
 
-        // Negative: div should not match any adjacent sibling combinators
-        let a_candidates = cssom.lookup_candidates(match &node_a.ntype {
-            NodeType::Element(el) => el,
-            _ => panic!(),
-        });
+        // Negative test: #a is the first element, so no rule can match it
+        let a_candidates = cssom.lookup_candidates(el_a);
         let matched_a = Matcher::match_rules(&node_a, &dom, &a_candidates, &cssom);
         assert_eq!(matched_a, None);
+
+        // Bonus: #c is <p id="c">, should NOT match any + rules as it is not an adjacent sibling in any combinator.
+        let c_candidates = cssom.lookup_candidates(el_c);
+        let matched_c = Matcher::match_rules(&node_c, &dom, &c_candidates, &cssom);
+        assert_eq!(matched_c, None);
     }
 
     #[test]
@@ -1648,7 +1686,7 @@ mod tests {
         // Only #h (span.target.special.z) should match!
         let matched_h = Matcher::match_rules(node_h, &dom, &candidates_h, &cssom);
         println!("{matched_h:#?}");
-        assert_eq!(matched_h, Some(vec![0]));
+        assert_eq!(matched_h, Some(vec![candidates_h[0].clone()]));
 
         // - intermediary nodes
         let matched_d = Matcher::match_rules(node_d, &dom, &candidates_d, &cssom);
@@ -1665,6 +1703,8 @@ mod tests {
 
     #[test]
     fn test_matcher_without_pseudo_selectors() {
+        use crate::cssom::css_indexes::RuleRef;
+
         // Compose a large HTML document.
         let html = r#"
             <div id="a" class="parent root">
@@ -1789,20 +1829,22 @@ mod tests {
             let (node, el) = get_node_el(id);
             let candidates = cssom.lookup_candidates(el);
             let matches_opt = Matcher::match_rules(node, &dom, &candidates, &cssom);
-            let matched_idx: Vec<u32> = matches_opt.unwrap_or_default();
+            let matched_refs = matches_opt.unwrap_or_default();
             if !expected.is_empty() {
                 for &rule_idx in &expected {
                     assert!(
-                        matched_idx.contains(&rule_idx),
+                        matched_refs
+                            .iter()
+                            .any(|r: &RuleRef| r.rule_index == rule_idx as u32),
                         "Expected selector rule {rule_idx} to match node #{id}, got matches: {:?}",
-                        matched_idx
+                        matched_refs
                     );
                 }
             } else {
                 assert!(
-                    matched_idx.is_empty(),
+                    matched_refs.is_empty(),
                     "Expected no selector rules to match node #{id}, but got some: {:?}",
-                    matched_idx
+                    matched_refs
                 );
             }
         }
@@ -1810,6 +1852,8 @@ mod tests {
 
     #[test]
     fn test_matcher_pseudo_root() {
+        use crate::cssom::css_indexes::RuleRef;
+
         let html = r#"
             <html id="root">
                 <body>
@@ -1854,7 +1898,7 @@ mod tests {
         let candidates = cssom.lookup_candidates(root_el);
         let matched =
             Matcher::match_rules(root_node, &dom, &candidates, &cssom).unwrap_or_default();
-        assert!(matched.contains(&0)); // :root
+        assert!(matched.iter().any(|r: &RuleRef| r.rule_index == 0)); // :root
     }
 
     #[test]
@@ -1991,20 +2035,29 @@ mod tests {
         )
         .unwrap_or_default();
 
-        assert!(li_a_matches.contains(&0)); // first-child
-        assert!(!li_a_matches.contains(&1));
-        assert!(!li_a_matches.contains(&2));
-        assert!(!li_b_matches.contains(&0));
-        assert!(!li_b_matches.contains(&1));
-        assert!(!li_b_matches.contains(&2));
-        assert!(li_c_matches.contains(&1)); // last-child
-        assert!(!li_c_matches.contains(&0));
-        assert!(!li_c_matches.contains(&2));
-        assert!(span_matches.contains(&2)); // only-child
+        use crate::cssom::css_indexes::RuleRef;
+
+        let rule_ref = |idx: usize| RuleRef {
+            rule_index: idx as u32,
+            selector_index: 0,
+        };
+
+        assert!(li_a_matches.contains(&rule_ref(0))); // first-child
+        assert!(!li_a_matches.contains(&rule_ref(1)));
+        assert!(!li_a_matches.contains(&rule_ref(2)));
+        assert!(!li_b_matches.contains(&rule_ref(0)));
+        assert!(!li_b_matches.contains(&rule_ref(1)));
+        assert!(!li_b_matches.contains(&rule_ref(2)));
+        assert!(li_c_matches.contains(&rule_ref(1))); // last-child
+        assert!(!li_c_matches.contains(&rule_ref(0)));
+        assert!(!li_c_matches.contains(&rule_ref(2)));
+        assert!(span_matches.contains(&rule_ref(2))); // only-child
     }
 
     #[test]
     fn test_matcher_nth_child() {
+        use crate::cssom::css_indexes::RuleRef;
+
         let html = r#"
             <ul>
                 <li id="first"></li>
@@ -2117,19 +2170,24 @@ mod tests {
         // Each line: [rule 0, ..., rule 10] for that <li> node.
         // Calculation comments updated for accuracy; see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
 
+        let rule_ref = |i| RuleRef {
+            rule_index: i,
+            selector_index: 0,
+        };
+
         assert_eq!(
             vec![
-                m_first.contains(&0),  // nth-child(2): false (first = 1)
-                m_first.contains(&1),  // nth-child(2n): false (1 is not even)
-                m_first.contains(&2),  // nth-child(3n): false (1 mod 3 != 0)
-                m_first.contains(&3),  // nth-child(2n+1): true (2*0+1 = 1)
-                m_first.contains(&4), // nth-child(2n-1): false (no n where 2n-1==1 except n=1 -> 1, so true)
-                m_first.contains(&5), // nth-child(3n+2): false (1 not 2,5,8,11...)
-                m_first.contains(&6), // nth-child(4n-2): false
-                m_first.contains(&7), // nth-child(0n+5): false (first pos is not 5)
-                m_first.contains(&8), // nth-child(5n): false (first pos is not 5, 10, ...)
-                m_first.contains(&9), // nth-last-child(2): false (first pos from end is 6, 2nd from end is fifth)
-                m_first.contains(&10), // nth-last-child(2n): true (6 is even, so matches, n=3)
+                m_first.contains(&rule_ref(0)),  // nth-child(2): false (first = 1)
+                m_first.contains(&rule_ref(1)),  // nth-child(2n): false (1 is not even)
+                m_first.contains(&rule_ref(2)),  // nth-child(3n): false (1 mod 3 != 0)
+                m_first.contains(&rule_ref(3)),  // nth-child(2n+1): true (2*0+1 = 1)
+                m_first.contains(&rule_ref(4)), // nth-child(2n-1): false (no n where 2n-1==1 except n=1 -> 1, so true)
+                m_first.contains(&rule_ref(5)), // nth-child(3n+2): false (1 not 2,5,8,11...)
+                m_first.contains(&rule_ref(6)), // nth-child(4n-2): false
+                m_first.contains(&rule_ref(7)), // nth-child(0n+5): false (first pos is not 5)
+                m_first.contains(&rule_ref(8)), // nth-child(5n): false (first pos is not 5, 10, ...)
+                m_first.contains(&rule_ref(9)), // nth-last-child(2): false (first pos from end is 6, 2nd from end is fifth)
+                m_first.contains(&rule_ref(10)), // nth-last-child(2n): true (6 is even, so matches, n=3)
             ],
             vec![
                 false, false, false, true, true, false, false, false, false, false, true
@@ -2138,17 +2196,17 @@ mod tests {
 
         assert_eq!(
             vec![
-                m_second.contains(&0),  // nth-child(2): true (second=2)
-                m_second.contains(&1),  // nth-child(2n): true (2/2=1, 2 is even)
-                m_second.contains(&2),  // nth-child(3n): false (2)
-                m_second.contains(&3),  // nth-child(2n+1): false (no n: 2n+1==2)
-                m_second.contains(&4), // nth-child(2n-1): true (n=2, 2*2-1=3, no, for n=1, 2*1-1=1, n=2:3, n=2,2*2-1=3, n=2 for 2n-1=2 → n=1.5, not integer, so false)
-                m_second.contains(&5), // nth-child(3n+2): true (n=0, 0+2=2; n=0)
-                m_second.contains(&6), // nth-child(4n-2): false (n=1,4-2=2, yes)
-                m_second.contains(&7), // nth-child(0n+5): false (not position 5)
-                m_second.contains(&8), // nth-child(5n): false
-                m_second.contains(&9), // nth-last-child(2): false (position from end is 5)
-                m_second.contains(&10), // nth-last-child(2n): false (5 is odd)
+                m_second.contains(&rule_ref(0)),  // nth-child(2): true (second=2)
+                m_second.contains(&rule_ref(1)),  // nth-child(2n): true (2/2=1, 2 is even)
+                m_second.contains(&rule_ref(2)),  // nth-child(3n): false (2)
+                m_second.contains(&rule_ref(3)),  // nth-child(2n+1): false (no n: 2n+1==2)
+                m_second.contains(&rule_ref(4)), // nth-child(2n-1): true (n=2, 2*2-1=3, no, for n=1, 2*1-1=1, n=2:3, n=2,2*2-1=3, n=2 for 2n-1=2 → n=1.5, not integer, so false)
+                m_second.contains(&rule_ref(5)), // nth-child(3n+2): true (n=0, 0+2=2; n=0)
+                m_second.contains(&rule_ref(6)), // nth-child(4n-2): false (n=1,4-2=2, yes)
+                m_second.contains(&rule_ref(7)), // nth-child(0n+5): false (not position 5)
+                m_second.contains(&rule_ref(8)), // nth-child(5n): false
+                m_second.contains(&rule_ref(9)), // nth-last-child(2): false (position from end is 5)
+                m_second.contains(&rule_ref(10)), // nth-last-child(2n): false (5 is odd)
             ],
             vec![
                 true, true, false, false, false, true, true, false, false, false, false
@@ -2157,17 +2215,17 @@ mod tests {
 
         assert_eq!(
             vec![
-                m_third.contains(&0),  // nth-child(2): false (3 vs 2)
-                m_third.contains(&1),  // nth-child(2n): false (3 is odd)
-                m_third.contains(&2),  // nth-child(3n): true (n=1)
-                m_third.contains(&3),  // nth-child(2n+1): true (n=1,2*1+1=3)
-                m_third.contains(&4), // nth-child(2n-1): false (no n where 2n-1=3, n=2 gives 3, ok, so true)
-                m_third.contains(&5), // nth-child(3n+2): false (3n+2=2,5,8..., 3 not covered)
-                m_third.contains(&6), // nth-child(4n-2): false (n=1,4-2=2)
-                m_third.contains(&7), // nth-child(0n+5): false
-                m_third.contains(&8), // nth-child(5n): false
-                m_third.contains(&9), // nth-last-child(2): false
-                m_third.contains(&10), // nth-last-child(2n): true (4 is even),
+                m_third.contains(&rule_ref(0)),  // nth-child(2): false (3 vs 2)
+                m_third.contains(&rule_ref(1)),  // nth-child(2n): false (3 is odd)
+                m_third.contains(&rule_ref(2)),  // nth-child(3n): true (n=1)
+                m_third.contains(&rule_ref(3)),  // nth-child(2n+1): true (n=1,2*1+1=3)
+                m_third.contains(&rule_ref(4)), // nth-child(2n-1): false (no n where 2n-1=3, n=2 gives 3, ok, so true)
+                m_third.contains(&rule_ref(5)), // nth-child(3n+2): false (3n+2=2,5,8..., 3 not covered)
+                m_third.contains(&rule_ref(6)), // nth-child(4n-2): false (n=1,4-2=2)
+                m_third.contains(&rule_ref(7)), // nth-child(0n+5): false
+                m_third.contains(&rule_ref(8)), // nth-child(5n): false
+                m_third.contains(&rule_ref(9)), // nth-last-child(2): false
+                m_third.contains(&rule_ref(10)), // nth-last-child(2n): true (4 is even),
             ],
             vec![
                 false, false, true, true, true, false, false, false, false, false, true
@@ -2176,17 +2234,17 @@ mod tests {
 
         assert_eq!(
             vec![
-                m_fourth.contains(&0),  // nth-child(2): false
-                m_fourth.contains(&1),  // nth-child(2n): true (even position)
-                m_fourth.contains(&2),  // nth-child(3n): false (not multiple of 3)
-                m_fourth.contains(&3),  // nth-child(2n+1): false (not odd)
-                m_fourth.contains(&4),  // nth-child(2n-1): false (n=3 → 2*3-1=5, doesn't match 4)
-                m_fourth.contains(&5),  // nth-child(3n+2): false (3*0+2=2, 3*1+2=5, not 4)
-                m_fourth.contains(&6),  // nth-child(4n-2): true (n=1.5, 4*1.5-2 = 4)
-                m_fourth.contains(&7),  // nth-child(0n+5): false
-                m_fourth.contains(&8),  // nth-child(5n): false
-                m_fourth.contains(&9),  // nth-last-child(2): false (position 3 from end)
-                m_fourth.contains(&10), // nth-last-child(2n): false (3 is odd),
+                m_fourth.contains(&rule_ref(0)),  // nth-child(2): false
+                m_fourth.contains(&rule_ref(1)),  // nth-child(2n): true (even position)
+                m_fourth.contains(&rule_ref(2)),  // nth-child(3n): false (not multiple of 3)
+                m_fourth.contains(&rule_ref(3)),  // nth-child(2n+1): false (not odd)
+                m_fourth.contains(&rule_ref(4)), // nth-child(2n-1): false (n=3 → 2*3-1=5, doesn't match 4)
+                m_fourth.contains(&rule_ref(5)), // nth-child(3n+2): false (3*0+2=2, 3*1+2=5, not 4)
+                m_fourth.contains(&rule_ref(6)), // nth-child(4n-2): true (n=1.5, 4*1.5-2 = 4)
+                m_fourth.contains(&rule_ref(7)), // nth-child(0n+5): false
+                m_fourth.contains(&rule_ref(8)), // nth-child(5n): false
+                m_fourth.contains(&rule_ref(9)), // nth-last-child(2): false (position 3 from end)
+                m_fourth.contains(&rule_ref(10)), // nth-last-child(2n): false (3 is odd),
             ],
             vec![
                 false, true, false, false, false, false, false, false, false, false, false
@@ -2195,17 +2253,17 @@ mod tests {
 
         assert_eq!(
             vec![
-                m_fifth.contains(&0),  // nth-child(2): false
-                m_fifth.contains(&1),  // nth-child(2n): false (odd)
-                m_fifth.contains(&2),  // nth-child(3n): false (not a multiple of 3)
-                m_fifth.contains(&3),  // nth-child(2n+1): true (2*2+1=5)
-                m_fifth.contains(&4),  // nth-child(2n-1): true (n=3,2*3-1=5)
-                m_fifth.contains(&5),  // nth-child(3n+2): false (n=1,3*1+2=5, matches)
-                m_fifth.contains(&6),  // nth-child(4n-2): true (n=1.75, not integer)
-                m_fifth.contains(&7),  // nth-child(0n+5): true (5)
-                m_fifth.contains(&8),  // nth-child(5n): true (5)
-                m_fifth.contains(&9),  // nth-last-child(2): true (second from end = fifth)
-                m_fifth.contains(&10), // nth-last-child(2n): true (fifth element is 2nd from the end, and 2 is even, so true)
+                m_fifth.contains(&rule_ref(0)),  // nth-child(2): false
+                m_fifth.contains(&rule_ref(1)),  // nth-child(2n): false (odd)
+                m_fifth.contains(&rule_ref(2)),  // nth-child(3n): false (not a multiple of 3)
+                m_fifth.contains(&rule_ref(3)),  // nth-child(2n+1): true (2*2+1=5)
+                m_fifth.contains(&rule_ref(4)),  // nth-child(2n-1): true (n=3,2*3-1=5)
+                m_fifth.contains(&rule_ref(5)),  // nth-child(3n+2): false (n=1,3*1+2=5, matches)
+                m_fifth.contains(&rule_ref(6)),  // nth-child(4n-2): true (n=1.75, not integer)
+                m_fifth.contains(&rule_ref(7)),  // nth-child(0n+5): true (5)
+                m_fifth.contains(&rule_ref(8)),  // nth-child(5n): true (5)
+                m_fifth.contains(&rule_ref(9)), // nth-last-child(2): true (second from end = fifth)
+                m_fifth.contains(&rule_ref(10)), // nth-last-child(2n): true (fifth element is 2nd from the end, and 2 is even, so true)
             ],
             vec![
                 false, false, false, true, true, true, false, true, true, true, true
@@ -2214,17 +2272,17 @@ mod tests {
 
         assert_eq!(
             vec![
-                m_sixth.contains(&0),  // nth-child(2): false
-                m_sixth.contains(&1),  // nth-child(2n): true (6 is even)
-                m_sixth.contains(&2),  // nth-child(3n): true (n=2,3*2=6)
-                m_sixth.contains(&3),  // nth-child(2n+1): false (2*2+1=5, no solution for 6)
-                m_sixth.contains(&4),  // nth-child(2n-1): false (2*4-1=7)
-                m_sixth.contains(&5),  // nth-child(3n+2): false (3*1+2=5, 3*2+2=8)
-                m_sixth.contains(&6),  // nth-child(4n-2): true (n=2,4*2-2=6)
-                m_sixth.contains(&7),  // nth-child(0n+5): false (not 5)
-                m_sixth.contains(&8),  // nth-child(5n): false (6 is not a multiple of 5)
-                m_sixth.contains(&9),  // nth-last-child(2): false (first from end == sixth (n=1))
-                m_sixth.contains(&10), // nth-last-child(2n): true (n=1, 6th from end = 1, 1 is odd, 2 * some n = 1 is false, but 1st from end so n=1, false, but for nth-last-child(2n): 6th from end is 1, only 2, 4, 6 positions from end, so false)
+                m_sixth.contains(&rule_ref(0)),  // nth-child(2): false
+                m_sixth.contains(&rule_ref(1)),  // nth-child(2n): true (6 is even)
+                m_sixth.contains(&rule_ref(2)),  // nth-child(3n): true (n=2,3*2=6)
+                m_sixth.contains(&rule_ref(3)), // nth-child(2n+1): false (2*2+1=5, no solution for 6)
+                m_sixth.contains(&rule_ref(4)), // nth-child(2n-1): false (2*4-1=7)
+                m_sixth.contains(&rule_ref(5)), // nth-child(3n+2): false (3*1+2=5, 3*2+2=8)
+                m_sixth.contains(&rule_ref(6)), // nth-child(4n-2): true (n=2,4*2-2=6)
+                m_sixth.contains(&rule_ref(7)), // nth-child(0n+5): false (not 5)
+                m_sixth.contains(&rule_ref(8)), // nth-child(5n): false (6 is not a multiple of 5)
+                m_sixth.contains(&rule_ref(9)), // nth-last-child(2): false (first from end == sixth (n=1))
+                m_sixth.contains(&rule_ref(10)), // nth-last-child(2n): true (n=1, 6th from end = 1, 1 is odd, 2 * some n = 1 is false, but 1st from end so n=1, false, but for nth-last-child(2n): 6th from end is 1, only 2, 4, 6 positions from end, so false)
             ],
             vec![
                 false, true, true, false, false, false, true, false, false, false, false
@@ -2310,6 +2368,10 @@ mod tests {
             Matcher::match_rules(four, &dom, &cssom.lookup_candidates(&get_el(four)), &cssom)
                 .unwrap_or_default();
 
+        let rule_ref = |i| RuleRef {
+            rule_index: i,
+            selector_index: 0,
+        };
         // Comments: [rule0, rule1, ... rule12]
         // li:nth-child(-n): matches no element (never true)
         // li:nth-child(n): matches any
@@ -2328,19 +2390,19 @@ mod tests {
         // <li id="one"> (pos=1)
         assert_eq!(
             vec![
-                m_one.contains(&0),  // -n
-                m_one.contains(&1),  // n
-                m_one.contains(&2),  // n+0
-                m_one.contains(&3),  // -2n
-                m_one.contains(&4),  // 4n-6
-                m_one.contains(&5),  // 0n+1
-                m_one.contains(&6),  // 0n-1
-                m_one.contains(&7),  // +n
-                m_one.contains(&8),  // n-2
-                m_one.contains(&9),  // 99999n-99998
-                m_one.contains(&10), // n-0
-                m_one.contains(&11), // -n-5
-                m_one.contains(&12), // -n+3
+                m_one.contains(&rule_ref(0)),  // -n
+                m_one.contains(&rule_ref(1)),  // n
+                m_one.contains(&rule_ref(2)),  // n+0
+                m_one.contains(&rule_ref(3)),  // -2n
+                m_one.contains(&rule_ref(4)),  // 4n-6
+                m_one.contains(&rule_ref(5)),  // 0n+1
+                m_one.contains(&rule_ref(6)),  // 0n-1
+                m_one.contains(&rule_ref(7)),  // +n
+                m_one.contains(&rule_ref(8)),  // n-2
+                m_one.contains(&rule_ref(9)),  // 99999n-99998
+                m_one.contains(&rule_ref(10)), // n-0
+                m_one.contains(&rule_ref(11)), // -n-5
+                m_one.contains(&rule_ref(12)), // -n+3
             ],
             vec![
                 false, // -n
@@ -2361,19 +2423,19 @@ mod tests {
         // <li id="two"> (pos=2)
         assert_eq!(
             vec![
-                m_two.contains(&0), // -n
-                m_two.contains(&1),
-                m_two.contains(&2),
-                m_two.contains(&3),
-                m_two.contains(&4),
-                m_two.contains(&5),
-                m_two.contains(&6),
-                m_two.contains(&7),
-                m_two.contains(&8),
-                m_two.contains(&9),
-                m_two.contains(&10),
-                m_two.contains(&11),
-                m_two.contains(&12),
+                m_two.contains(&rule_ref(0)), // -n
+                m_two.contains(&rule_ref(1)),
+                m_two.contains(&rule_ref(2)),
+                m_two.contains(&rule_ref(3)),
+                m_two.contains(&rule_ref(4)),
+                m_two.contains(&rule_ref(5)),
+                m_two.contains(&rule_ref(6)),
+                m_two.contains(&rule_ref(7)),
+                m_two.contains(&rule_ref(8)),
+                m_two.contains(&rule_ref(9)),
+                m_two.contains(&rule_ref(10)),
+                m_two.contains(&rule_ref(11)),
+                m_two.contains(&rule_ref(12)),
             ],
             vec![
                 false, // -n
@@ -2394,19 +2456,19 @@ mod tests {
         // <li id="three"> (pos=3)
         assert_eq!(
             vec![
-                m_three.contains(&0),
-                m_three.contains(&1),
-                m_three.contains(&2),
-                m_three.contains(&3),
-                m_three.contains(&4),
-                m_three.contains(&5),
-                m_three.contains(&6),
-                m_three.contains(&7),
-                m_three.contains(&8),
-                m_three.contains(&9),
-                m_three.contains(&10),
-                m_three.contains(&11),
-                m_three.contains(&12),
+                m_three.contains(&rule_ref(0)),
+                m_three.contains(&rule_ref(1)),
+                m_three.contains(&rule_ref(2)),
+                m_three.contains(&rule_ref(3)),
+                m_three.contains(&rule_ref(4)),
+                m_three.contains(&rule_ref(5)),
+                m_three.contains(&rule_ref(6)),
+                m_three.contains(&rule_ref(7)),
+                m_three.contains(&rule_ref(8)),
+                m_three.contains(&rule_ref(9)),
+                m_three.contains(&rule_ref(10)),
+                m_three.contains(&rule_ref(11)),
+                m_three.contains(&rule_ref(12)),
             ],
             vec![
                 false, // -n
@@ -2427,19 +2489,19 @@ mod tests {
         // <li id="four"> (pos=4)
         assert_eq!(
             vec![
-                m_four.contains(&0),
-                m_four.contains(&1),
-                m_four.contains(&2),
-                m_four.contains(&3),
-                m_four.contains(&4),
-                m_four.contains(&5),
-                m_four.contains(&6),
-                m_four.contains(&7),
-                m_four.contains(&8),
-                m_four.contains(&9),
-                m_four.contains(&10),
-                m_four.contains(&11),
-                m_four.contains(&12),
+                m_four.contains(&rule_ref(0)),
+                m_four.contains(&rule_ref(1)),
+                m_four.contains(&rule_ref(2)),
+                m_four.contains(&rule_ref(3)),
+                m_four.contains(&rule_ref(4)),
+                m_four.contains(&rule_ref(5)),
+                m_four.contains(&rule_ref(6)),
+                m_four.contains(&rule_ref(7)),
+                m_four.contains(&rule_ref(8)),
+                m_four.contains(&rule_ref(9)),
+                m_four.contains(&rule_ref(10)),
+                m_four.contains(&rule_ref(11)),
+                m_four.contains(&rule_ref(12)),
             ],
             vec![
                 false, // -n
@@ -2462,14 +2524,14 @@ mod tests {
     #[test]
     fn test_matcher_of_type_pseudo() {
         let html = r#"
-            <ul>
+        <ul>
                 <li id="li1"></li>
                 <li id="li2"></li>
                 <li id="li3"></li>
                 <span id="span1"></span>
                 <li id="li4"></li>
             </ul>
-        "#;
+            "#;
         let css = r#"
             li:first-of-type { color: red; }
             li:last-of-type { color: blue; }
@@ -2477,6 +2539,10 @@ mod tests {
             li:nth-of-type(2) { color: cyan; }
             li:nth-last-of-type(2) { color: black; }
         "#;
+        let rule_ref = |i| RuleRef {
+            rule_index: i,
+            selector_index: 0,
+        };
         let result = Parser::to_dom(html).unwrap();
         let dom = result.value;
         let find = |id| {
@@ -2530,11 +2596,11 @@ mod tests {
         )
         .unwrap_or_default();
 
-        assert!(m_li1.contains(&0)); // first-of-type
-        assert!(m_li4.contains(&1)); // last-of-type
-        assert!(m_span1.contains(&2)); // only-of-type
-        assert!(m_li2.contains(&3)); // nth-of-type(2)
-        assert!(m_li3.contains(&4)); // nth-last-of-type(2)
+        assert!(m_li1.contains(&rule_ref(0))); // first-of-type
+        assert!(m_li4.contains(&rule_ref(1))); // last-of-type
+        assert!(m_span1.contains(&rule_ref(2))); // only-of-type
+        assert!(m_li2.contains(&rule_ref(3))); // nth-of-type(2)
+        assert!(m_li3.contains(&rule_ref(4))); // nth-last-of-type(2)
     }
 
     #[test]
@@ -2544,13 +2610,17 @@ mod tests {
             <div id="en2" lang="en-US"></div>
             <div id="fr" lang="fr"></div>
             <div id="ar" dir="rtl"></div>
-        "#;
+            "#;
         let css = r#"
-            div:lang(en) { color: red; }
-            div:lang(fr, EN) { color: blue; }
-            div:lang(en-us) { color: orange; }
-            div:dir(rtl) { color: green; }
+        div:lang(en) { color: red; }
+        div:lang(fr, EN) { color: blue; }
+        div:lang(en-us) { color: orange; }
+        div:dir(rtl) { color: green; }
         "#;
+        let rule_ref = |i| RuleRef {
+            rule_index: i,
+            selector_index: 0,
+        };
         let result = Parser::to_dom(html).unwrap();
         let dom = result.value;
         let find = |id| {
@@ -2598,15 +2668,15 @@ mod tests {
             .unwrap_or_default();
 
         // div:lang(en) should match lang="en" and lang="en-US" per selector spec: "en-US" is a subtag of "en"
-        assert!(m_en.contains(&0));
-        assert!(m_en2.contains(&0));
+        assert!(m_en.contains(&rule_ref(0)));
+        assert!(m_en2.contains(&rule_ref(0)));
         // div:lang(fr, EN) matches fr node and en node only for rule index 1 (color: blue)
-        assert!(m_fr.contains(&1));
-        assert!(m_en.contains(&1));
+        assert!(m_fr.contains(&rule_ref(1)));
+        assert!(m_en.contains(&rule_ref(1)));
         // div:lang(en-us) should only match lang="en-US"
-        assert!(m_en2.contains(&2));
+        assert!(m_en2.contains(&rule_ref(2)));
         // div:dir(rtl) matches "ar" only
-        assert!(m_ar.contains(&3));
+        assert!(m_ar.contains(&rule_ref(3)));
     }
 
     // #[test]
@@ -2909,6 +2979,10 @@ mod tests {
             Matcher::match_rules(node, &dom, &cssom.lookup_candidates(&get_el(node)), &cssom)
                 .unwrap_or_default()
         };
+        // Instead of Vec<usize>, match_rules now returns Vec<RuleRef>. For the asserts we need to check
+        // if any RuleRef.0 == index
+        let rule_idx = |n: usize| n;
+
         let m_a = match_for(a);
         let m_b = match_for(b);
         let m_c = match_for(c);
@@ -2918,149 +2992,176 @@ mod tests {
         let m_g = match_for(g);
         let m_h = match_for(h);
 
+        macro_rules! contains_rule {
+            ($matches:expr, $idx:expr) => {
+                $matches.iter().any(|r| r.rule_index as usize == $idx)
+            };
+        }
+
         // .foo:not(.bar):not([data-x="3"]) { color: red; }
         assert!(
-            m_b.contains(&0),
+            contains_rule!(m_b, 0),
             "b matches .foo:not(.bar):not([data-x=\"3\"]) (only .foo, data-x=\"2\")"
         );
-        assert!(!m_a.contains(&0), "a does NOT match rule 0; has .bar");
+        assert!(!contains_rule!(m_a, 0), "a does NOT match rule 0; has .bar");
         assert!(
-            !m_d.contains(&0),
+            !contains_rule!(m_d, 0),
             "d does NOT match rule 0; has data-x=\"3\""
         );
-        assert!(!m_c.contains(&0), "c does not have .foo");
+        assert!(!contains_rule!(m_c, 0), "c does not have .foo");
         assert!(
-            m_e.contains(&0),
+            contains_rule!(m_e, 0),
             "e should match rule 0 (foo, not bar, not [data-x=3])"
         );
         assert!(
-            m_g.contains(&0),
+            contains_rule!(m_g, 0),
             "g should match rule 0 (foo, not bar, not [data-x=3])"
         );
-        assert!(!m_f.contains(&0), "f has baz, but no foo");
+        assert!(!contains_rule!(m_f, 0), "f has baz, but no foo");
 
         // .foo:is(.foo, .baz) { color: green; }
-        assert!(m_a.contains(&1), "a matches .foo:is(.foo, .baz)");
-        assert!(m_b.contains(&1), "b matches .foo:is(.foo, .baz)");
-        assert!(m_d.contains(&1), "d matches .foo:is(.foo, .baz)");
-        assert!(m_e.contains(&1), "e matches .foo:is(.foo, .baz)");
-        assert!(m_g.contains(&1), "g matches .foo:is(.foo, .baz)");
-        assert!(!m_c.contains(&1), "c does not match .foo:is(.foo, .baz)");
-        assert!(!m_f.contains(&1), "f has baz but not foo");
-        assert!(!m_h.contains(&1), "h has none");
+        assert!(contains_rule!(m_a, 1), "a matches .foo:is(.foo, .baz)");
+        assert!(contains_rule!(m_b, 1), "b matches .foo:is(.foo, .baz)");
+        assert!(contains_rule!(m_d, 1), "d matches .foo:is(.foo, .baz)");
+        assert!(contains_rule!(m_e, 1), "e matches .foo:is(.foo, .baz)");
+        assert!(contains_rule!(m_g, 1), "g matches .foo:is(.foo, .baz)");
+        assert!(
+            !contains_rule!(m_c, 1),
+            "c does not match .foo:is(.foo, .baz)"
+        );
+        assert!(!contains_rule!(m_f, 1), "f has baz but not foo");
+        assert!(!contains_rule!(m_h, 1), "h has none");
 
         // .foo:where(.foo, .baz) { color: gray; }
-        assert!(m_a.contains(&2), "a matches .foo:where(.foo, .baz)");
-        assert!(m_b.contains(&2), "b matches .foo:where(.foo, .baz)");
-        assert!(m_d.contains(&2), "d matches .foo:where(.foo, .baz)");
-        assert!(m_e.contains(&2), "e matches .foo:where(.foo, .baz)");
-        assert!(m_g.contains(&2), "g matches .foo:where(.foo, .baz)");
-        assert!(!m_c.contains(&2), "c does not match .foo:where(.foo, .baz)");
-        assert!(!m_f.contains(&2), "f has baz but not foo");
-        assert!(!m_h.contains(&2), "h matches nothing");
+        assert!(contains_rule!(m_a, 2), "a matches .foo:where(.foo, .baz)");
+        assert!(contains_rule!(m_b, 2), "b matches .foo:where(.foo, .baz)");
+        assert!(contains_rule!(m_d, 2), "d matches .foo:where(.foo, .baz)");
+        assert!(contains_rule!(m_e, 2), "e matches .foo:where(.foo, .baz)");
+        assert!(contains_rule!(m_g, 2), "g matches .foo:where(.foo, .baz)");
+        assert!(
+            !contains_rule!(m_c, 2),
+            "c does not match .foo:where(.foo, .baz)"
+        );
+        assert!(!contains_rule!(m_f, 2), "f has baz but not foo");
+        assert!(!contains_rule!(m_h, 2), "h matches nothing");
 
         // .foo:not(.baz, .qux) { color: blue; }
         assert!(
-            m_b.contains(&3),
+            contains_rule!(m_b, 3),
             "b should match rule 3 (.foo:not(.baz, .qux))"
         );
-        assert!(!m_a.contains(&3), "a has .baz");
-        assert!(!m_d.contains(&3), "d has .baz");
-        assert!(!m_e.contains(&3), "e has .qux");
-        assert!(m_g.contains(&3), "g matches rule 3");
-        assert!(!m_c.contains(&3), "c is not .foo");
+        assert!(!contains_rule!(m_a, 3), "a has .baz");
+        assert!(!contains_rule!(m_d, 3), "d has .baz");
+        assert!(!contains_rule!(m_e, 3), "e has .qux");
+        assert!(contains_rule!(m_g, 3), "g matches rule 3");
+        assert!(!contains_rule!(m_c, 3), "c is not .foo");
 
         // .foo:not(.baz):not(.qux) { color: orange; }
         assert!(
-            m_b.contains(&4),
+            contains_rule!(m_b, 4),
             "b matches rule 4 (.foo:not(.baz):not(.qux))"
         );
         assert!(
-            m_g.contains(&4),
+            contains_rule!(m_g, 4),
             "g matches rule 4 (.foo:not(.baz):not(.qux))"
         );
-        assert!(!m_a.contains(&4), "a has .baz");
-        assert!(!m_e.contains(&4), "e has .qux");
-        assert!(!m_d.contains(&4), "d has .baz");
-        assert!(!m_c.contains(&4), "c no foo");
+        assert!(!contains_rule!(m_a, 4), "a has .baz");
+        assert!(!contains_rule!(m_e, 4), "e has .qux");
+        assert!(!contains_rule!(m_d, 4), "d has .baz");
+        assert!(!contains_rule!(m_c, 4), "c no foo");
 
         // .foo:is(.baz, .bar):not([data-x]) { color: purple; }
-        assert!(!m_a.contains(&5), "a has data-x");
-        assert!(!m_b.contains(&5), "b has data-x");
-        assert!(!m_d.contains(&5), "d has data-x");
-        assert!(!m_e.contains(&5), "e has data-x");
-        assert!(!m_g.contains(&5), "g has data-y but not data-x");
-        assert!(!m_c.contains(&5), "c no foo");
-        assert!(!m_f.contains(&5), "f is baz but not foo, no data-x");
-        assert!(!m_h.contains(&5), "h nothing");
+        assert!(!contains_rule!(m_a, 5), "a has data-x");
+        assert!(!contains_rule!(m_b, 5), "b has data-x");
+        assert!(!contains_rule!(m_d, 5), "d has data-x");
+        assert!(!contains_rule!(m_e, 5), "e has data-x");
+        assert!(!contains_rule!(m_g, 5), "g has data-y but not data-x");
+        assert!(!contains_rule!(m_c, 5), "c no foo");
+        assert!(!contains_rule!(m_f, 5), "f is baz but not foo, no data-x");
+        assert!(!contains_rule!(m_h, 5), "h nothing");
 
         // .foo:where(.baz, .bar) { color: magenta; }
-        assert!(m_a.contains(&6), "a matches .foo:where(.baz, .bar)");
-        assert!(!m_b.contains(&6), "b not .baz or .bar");
-        assert!(m_d.contains(&6), "d matches .foo:where(.baz, .bar)");
-        assert!(!m_e.contains(&6), "e matches .foo:where(.baz, .bar)");
-        assert!(!m_g.contains(&6), "g not .baz or .bar");
-        assert!(!m_c.contains(&6), "c no foo");
+        assert!(contains_rule!(m_a, 6), "a matches .foo:where(.baz, .bar)");
+        assert!(!contains_rule!(m_b, 6), "b not .baz or .bar");
+        assert!(contains_rule!(m_d, 6), "d matches .foo:where(.baz, .bar)");
+        assert!(!contains_rule!(m_e, 6), "e matches .foo:where(.baz, .bar)");
+        assert!(!contains_rule!(m_g, 6), "g not .baz or .bar");
+        assert!(!contains_rule!(m_c, 6), "c no foo");
 
         // .baz:is(.foo, #b) { color: lime; }
-        assert!(m_a.contains(&7), "a matches .baz:is(.foo, #b)");
-        assert!(!m_b.contains(&7), "b not .baz");
-        assert!(m_d.contains(&7), "d not .baz");
-        assert!(!m_e.contains(&7), "e not .baz");
+        assert!(contains_rule!(m_a, 7), "a matches .baz:is(.foo, #b)");
+        assert!(!contains_rule!(m_b, 7), "b not .baz");
+        assert!(contains_rule!(m_d, 7), "d not .baz");
+        assert!(!contains_rule!(m_e, 7), "e not .baz");
         assert!(
-            !m_f.contains(&7),
+            !contains_rule!(m_f, 7),
             "f is .baz, matches .foo (on a), not itself"
         );
-        assert!(!m_g.contains(&7), "g not .baz");
+        assert!(!contains_rule!(m_g, 7), "g not .baz");
 
         // .foo:not(:is(.bar, .baz)) { color: gold; }
-        assert!(m_b.contains(&8), "b matches .foo:not(:is(.bar, .baz))");
-        assert!(m_g.contains(&8), "g matches .foo:not(:is(.bar, .baz))");
-        assert!(!m_a.contains(&8), "a is .baz");
-        assert!(!m_d.contains(&8), "d is .baz");
         assert!(
-            m_e.contains(&8),
+            contains_rule!(m_b, 8),
+            "b matches .foo:not(:is(.bar, .baz))"
+        );
+        assert!(
+            contains_rule!(m_g, 8),
+            "g matches .foo:not(:is(.bar, .baz))"
+        );
+        assert!(!contains_rule!(m_a, 8), "a is .baz");
+        assert!(!contains_rule!(m_d, 8), "d is .baz");
+        assert!(
+            contains_rule!(m_e, 8),
             "e is .baz via .baz branch? (actually not), but has .qux"
         );
-        assert!(!m_c.contains(&8), "c not .foo");
+        assert!(!contains_rule!(m_c, 8), "c not .foo");
 
         // .foo:not(:is(.baz, .qux, .bar)) { color: brown; }
         assert!(
-            m_b.contains(&9),
+            contains_rule!(m_b, 9),
             "b matches .foo:not(:is(.baz, .qux, .bar))"
         );
         assert!(
-            m_g.contains(&9),
+            contains_rule!(m_g, 9),
             "g matches .foo:not(:is(.baz, .qux, .bar))"
         );
-        assert!(!m_a.contains(&9), "a matches .baz");
-        assert!(!m_d.contains(&9), "d matches .baz");
-        assert!(!m_e.contains(&9), "e matches .qux");
-        assert!(!m_c.contains(&9), "c not .foo");
+        assert!(!contains_rule!(m_a, 9), "a matches .baz");
+        assert!(!contains_rule!(m_d, 9), "d matches .baz");
+        assert!(!contains_rule!(m_e, 9), "e matches .qux");
+        assert!(!contains_rule!(m_c, 9), "c not .foo");
 
         // .foo:is(.qux, .nonexistent) { color: pink; }
-        assert!(m_e.contains(&10), "e matches .foo:is(.qux, .nonexistent)");
-        assert!(!m_b.contains(&10), "b is foo not qux, not nonexistent");
-        assert!(!m_a.contains(&10), "a not qux");
-        assert!(!m_d.contains(&10), "d not qux");
-        assert!(!m_g.contains(&10), "g not qux");
-        assert!(!m_f.contains(&10), "f not foo");
+        assert!(
+            contains_rule!(m_e, 10),
+            "e matches .foo:is(.qux, .nonexistent)"
+        );
+        assert!(
+            !contains_rule!(m_b, 10),
+            "b is foo not qux, not nonexistent"
+        );
+        assert!(!contains_rule!(m_a, 10), "a not qux");
+        assert!(!contains_rule!(m_d, 10), "d not qux");
+        assert!(!contains_rule!(m_g, 10), "g not qux");
+        assert!(!contains_rule!(m_f, 10), "f not foo");
 
         // .foo:where(.qux, .nonexistent) { color: olive; }
         assert!(
-            m_e.contains(&11),
+            contains_rule!(m_e, 11),
             "e matches .foo:where(.qux, .nonexistent)"
         );
-        assert!(!m_b.contains(&11), "b is foo, not qux, not nonexistent");
-        assert!(!m_a.contains(&11), "a not qux");
-        assert!(!m_d.contains(&11), "d not qux");
-        assert!(!m_g.contains(&11), "g not qux");
-        assert!(!m_f.contains(&11), "f not foo");
+        assert!(
+            !contains_rule!(m_b, 11),
+            "b is foo, not qux, not nonexistent"
+        );
+        assert!(!contains_rule!(m_a, 11), "a not qux");
+        assert!(!contains_rule!(m_d, 11), "d not qux");
+        assert!(!contains_rule!(m_g, 11), "g not qux");
+        assert!(!contains_rule!(m_f, 11), "f not foo");
 
         // not .foo: any selector should not match h
         for i in 0..12 {
             assert!(
-                !m_h.contains(&i),
+                !contains_rule!(m_h, i),
                 "h with no classes/attrs must not match any test selector"
             );
         }
@@ -3068,6 +3169,7 @@ mod tests {
 
     #[test]
     fn test_has_pseudo_class_matrix() {
+        use crate::cssom::css_indexes::RuleRef;
         let run_test = |html: &str, selectors: &[(&str, &[&str], &[&str])]| {
             let dom_result = Parser::to_dom(html).unwrap();
             let dom = dom_result.value;
@@ -3099,6 +3201,12 @@ mod tests {
                 };
                 cssom.build_indexes();
 
+                // Convenience: always only one rule at selector_index 0
+                let match_rule_ref = RuleRef {
+                    rule_index: 0,
+                    selector_index: 0,
+                };
+
                 for id in *should_match_ids {
                     let node = find(id);
                     let matched = Matcher::match_rules(
@@ -3109,7 +3217,7 @@ mod tests {
                     )
                     .unwrap_or_default();
                     assert!(
-                        matched.contains(&0),
+                        matched.contains(&match_rule_ref),
                         "Selector '{}': node id '{}' should match but did not",
                         selector,
                         id
@@ -3126,7 +3234,7 @@ mod tests {
                     )
                     .unwrap_or_default();
                     assert!(
-                        !matched.contains(&0),
+                        !matched.contains(&match_rule_ref),
                         "Selector '{}': node id '{}' should NOT match but did",
                         selector,
                         id
