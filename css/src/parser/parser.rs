@@ -3365,35 +3365,31 @@ mod tests {
                             if s == "-webkit-user-select" || s == "-moz-user-select" =>
                         {
                             // Value should be a CssValue with one ident: "none"
-                            if let CssValue { components, .. } = &d.value {
-                                assert_eq!(components.len(), 1);
-                                match &components[0] {
-                                    ComponentValue::Ident(val) => {
-                                        assert_eq!(val, "none");
-                                    }
-                                    v => panic!("Expected Ident('none'), got {:?}", v),
+                            let CssValue { components, .. } = &d.value;
+                            assert_eq!(components.len(), 1);
+                            match &components[0] {
+                                ComponentValue::Ident(val) => {
+                                    assert_eq!(val, "none");
                                 }
-                            } else {
-                                panic!("Expected CssValue struct");
+                                v => panic!("Expected Ident('none'), got {:?}", v),
                             }
                         }
                         Property::UserSelect => {
-                            if let CssValue { components, .. } = &d.value {
-                                assert_eq!(components.len(), 1);
-                                match &components[0] {
-                                    ComponentValue::Ident(val) => {
-                                        assert_eq!(val, "none");
-                                    }
-                                    v => panic!("Expected Ident('none'), got {:?}", v),
+                            let CssValue { components, .. } = &d.value;
+
+                            assert_eq!(components.len(), 1);
+                            match &components[0] {
+                                ComponentValue::Ident(val) => {
+                                    assert_eq!(val, "none");
                                 }
-                            } else {
-                                panic!("Expected CssValue struct");
+                                v => panic!("Expected Ident('none'), got {:?}", v),
                             }
                         }
                         _ => {}
                     }
                 }
             }
+
             other => panic!("Expected style rule, got {other:?}"),
         }
     }
@@ -3437,16 +3433,15 @@ mod tests {
                                     matches!(&decls[0].property, Property::Color),
                                     "Expected 'color' property"
                                 );
-                                if let CssValue { components, .. } = &decls[0].value {
-                                    assert_eq!(components.len(), 1);
-                                    match &components[0] {
-                                        ComponentValue::Ident(val) => {
-                                            assert_eq!(val, "red");
-                                        }
-                                        v => panic!("Expected Ident('red'), got {:?}", v),
-                                    }
-                                } else {
+                                let CssValue { components, .. } = &decls[0].value else {
                                     panic!("Expected CssValue for value of color");
+                                };
+                                assert_eq!(components.len(), 1);
+                                match &components[0] {
+                                    ComponentValue::Ident(val) => {
+                                        assert_eq!(val, "red");
+                                    }
+                                    v => panic!("Expected Ident('red'), got {:?}", v),
                                 }
                             }
                             other => panic!("Expected style rule, got {other:?}"),
