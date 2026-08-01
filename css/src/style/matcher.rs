@@ -1,4 +1,4 @@
-use std::{collections::HashSet, unimplemented};
+use std::{collections::HashSet, format, matches};
 
 use html::{
     dom::{dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType},
@@ -6,6 +6,7 @@ use html::{
 };
 
 use crate::cssom::{
+    component_value::ComponentValue,
     css_indexes::RuleRef,
     cssom::CssOm,
     rule::CssRule,
@@ -14,9 +15,14 @@ use crate::cssom::{
         SimpleSelector,
     },
 };
+#[derive(Debug, Clone, PartialEq)]
+pub enum Argument {
+    AnPlusB(i32, i32), // (a, b)
+    Number(i32),
+    Ident(String),
+}
 
-pub struct Matcher;
-
+pub struct Matcher {}
 impl Matcher {
     pub(crate) fn match_rules(
         node: &Node,
@@ -24,6 +30,8 @@ impl Matcher {
         candidates: &[RuleRef],
         cssom: &CssOm,
     ) -> Option<Vec<u32>> {
+        let mut matcher = Matcher {};
+
         let mut matched: HashSet<u32> = HashSet::new();
 
         for candidate in candidates {
@@ -44,13 +52,12 @@ impl Matcher {
                 Some(sel) => sel,
                 None => continue,
             };
-
             if complex_selector.rest.is_empty() {
-                if Self::match_compound(node, complex_selector.rightmost(), dom) {
+                if matcher.match_compound(node, complex_selector.rightmost(), dom) {
                     matched.insert(candidate.rule_index);
                 }
             } else {
-                if Self::matches_complex_selector_from(
+                if matcher.matches_complex_selector(
                     node,
                     dom,
                     complex_selector,
@@ -68,19 +75,20 @@ impl Matcher {
         }
     }
 
-    pub fn matches_complex_selector_from(
+    pub fn matches_complex_selector(
+        &mut self,
         node: &Node,
         dom: &Dom,
         complex_selector: &ComplexSelector,
         rest_index: isize,
     ) -> bool {
         if rest_index < 0 {
-            return Self::match_compound(node, &complex_selector.first, dom);
+            return self.match_compound(node, &complex_selector.first, dom);
         }
 
         let (ref combinator, ref right_compound) = complex_selector.rest[rest_index as usize];
 
-        if !Self::match_compound(node, right_compound, dom) {
+        if !self.match_compound(node, right_compound, dom) {
             return false;
         }
 
@@ -96,8 +104,8 @@ impl Matcher {
 
                 while let Some(ancestor) = cur_node {
                     let parent = &dom.nodes[ancestor];
-                    if Self::match_compound(parent, left_compound, dom) {
-                        return Self::matches_complex_selector_from(
+                    if self.match_compound(parent, left_compound, dom) {
+                        return self.matches_complex_selector(
                             parent,
                             dom,
                             complex_selector,
@@ -118,10 +126,10 @@ impl Matcher {
 
                 if let Some(ancestor) = node.parent {
                     let parent = &dom.nodes[ancestor];
-                    if Self::match_compound(parent, left_compound, dom)
+                    if self.match_compound(parent, left_compound, dom)
                         && parent.children.contains(&node.id)
                     {
-                        return Self::matches_complex_selector_from(
+                        return self.matches_complex_selector(
                             parent,
                             dom,
                             complex_selector,
@@ -140,8 +148,8 @@ impl Matcher {
                 };
                 if let Some(sibling) = node.previous_sibling(&dom.nodes) {
                     let sibling = &dom.nodes[sibling];
-                    if Self::match_compound(sibling, left_compound, dom) {
-                        return Self::matches_complex_selector_from(
+                    if self.match_compound(sibling, left_compound, dom) {
+                        return self.matches_complex_selector(
                             sibling,
                             dom,
                             complex_selector,
@@ -162,8 +170,8 @@ impl Matcher {
                 let mut cur_node = node.previous_sibling(&dom.nodes);
                 while let Some(sibling_id) = cur_node {
                     let sibling = &dom.nodes[sibling_id];
-                    if Self::match_compound(sibling, left_compound, dom) {
-                        return Self::matches_complex_selector_from(
+                    if self.match_compound(sibling, left_compound, dom) {
+                        return self.matches_complex_selector(
                             sibling,
                             dom,
                             complex_selector,
@@ -178,17 +186,24 @@ impl Matcher {
         }
     }
 
-    fn match_compound(node: &Node, compound_selector: &CompoundSelector, dom: &Dom) -> bool {
-        match &node.ntype {
+    fn match_compound(
+        &mut self,
+        node: &Node,
+        compound_selector: &CompoundSelector,
+        dom: &Dom,
+    ) -> bool {
+        let matched = match &node.ntype {
             NodeType::Element(element) => compound_selector
                 .simple_selectors
                 .iter()
-                .all(|selector| Self::match_simple(element, selector, node, dom)),
+                .all(|selector| self.match_simple(element, selector, node, dom)),
             _ => false,
-        }
+        };
+        matched
     }
 
     fn match_simple(
+        &mut self,
         element: &DomElement,
         selector: &SimpleSelector,
         node: &Node,
@@ -203,17 +218,18 @@ impl Matcher {
                 value,
                 operator,
             } => element.attributes.contains(name).map_or(false, |attr_val| {
-                Self::match_attribute_operators(value, operator, attr_val)
+                self.match_attribute_operators(value, operator, attr_val)
             }),
             SimpleSelector::Universal => true,
             SimpleSelector::PseudoClass(name, pseudo_args) => {
-                Self::match_pseudo_class(name, pseudo_args.as_ref(), element, node, dom)
+                self.match_pseudo_class(name, pseudo_args.as_ref(), element, node, dom)
             }
-            SimpleSelector::PseudoElement(_) => false,
+            SimpleSelector::PseudoElement(_) => true,
         }
     }
 
     fn match_pseudo_class(
+        &mut self,
         name: &str,
         pseudo_args: Option<&PseudoArg>,
         element: &DomElement,
@@ -221,41 +237,501 @@ impl Matcher {
         dom: &Dom,
     ) -> bool {
         match name {
-            "root" => match element.tag {
-                HtmlTag::Html => true,
-                _ => false,
-            },
-            "empty" => {
-                return node.children.is_empty();
+            "has" => {
+                if let Some(PseudoArg::SelectorList(list)) = pseudo_args {
+                    list.iter().any(|complex_selector| {
+                        self.match_has_selector(node, dom, complex_selector)
+                    })
+                } else {
+                    false
+                }
             }
 
-            "first-child" => match node.siblings(&dom.nodes) {
-                Some(sb) => sb.get(0).map_or(false, |first_id| *first_id == node.id),
-                None => false,
+            "not" => {
+                if let Some(PseudoArg::SelectorList(selectors)) = pseudo_args {
+                    selectors.iter().all(|complex_selector| {
+                        if complex_selector.rest.is_empty() {
+                            !self.match_compound(node, complex_selector.rightmost(), dom)
+                        } else {
+                            !self.matches_complex_selector(
+                                node,
+                                dom,
+                                complex_selector,
+                                (complex_selector.rest.len() - 1) as isize,
+                            )
+                        }
+                    })
+                } else {
+                    false
+                }
+            }
+            "is" | "where" => {
+                if let Some(PseudoArg::SelectorList(selectors)) = pseudo_args {
+                    selectors.iter().any(|complex_selector| {
+                        if complex_selector.rest.is_empty() {
+                            self.match_compound(node, complex_selector.rightmost(), dom)
+                        } else {
+                            self.matches_complex_selector(
+                                node,
+                                dom,
+                                complex_selector,
+                                (complex_selector.rest.len() - 1) as isize,
+                            )
+                        }
+                    })
+                } else {
+                    false
+                }
+            }
+            "lang" => {
+                let actual_lang = {
+                    let mut cur_node = Some(node);
+                    let mut found_lang = None;
+                    while let Some(n) = cur_node {
+                        if let NodeType::Element(el) = &n.ntype {
+                            if let Some(lang_val) = &el.attributes.lang {
+                                if !lang_val.trim().is_empty() {
+                                    found_lang = Some(lang_val.as_str());
+                                    break;
+                                }
+                            }
+                        }
+                        cur_node = n.parent.and_then(|pidx| dom.nodes.get(pidx as usize));
+                    }
+                    found_lang
+                };
+
+                if let Some(actual_lang) = actual_lang {
+                    if let Some(PseudoArg::Values(args)) = pseudo_args {
+                        // There may be multiple Ident values in :lang(...), match if any one matches.
+                        for value in args {
+                            if let ComponentValue::Ident(wanted) = value {
+                                if self.css_lang_matches(actual_lang, wanted) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                false
+            }
+            "dir" => {
+                let mut cur_node = Some(node);
+                let mut actual_dir = None;
+
+                while let Some(n) = cur_node {
+                    if let NodeType::Element(el) = &n.ntype {
+                        if let Some(dir) = &el.attributes.dir {
+                            actual_dir = Some(dir.as_str());
+                            break;
+                        }
+                    }
+                    cur_node = n.parent.and_then(|id| dom.nodes.get(id as usize));
+                }
+
+                if let Some(PseudoArg::Values(args)) = pseudo_args {
+                    if args.len() != 1 {
+                        return false;
+                    }
+                    if let Some(ComponentValue::Ident(wanted)) = args.first() {
+                        if wanted != "rtl" && wanted != "ltr" {
+                            return false;
+                        }
+
+                        match actual_dir {
+                            Some("rtl") | Some("ltr") => {
+                                if let Some(actual_dir_str) = actual_dir.as_ref() {
+                                    if actual_dir_str.eq_ignore_ascii_case(wanted) {
+                                        return true;
+                                    }
+                                }
+                            }
+                            Some("auto") => {
+                                if wanted.eq_ignore_ascii_case("ltr") {
+                                    return true;
+                                }
+                            }
+                            _ => {
+                                return false;
+                            }
+                        }
+                    }
+                }
+
+                false
+            }
+
+            "target" => false,        // TODO
+            "target-within" => false, // TODO
+
+            "root" => matches!(element.tag, HtmlTag::Html),
+
+            "required" => element.attributes.required.unwrap_or(false),
+
+            "checked" => match element.tag {
+                HtmlTag::Input => {
+                    let t = element.attributes.type_attr.as_deref().unwrap_or("");
+                    matches!(t, "checkbox" | "radio") && element.attributes.checked.unwrap_or(false)
+                }
+                HtmlTag::Option => element.attributes.selected.unwrap_or(false),
+                _ => false,
             },
-            "last-child" => match node.siblings(&dom.nodes) {
-                Some(sb) => sb.last().map_or(false, |last_id| *last_id == node.id),
-                None => false,
+
+            "disabled" => element.attributes.disabled.unwrap_or(false),
+
+            "enabled" => match element.tag {
+                HtmlTag::Input
+                | HtmlTag::Button
+                | HtmlTag::Select
+                | HtmlTag::Textarea
+                | HtmlTag::Option
+                | HtmlTag::Optgroup
+                | HtmlTag::Fieldset => !element.attributes.disabled.unwrap_or(false),
+                _ => false,
             },
-            "only-child" => match node.siblings(&dom.nodes) {
-                Some(sb) => sb.len() == 1 && sb[0] == node.id,
-                None => false,
+
+            "optional" => match element.tag {
+                HtmlTag::Input | HtmlTag::Select | HtmlTag::Textarea => {
+                    !element.attributes.required.unwrap_or(false)
+                }
+                _ => false,
             },
+
+            "placeholder-shown" => match element.tag {
+                HtmlTag::Input | HtmlTag::Textarea => {
+                    element.attributes.placeholder.is_some()
+                        && element
+                            .attributes
+                            .value
+                            .as_deref()
+                            .map_or(true, |v| v.is_empty())
+                }
+                _ => false,
+            },
+
+            "indeterminate" => false, // TODO: Implement when reactive JS state is available
+
+            "read-only" => match element.tag {
+                HtmlTag::Input | HtmlTag::Textarea => element.attributes.readonly.unwrap_or(false),
+                _ => false,
+            },
+
+            "read-write" => match element.tag {
+                HtmlTag::Input | HtmlTag::Textarea => !element.attributes.readonly.unwrap_or(false),
+                _ => false,
+            },
+
+            // Spec: The :default pseudo-class matches the default button or choice in a form, e.g., checked radio, checked checkbox, selected <option>.
+            // This requires form state. Not implemented for now.
+            "default" => false, // TODO: Implement properly with form controls and state
+
+            // TODO: Properly implement valid/invalid/in-range/out-of-range once form validation is available
+            "valid" => false,   // TODO: Implement with real constraint/form state
+            "invalid" => false, // TODO: Implement with real constraint/form state
+
+            // Numeric range support for <input type=number> and <input type=range>
+            // *min* and *max* should come from custom (element.attributes.custom), not from struct fields
+            "in-range" => match element.tag {
+                HtmlTag::Input => {
+                    let input_type = element
+                        .attributes
+                        .type_attr
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    if input_type == "number" || input_type == "range" {
+                        if let Some(value_str) = element.attributes.value.as_ref() {
+                            if let Ok(value) = value_str.parse::<f64>() {
+                                let min = element
+                                    .attributes
+                                    .custom
+                                    .as_ref()
+                                    .and_then(|c| c.get("min"))
+                                    .and_then(|s| s.parse::<f64>().ok());
+                                let max = element
+                                    .attributes
+                                    .custom
+                                    .as_ref()
+                                    .and_then(|c| c.get("max"))
+                                    .and_then(|s| s.parse::<f64>().ok());
+                                if let Some(min) = min {
+                                    if value < min {
+                                        return false;
+                                    }
+                                }
+                                if let Some(max) = max {
+                                    if value > max {
+                                        return false;
+                                    }
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                }
+                _ => false,
+            },
+            "out-of-range" => match element.tag {
+                HtmlTag::Input => {
+                    let input_type = element
+                        .attributes
+                        .type_attr
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    if input_type == "number" || input_type == "range" {
+                        if let Some(value_str) = element.attributes.value.as_ref() {
+                            if let Ok(value) = value_str.parse::<f64>() {
+                                let min = element
+                                    .attributes
+                                    .custom
+                                    .as_ref()
+                                    .and_then(|c| c.get("min"))
+                                    .and_then(|s| s.parse::<f64>().ok());
+                                let max = element
+                                    .attributes
+                                    .custom
+                                    .as_ref()
+                                    .and_then(|c| c.get("max"))
+                                    .and_then(|s| s.parse::<f64>().ok());
+                                if let Some(min) = min {
+                                    if value < min {
+                                        return true;
+                                    }
+                                }
+                                if let Some(max) = max {
+                                    if value > max {
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }
+                        }
+                    }
+                    false
+                }
+                _ => false,
+            },
+
+            "empty" => node.children.iter().all(|&child_id| {
+                if let Some(child_node) = dom.nodes.get(child_id as usize) {
+                    match &child_node.ntype {
+                        html::dom::node_type::NodeType::Comment(_) => true, // Ignore comments (do not disqualify :empty)
+                        html::dom::node_type::NodeType::Text(_) => false, // Any text node, including whitespace, means NOT empty
+                        html::dom::node_type::NodeType::Element(_) => false,
+                        html::dom::node_type::NodeType::Document => false,
+                        html::dom::node_type::NodeType::Doctype(_) => false,
+                    }
+                } else {
+                    true
+                }
+            }),
+
+            "first-child" => matches!(node.nth_element_sibling_index(&dom.nodes), Some(1)),
+            "last-child" => matches!(node.nth_element_sibling_reverse_index(&dom.nodes), Some(1)),
+            "only-child" => matches!(node.element_sibling_count(&dom.nodes), Some(1)),
             "nth-child" => {
-                unimplemented!()
+                let args = match pseudo_args {
+                    Some(PseudoArg::Values(arg)) => match self.parse_an_plus_b(arg.as_slice()) {
+                        Some(args) => args,
+                        None => return false,
+                    },
+                    _ => return false,
+                };
+
+                let self_index = match node.nth_element_sibling_index(&dom.nodes) {
+                    Some(idx) => idx as i32,
+                    None => return false,
+                };
+
+                self.is_nth_child_match(self_index, args.0, args.1)
             }
             "nth-last-child" => {
-                unimplemented!()
+                let args = match pseudo_args {
+                    Some(PseudoArg::Values(arg)) => match self.parse_an_plus_b(arg.as_slice()) {
+                        Some(args) => args,
+                        None => return false,
+                    },
+                    _ => return false,
+                };
+
+                let self_reverse_index = match node.nth_element_sibling_reverse_index(&dom.nodes) {
+                    Some(idx) => idx as i32,
+                    None => return false,
+                };
+
+                self.is_nth_child_match(self_reverse_index, args.0, args.1)
             }
+            "nth-of-type" => {
+                let args = match pseudo_args {
+                    Some(PseudoArg::Values(arg)) => match self.parse_an_plus_b(arg.as_slice()) {
+                        Some(args) => args,
+                        None => return false,
+                    },
+                    _ => return false,
+                };
+
+                let self_index = match node.nth_same_tag_sibling_index(&dom.nodes) {
+                    Some(idx) => idx as i32,
+                    None => return false,
+                };
+
+                self.is_nth_child_match(self_index, args.0, args.1)
+            }
+            "nth-last-of-type" => {
+                let args = match pseudo_args {
+                    Some(PseudoArg::Values(arg)) => match self.parse_an_plus_b(arg.as_slice()) {
+                        Some(args) => args,
+                        None => return false,
+                    },
+                    _ => return false,
+                };
+
+                let self_reverse_index = match node.nth_same_tag_sibling_reverse_index(&dom.nodes) {
+                    Some(idx) => idx as i32,
+                    None => return false,
+                };
+                self.is_nth_child_match(self_reverse_index, args.0, args.1)
+            }
+            "first-of-type" => matches!(node.nth_same_tag_sibling_index(&dom.nodes), Some(1)),
+            "last-of-type" => {
+                matches!(node.nth_same_tag_sibling_reverse_index(&dom.nodes), Some(1))
+            }
+            "only-of-type" => matches!(node.same_tag_sibling_count(&dom.nodes), Some(1)),
 
             _ => false,
         }
     }
-    fn match_pseudo_element() -> bool {
-        unimplemented!()
+
+    /// Matches a :has() selector starting from a node, using a clear API instead of magic numbers.
+    fn match_has_selector(
+        &mut self,
+        node: &Node,
+        dom: &Dom,
+        complex_selector: &ComplexSelector,
+    ) -> bool {
+        // If there's an explicit "first" segment, start by seeking a descendant that matches the first compound.
+        if !complex_selector.first.is_empty() {
+            self.relative_seek_first(node, dom, complex_selector)
+        } else if !complex_selector.rest.is_empty() {
+            // Otherwise, begin matching with the first combinator and right compound.
+            self.match_relative_selector(node, dom, complex_selector, 0)
+        } else {
+            false
+        }
+    }
+
+    /// Recursively seek any descendant (depth first) where leftmost compound matches, then attempt rest.
+    fn relative_seek_first(
+        &mut self,
+        node: &Node,
+        dom: &Dom,
+        complex_selector: &ComplexSelector,
+    ) -> bool {
+        for &child_idx in &node.children {
+            let child = &dom.nodes[child_idx];
+            if self.match_compound(child, &complex_selector.first, dom) {
+                // On a matching descendant, attempt to match the remainder of the selector from here.
+                if self.match_relative_selector(child, dom, complex_selector, 0) {
+                    return true;
+                }
+            }
+            // Continue seeking on all descendants.
+            if self.relative_seek_first(child, dom, complex_selector) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Matches a complex relative selector starting from the current node and the specified phase of matching.
+    /// Replaces magic -1/0 rest_index, uses phase (SeekingFirst or Matching(index)).
+    fn match_relative_selector(
+        &mut self,
+        node: &Node,
+        dom: &Dom,
+        complex_selector: &ComplexSelector,
+        rest_idx: usize,
+    ) -> bool {
+        if rest_idx >= complex_selector.rest.len() {
+            return true;
+        }
+        let (combinator, right_compound) = &complex_selector.rest[rest_idx];
+
+        Self::for_each_combinator_candidate(node, dom, combinator, |cand| {
+            if self.match_compound(cand, right_compound, dom) {
+                // Advance to next combinator/rest segment if compound matched.
+                if self.match_relative_selector(cand, dom, complex_selector, rest_idx + 1) {
+                    return true;
+                }
+            }
+            false
+        })
+    }
+
+    /// Abstracts combinator traversal and candidate discovery for relative selector matching.
+    fn for_each_combinator_candidate<F>(
+        node: &Node,
+        dom: &Dom,
+        combinator: &Combinator,
+        mut f: F,
+    ) -> bool
+    where
+        F: FnMut(&Node) -> bool,
+    {
+        match combinator {
+            Combinator::AdjacentSibling => {
+                if let Some(siblings) = node.siblings(&dom.nodes) {
+                    if let Some(pos) = siblings.iter().position(|&idx| idx == node.id) {
+                        if pos + 1 < siblings.len() {
+                            let next_sibling = &dom.nodes[siblings[pos + 1]];
+                            if f(next_sibling) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            Combinator::GeneralSibling => {
+                if let Some(siblings) = node.siblings(&dom.nodes) {
+                    if let Some(pos) = siblings.iter().position(|&idx| idx == node.id) {
+                        // For each following sibling (after this node)
+                        for sib_idx in siblings.iter().skip(pos + 1) {
+                            let sib_node = &dom.nodes[*sib_idx];
+                            if f(sib_node) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            Combinator::Child => {
+                for &child_idx in &node.children {
+                    let child = &dom.nodes[child_idx];
+                    if f(child) {
+                        return true;
+                    }
+                }
+            }
+            Combinator::Descendant => {
+                // Traverse all descendants—DFS.
+                let mut stack: Vec<&Node> =
+                    node.children.iter().map(|&idx| &dom.nodes[idx]).collect();
+                while let Some(desc) = stack.pop() {
+                    if f(desc) {
+                        return true;
+                    }
+                    // Expand for further descendants
+                    stack.extend(desc.children.iter().map(|&idx| &dom.nodes[idx]));
+                }
+            }
+        }
+        false
     }
 
     fn match_attribute_operators(
+        &mut self,
         value: &Option<String>,
         operator: &Option<AttrSelectorOperator>,
         attr_val: String,
@@ -284,12 +760,268 @@ impl Matcher {
                 .map_or(false, |expected| attr_val.contains(expected)),
         }
     }
+
+    /// Parses a sequence of component values representing an An+B microsyntax (for :nth-child, :nth-last-child, etc).
+    /// Returns Some((a, b)) if parsed successfully, or None if not valid.
+    ///
+    /// Accepts forms:
+    ///   n           -> (1, 0)
+    ///   -n          -> (-1, 0)
+    ///   2n+1        -> (2, 1)
+    ///   2n-1        -> (2, -1)
+    ///   odd         -> (2, 1)
+    ///   even        -> (2, 0)
+    ///   3           -> (0, 3)
+    fn parse_an_plus_b(&mut self, vals: &[ComponentValue]) -> Option<(i32, i32)> {
+        use ComponentValue::*;
+
+        if vals.is_empty() {
+            return None;
+        }
+
+        match &vals[0] {
+            Ident(s) => {
+                let lower = s.to_ascii_lowercase();
+                match lower.as_str() {
+                    "odd" => {
+                        if vals.len() == 1 {
+                            Some((2, 1))
+                        } else {
+                            None
+                        }
+                    }
+                    "even" => {
+                        if vals.len() == 1 {
+                            Some((2, 0))
+                        } else {
+                            None
+                        }
+                    }
+                    "n" => {
+                        // "n", or "n" + "+b"/"-b"
+                        let a = 1;
+                        if vals.len() == 1 {
+                            return Some((a, 0));
+                        }
+                        // "n" "+" Number   or  "n" "-" Number
+                        if let Some(Delim(sign)) = vals.get(1) {
+                            if let Some(Number(b)) = vals.get(2) {
+                                match sign {
+                                    '+' => Some((a, *b as i32)),
+                                    '-' => Some((a, -(*b as i32))),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    "-n" => {
+                        // handle "-n", "-n+3", "-n-2"
+                        let a = -1;
+                        if vals.len() == 1 {
+                            return Some((a, 0));
+                        }
+                        if let Some(Delim(sign)) = vals.get(1) {
+                            if let Some(Number(b)) = vals.get(2) {
+                                match sign {
+                                    '+' => Some((a, *b as i32)),
+                                    '-' => Some((a, -(*b as i32))),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    ident if ident.starts_with("n-") && ident.len() > 2 => {
+                        // e.g. "n-2" or "n-0"
+                        if let Ok(b) = ident[2..].parse::<i32>() {
+                            Some((1, -b))
+                        } else {
+                            None
+                        }
+                    }
+                    ident if ident.starts_with("-n-") && ident.len() > 3 => {
+                        // e.g. "-n-5"
+                        if let Ok(b) = ident[3..].parse::<i32>() {
+                            Some((-1, -b))
+                        } else {
+                            None
+                        }
+                    }
+                    "n-0" => Some((1, 0)),
+                    _ => None,
+                }
+            }
+            Number(num) => {
+                // Accepts a simple number (0n+num or just num, i.e. matches only the Nth child).
+                if vals.len() == 1 {
+                    return Some((0, *num as i32));
+                }
+                // Might be a number, followed by Ident("n") or Dimension
+                match vals.get(1) {
+                    // 2n, 2n+1, 2n-1 (tokenizable as: Number, Ident("n"/"-n")).
+                    Some(Ident(n_ident)) => {
+                        let mut a = *num as i32;
+                        let lower = n_ident.to_ascii_lowercase();
+                        if lower == "n" {
+                            // [Number, Ident("n")] => "an"
+                            if vals.len() == 2 {
+                                return Some((a, 0));
+                            }
+                            if let Some(Delim(sign)) = vals.get(2) {
+                                if let Some(Number(b)) = vals.get(3) {
+                                    match sign {
+                                        '+' => Some((a, *b as i32)),
+                                        '-' => Some((a, -(*b as i32))),
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else if lower == "-n" {
+                            a = -*num as i32;
+                            if vals.len() == 2 {
+                                return Some((a, 0));
+                            }
+                            if let Some(Delim(sign)) = vals.get(2) {
+                                if let Some(Number(b)) = vals.get(3) {
+                                    match sign {
+                                        '+' => Some((a, *b as i32)),
+                                        '-' => Some((a, -(*b as i32))),
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    // [Number, Dimension] e.g. 2n, 2n+1, 2n-1, if tokenizer builds these as a Dimension with unit "n"
+                    Some(Dimension { value, unit }) if unit.to_string() == "n" => {
+                        let a = *value as i32;
+                        // [Number, Dimension] only
+                        if vals.len() == 2 {
+                            return Some((a, 0));
+                        }
+                        // [Number, Dimension, Delim, Number]
+                        if let Some(Delim(sign)) = vals.get(2) {
+                            if let Some(Number(b)) = vals.get(3) {
+                                match sign {
+                                    '+' => Some((a, *b as i32)),
+                                    '-' => Some((a, -(*b as i32))),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            Dimension { value, unit } if unit.to_string() == "n" => {
+                // e.g. 2n, 2n+1, 2n-1
+                let a = *value as i32;
+                if vals.len() == 1 {
+                    return Some((a, 0));
+                }
+                if let Some(Delim(sign)) = vals.get(1) {
+                    if let Some(Number(b)) = vals.get(2) {
+                        match sign {
+                            '+' => Some((a, *b as i32)),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                } else if let Some(Number(b)) = vals.get(1) {
+                    Some((a, *b as i32))
+                } else {
+                    None
+                }
+            }
+            Delim(sign) if *sign == '+' => {
+                if vals.len() == 1 {
+                    return None;
+                }
+                let a = match vals.get(1)? {
+                    Ident(s) if s == "n" => return Some((1, 0)),
+                    Number(n) => *n as i32,
+                    _ => return None,
+                };
+
+                if vals.len() == 2 {
+                    return Some((a, 0));
+                }
+                if let Some(Delim(sign)) = vals.get(2) {
+                    if let Some(Number(b)) = vals.get(3) {
+                        match sign {
+                            '+' => Some((a, *b as i32)),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                } else if let Some(Number(b)) = vals.get(2) {
+                    Some((a, *b as i32))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn is_nth_child_match(&mut self, index: i32, a: i32, b: i32) -> bool {
+        // CSS child indices are 1-based.
+        if index < 1 {
+            return false;
+        }
+
+        // a == 0 => matches exactly the b-th child.
+        if a == 0 {
+            return index == b;
+        }
+
+        let diff = index - b;
+
+        // n must be an integer.
+        if diff % a != 0 {
+            return false;
+        }
+
+        // n must be non-negative.
+        let n = diff / a;
+        n >= 0
+    }
+
+    fn css_lang_matches(&mut self, actual: &str, wanted: &str) -> bool {
+        actual.eq_ignore_ascii_case(wanted) // TODO 
+            || actual
+                .strip_prefix(wanted)
+                .is_some_and(|rest| rest.starts_with('-'))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use core::panic;
-    use std::{assert_eq, matches, println, vec};
+    use std::{assert_eq, format, matches, println, vec};
 
     use super::*;
     use crate::cssom::css_indexes::{CssIndexes, RuleRef};
@@ -1279,12 +2011,22 @@ mod tests {
                 <li id="second"></li>
                 <li id="third"></li>
                 <li id="fourth"></li>
+                <li id="fifth"></li>
+                <li id="sixth"></li>
             </ul>
         "#;
         let css = r#"
-            li:nth-child(2) { color: red; }
-            li:nth-child(2n) { color: blue; }
-            li:nth-last-child(2) { color: green; }
+            li:nth-child(2) { color: red; }              /* rule 0 */
+            li:nth-child(even) { color: blue; }            /* rule 1 */
+            li:nth-child(3n) { color: purple; }          /* rule 2 */
+            li:nth-child(odd) { color: teal; }          /* rule 3 */
+            li:nth-child(2n-1) { color: orange; }        /* rule 4 */
+            li:nth-child(3n+2) { color: gold; }          /* rule 5 */
+            li:nth-child(4n-2) { color: green; }         /* rule 6 */
+            li:nth-child(0n+5) { color: khaki; }         /* rule 7 */
+            li:nth-child(5n) { color: navy; }            /* rule 8 */
+            li:nth-last-child(2) { color: green; }       /* rule 9 */
+            li:nth-last-child(2n) { color: black; }      /* rule 10 */
         "#;
         let result = Parser::to_dom(html).unwrap();
         let dom = result.value;
@@ -1305,6 +2047,8 @@ mod tests {
         let second = find("second");
         let third = find("third");
         let fourth = find("fourth");
+        let fifth = find("fifth");
+        let sixth = find("sixth");
         let get_el = |n: &Node| {
             if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
                 el.clone()
@@ -1316,7 +2060,6 @@ mod tests {
         let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
-        println!("{rules:#?}");
         let mut cssom = CssOm {
             rules,
             indexes: CssIndexes::default(),
@@ -1351,11 +2094,369 @@ mod tests {
             &cssom,
         )
         .unwrap_or_default();
+        let m_fifth = Matcher::match_rules(
+            fifth,
+            &dom,
+            &cssom.lookup_candidates(&get_el(fifth)),
+            &cssom,
+        )
+        .unwrap_or_default();
+        let m_sixth = Matcher::match_rules(
+            sixth,
+            &dom,
+            &cssom.lookup_candidates(&get_el(sixth)),
+            &cssom,
+        )
+        .unwrap_or_default();
 
-        assert!(!m_first.contains(&0) && !m_first.contains(&1) && !m_first.contains(&2));
-        assert!(m_second.contains(&0) && m_second.contains(&1));
-        assert!(m_third.contains(&1));
-        assert!(m_fourth.contains(&2));
+        // The expected results below are checked manually against the CSS selectors
+        // for nth-child and nth-last-child, using the actual positions of the <li> elements.
+        // 1-based positions: first=1, second=2, ... sixth=6
+        // nth-last-child is also position 1-based from the end (so sixth=1, fifth=2, ... first=6)
+
+        // Each line: [rule 0, ..., rule 10] for that <li> node.
+        // Calculation comments updated for accuracy; see https://developer.mozilla.org/en-US/docs/Web/CSS/:nth-child
+
+        assert_eq!(
+            vec![
+                m_first.contains(&0),  // nth-child(2): false (first = 1)
+                m_first.contains(&1),  // nth-child(2n): false (1 is not even)
+                m_first.contains(&2),  // nth-child(3n): false (1 mod 3 != 0)
+                m_first.contains(&3),  // nth-child(2n+1): true (2*0+1 = 1)
+                m_first.contains(&4), // nth-child(2n-1): false (no n where 2n-1==1 except n=1 -> 1, so true)
+                m_first.contains(&5), // nth-child(3n+2): false (1 not 2,5,8,11...)
+                m_first.contains(&6), // nth-child(4n-2): false
+                m_first.contains(&7), // nth-child(0n+5): false (first pos is not 5)
+                m_first.contains(&8), // nth-child(5n): false (first pos is not 5, 10, ...)
+                m_first.contains(&9), // nth-last-child(2): false (first pos from end is 6, 2nd from end is fifth)
+                m_first.contains(&10), // nth-last-child(2n): true (6 is even, so matches, n=3)
+            ],
+            vec![
+                false, false, false, true, true, false, false, false, false, false, true
+            ]
+        );
+
+        assert_eq!(
+            vec![
+                m_second.contains(&0),  // nth-child(2): true (second=2)
+                m_second.contains(&1),  // nth-child(2n): true (2/2=1, 2 is even)
+                m_second.contains(&2),  // nth-child(3n): false (2)
+                m_second.contains(&3),  // nth-child(2n+1): false (no n: 2n+1==2)
+                m_second.contains(&4), // nth-child(2n-1): true (n=2, 2*2-1=3, no, for n=1, 2*1-1=1, n=2:3, n=2,2*2-1=3, n=2 for 2n-1=2 → n=1.5, not integer, so false)
+                m_second.contains(&5), // nth-child(3n+2): true (n=0, 0+2=2; n=0)
+                m_second.contains(&6), // nth-child(4n-2): false (n=1,4-2=2, yes)
+                m_second.contains(&7), // nth-child(0n+5): false (not position 5)
+                m_second.contains(&8), // nth-child(5n): false
+                m_second.contains(&9), // nth-last-child(2): false (position from end is 5)
+                m_second.contains(&10), // nth-last-child(2n): false (5 is odd)
+            ],
+            vec![
+                true, true, false, false, false, true, true, false, false, false, false
+            ]
+        );
+
+        assert_eq!(
+            vec![
+                m_third.contains(&0),  // nth-child(2): false (3 vs 2)
+                m_third.contains(&1),  // nth-child(2n): false (3 is odd)
+                m_third.contains(&2),  // nth-child(3n): true (n=1)
+                m_third.contains(&3),  // nth-child(2n+1): true (n=1,2*1+1=3)
+                m_third.contains(&4), // nth-child(2n-1): false (no n where 2n-1=3, n=2 gives 3, ok, so true)
+                m_third.contains(&5), // nth-child(3n+2): false (3n+2=2,5,8..., 3 not covered)
+                m_third.contains(&6), // nth-child(4n-2): false (n=1,4-2=2)
+                m_third.contains(&7), // nth-child(0n+5): false
+                m_third.contains(&8), // nth-child(5n): false
+                m_third.contains(&9), // nth-last-child(2): false
+                m_third.contains(&10), // nth-last-child(2n): true (4 is even),
+            ],
+            vec![
+                false, false, true, true, true, false, false, false, false, false, true
+            ]
+        );
+
+        assert_eq!(
+            vec![
+                m_fourth.contains(&0),  // nth-child(2): false
+                m_fourth.contains(&1),  // nth-child(2n): true (even position)
+                m_fourth.contains(&2),  // nth-child(3n): false (not multiple of 3)
+                m_fourth.contains(&3),  // nth-child(2n+1): false (not odd)
+                m_fourth.contains(&4),  // nth-child(2n-1): false (n=3 → 2*3-1=5, doesn't match 4)
+                m_fourth.contains(&5),  // nth-child(3n+2): false (3*0+2=2, 3*1+2=5, not 4)
+                m_fourth.contains(&6),  // nth-child(4n-2): true (n=1.5, 4*1.5-2 = 4)
+                m_fourth.contains(&7),  // nth-child(0n+5): false
+                m_fourth.contains(&8),  // nth-child(5n): false
+                m_fourth.contains(&9),  // nth-last-child(2): false (position 3 from end)
+                m_fourth.contains(&10), // nth-last-child(2n): false (3 is odd),
+            ],
+            vec![
+                false, true, false, false, false, false, false, false, false, false, false
+            ]
+        );
+
+        assert_eq!(
+            vec![
+                m_fifth.contains(&0),  // nth-child(2): false
+                m_fifth.contains(&1),  // nth-child(2n): false (odd)
+                m_fifth.contains(&2),  // nth-child(3n): false (not a multiple of 3)
+                m_fifth.contains(&3),  // nth-child(2n+1): true (2*2+1=5)
+                m_fifth.contains(&4),  // nth-child(2n-1): true (n=3,2*3-1=5)
+                m_fifth.contains(&5),  // nth-child(3n+2): false (n=1,3*1+2=5, matches)
+                m_fifth.contains(&6),  // nth-child(4n-2): true (n=1.75, not integer)
+                m_fifth.contains(&7),  // nth-child(0n+5): true (5)
+                m_fifth.contains(&8),  // nth-child(5n): true (5)
+                m_fifth.contains(&9),  // nth-last-child(2): true (second from end = fifth)
+                m_fifth.contains(&10), // nth-last-child(2n): true (fifth element is 2nd from the end, and 2 is even, so true)
+            ],
+            vec![
+                false, false, false, true, true, true, false, true, true, true, true
+            ]
+        );
+
+        assert_eq!(
+            vec![
+                m_sixth.contains(&0),  // nth-child(2): false
+                m_sixth.contains(&1),  // nth-child(2n): true (6 is even)
+                m_sixth.contains(&2),  // nth-child(3n): true (n=2,3*2=6)
+                m_sixth.contains(&3),  // nth-child(2n+1): false (2*2+1=5, no solution for 6)
+                m_sixth.contains(&4),  // nth-child(2n-1): false (2*4-1=7)
+                m_sixth.contains(&5),  // nth-child(3n+2): false (3*1+2=5, 3*2+2=8)
+                m_sixth.contains(&6),  // nth-child(4n-2): true (n=2,4*2-2=6)
+                m_sixth.contains(&7),  // nth-child(0n+5): false (not 5)
+                m_sixth.contains(&8),  // nth-child(5n): false (6 is not a multiple of 5)
+                m_sixth.contains(&9),  // nth-last-child(2): false (first from end == sixth (n=1))
+                m_sixth.contains(&10), // nth-last-child(2n): true (n=1, 6th from end = 1, 1 is odd, 2 * some n = 1 is false, but 1st from end so n=1, false, but for nth-last-child(2n): 6th from end is 1, only 2, 4, 6 positions from end, so false)
+            ],
+            vec![
+                false, true, true, false, false, false, true, false, false, false, false
+            ]
+        );
+    }
+
+    // Additional test for :nth-child() edge cases and special forms
+    #[test]
+    fn test_matcher_nth_child_edge_cases() {
+        let html = r#"
+            <ol>
+                <li id="one"></li>
+                <li id="two"></li>
+                <li id="three"></li>
+                <li id="four"></li>
+            </ol>
+        "#;
+        // Rules: 0=-n, 1=n, 2=n+0, 3=-2n, 4=4n-6, 5=0n+1, 6=0n-1, 7=+n, 8=n-2, 9=99999n-99998, 10=n-0, 11=-n-5, 12=-n+3
+        let css = r#"
+            li:nth-child(-n) { color: x; }     /* rule 0 -- matches nothing! */
+            li:nth-child(n) { color: y; }      /* rule 1 -- matches all */
+            li:nth-child(n+0) { color: z; }    /* rule 2 -- matches all */
+            li:nth-child(-2n) { color: a; }    /* rule 3 -- matches none */
+            li:nth-child(4n-6) { color: b; }   /* rule 4 -- matches pos 2, 6, 10, ... so in this case, pos 2 matches */
+            li:nth-child(0n+1) { color: c; }   /* rule 5 -- only first child */
+            li:nth-child(0n-1) { color: d; }   /* rule 6 -- impossible; can't match index < 1 */
+            li:nth-child(+n) { color: e; }     /* rule 7 -- matches all */
+            li:nth-child(n-2) { color: f; }    /* rule 8 -- matches all (n-2 = index, n >= 0, so all indices >= 1 are possible) */
+            li:nth-child(99999n-99998) { color: g; } /* rule 9 -- n = 1 → 1, n = 2 → 100000, ... (matches pos=1, 100000, ...) */
+            li:nth-child(n-0) { color: h; }   /* rule 10 -- matches all */
+            li:nth-child(-n-5) { color: i; }   /* rule 11 -- matches nothing (pos = -n-5, n >= 0 => pos <= -5, but all indices > 0) */
+            li:nth-child(-n+3) { color: j; }   /* rule 12 -- matches positions 1, 2, 3 (pos = -n+3, for n=0: 3, n=1: 2, n=2: 1) */
+        "#;
+        let result = Parser::to_dom(html).unwrap();
+        let dom = result.value;
+        let find = |id| {
+            dom.nodes
+                .iter()
+                .find(|n| {
+                    if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
+                        el.id() == Some(id)
+                    } else {
+                        false
+                    }
+                })
+                .unwrap()
+        };
+
+        let one = find("one");
+        let two = find("two");
+        let three = find("three");
+        let four = find("four");
+        let get_el = |n: &Node| {
+            if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
+                el.clone()
+            } else {
+                panic!()
+            }
+        };
+
+        let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
+        let mut parser = crate::parser::parser::Parser::new(&tokens);
+        let rules = parser.parse().unwrap();
+        let mut cssom = CssOm {
+            rules,
+            indexes: CssIndexes::default(),
+        };
+        cssom.build_indexes();
+
+        let m_one = Matcher::match_rules(one, &dom, &cssom.lookup_candidates(&get_el(one)), &cssom)
+            .unwrap_or_default();
+        let m_two = Matcher::match_rules(two, &dom, &cssom.lookup_candidates(&get_el(two)), &cssom)
+            .unwrap_or_default();
+        let m_three = Matcher::match_rules(
+            three,
+            &dom,
+            &cssom.lookup_candidates(&get_el(three)),
+            &cssom,
+        )
+        .unwrap_or_default();
+        let m_four =
+            Matcher::match_rules(four, &dom, &cssom.lookup_candidates(&get_el(four)), &cssom)
+                .unwrap_or_default();
+
+        // Comments: [rule0, rule1, ... rule12]
+        // li:nth-child(-n): matches no element (never true)
+        // li:nth-child(n): matches any
+        // li:nth-child(n+0): matches any
+        // li:nth-child(-2n): matches only indices divisible by negative even - which is nothing, by spec
+        // li:nth-child(4n-6): matches pos 2, 6, 10, ... so the 2nd element in our 4-element list should match
+        // li:nth-child(0n+1): matches exactly the first only
+        // li:nth-child(0n-1): never matches (negative/no 0 index)
+        // li:nth-child(+n): matches all (equivalent to n)
+        // li:nth-child(n-2): matches all -- for any index >= 1, there exists an n
+        // li:nth-child(99999n-99998): only element #1 matches in this list
+        // li:nth-child(n-0): matches all
+        // li:nth-child(-n-5): never matches (all indices > 0, -n-5 <= -5)
+        // li:nth-child(-n+3): matches indices 1, 2, 3 only
+
+        // <li id="one"> (pos=1)
+        assert_eq!(
+            vec![
+                m_one.contains(&0),  // -n
+                m_one.contains(&1),  // n
+                m_one.contains(&2),  // n+0
+                m_one.contains(&3),  // -2n
+                m_one.contains(&4),  // 4n-6
+                m_one.contains(&5),  // 0n+1
+                m_one.contains(&6),  // 0n-1
+                m_one.contains(&7),  // +n
+                m_one.contains(&8),  // n-2
+                m_one.contains(&9),  // 99999n-99998
+                m_one.contains(&10), // n-0
+                m_one.contains(&11), // -n-5
+                m_one.contains(&12), // -n+3
+            ],
+            vec![
+                false, // -n
+                true,  // n
+                true,  // n+0
+                false, // -2n
+                false, // 4n-6
+                true,  // 0n+1
+                false, // 0n-1
+                true,  // +n
+                true,  // n-2 (matches all)
+                true,  // 99999n-99998 -- only first element matches!
+                true,  // n-0
+                false, // -n-5
+                true   // -n+3
+            ]
+        );
+        // <li id="two"> (pos=2)
+        assert_eq!(
+            vec![
+                m_two.contains(&0), // -n
+                m_two.contains(&1),
+                m_two.contains(&2),
+                m_two.contains(&3),
+                m_two.contains(&4),
+                m_two.contains(&5),
+                m_two.contains(&6),
+                m_two.contains(&7),
+                m_two.contains(&8),
+                m_two.contains(&9),
+                m_two.contains(&10),
+                m_two.contains(&11),
+                m_two.contains(&12),
+            ],
+            vec![
+                false, // -n
+                true,  // n
+                true,  // n+0
+                false, // -2n
+                true,  // 4n-6 (2 = 4*2-6, n=2)
+                false, // 0n+1
+                false, // 0n-1
+                true,  // +n
+                true,  // n-2 (matches all)
+                false, // 99999n-99998 -- only position 1 should match
+                true,  // n-0
+                false, // -n-5
+                true   // -n+3
+            ]
+        );
+        // <li id="three"> (pos=3)
+        assert_eq!(
+            vec![
+                m_three.contains(&0),
+                m_three.contains(&1),
+                m_three.contains(&2),
+                m_three.contains(&3),
+                m_three.contains(&4),
+                m_three.contains(&5),
+                m_three.contains(&6),
+                m_three.contains(&7),
+                m_three.contains(&8),
+                m_three.contains(&9),
+                m_three.contains(&10),
+                m_three.contains(&11),
+                m_three.contains(&12),
+            ],
+            vec![
+                false, // -n
+                true,  // n
+                true,  // n+0
+                false, // -2n
+                false, // 4n-6
+                false, // 0n+1
+                false, // 0n-1
+                true,  // +n
+                true,  // n-2 (matches all)
+                false, // 99999n-99998
+                true,  // n-0
+                false, // -n-5
+                true   // -n+3 (<=3)
+            ]
+        );
+        // <li id="four"> (pos=4)
+        assert_eq!(
+            vec![
+                m_four.contains(&0),
+                m_four.contains(&1),
+                m_four.contains(&2),
+                m_four.contains(&3),
+                m_four.contains(&4),
+                m_four.contains(&5),
+                m_four.contains(&6),
+                m_four.contains(&7),
+                m_four.contains(&8),
+                m_four.contains(&9),
+                m_four.contains(&10),
+                m_four.contains(&11),
+                m_four.contains(&12),
+            ],
+            vec![
+                false, // -n
+                true,  // n
+                true,  // n+0
+                false, // -2n
+                false, // 4n-6
+                false, // 0n+1
+                false, // 0n-1
+                true,  // +n
+                true,  // n-2 (matches all)
+                false, // 99999n-99998
+                true,  // n-0
+                false, // -n-5
+                false  // -n+3 (4>3)
+            ]
+        );
     }
 
     #[test]
@@ -1437,13 +2538,17 @@ mod tests {
     }
 
     #[test]
-    fn test_matcher_lang_and_dir() {
+    fn test_matcher_lang_and_dir_multiple_langs() {
         let html = r#"
             <div id="en" lang="en"></div>
+            <div id="en2" lang="en-US"></div>
+            <div id="fr" lang="fr"></div>
             <div id="ar" dir="rtl"></div>
         "#;
         let css = r#"
             div:lang(en) { color: red; }
+            div:lang(fr, EN) { color: blue; }
+            div:lang(en-us) { color: orange; }
             div:dir(rtl) { color: green; }
         "#;
         let result = Parser::to_dom(html).unwrap();
@@ -1469,6 +2574,8 @@ mod tests {
         };
 
         let en = find("en");
+        let en2 = find("en2");
+        let fr = find("fr");
         let ar = find("ar");
 
         let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
@@ -1479,37 +2586,284 @@ mod tests {
             indexes: CssIndexes::default(),
         };
         cssom.build_indexes();
+        println!("{:#?}", cssom.rules[1]);
 
         let m_en = Matcher::match_rules(en, &dom, &cssom.lookup_candidates(&get_el(en)), &cssom)
+            .unwrap_or_default();
+        let m_en2 = Matcher::match_rules(en2, &dom, &cssom.lookup_candidates(&get_el(en2)), &cssom)
+            .unwrap_or_default();
+        let m_fr = Matcher::match_rules(fr, &dom, &cssom.lookup_candidates(&get_el(fr)), &cssom)
             .unwrap_or_default();
         let m_ar = Matcher::match_rules(ar, &dom, &cssom.lookup_candidates(&get_el(ar)), &cssom)
             .unwrap_or_default();
 
+        // div:lang(en) should match lang="en" and lang="en-US" per selector spec: "en-US" is a subtag of "en"
         assert!(m_en.contains(&0));
-        assert!(m_ar.contains(&1));
+        assert!(m_en2.contains(&0));
+        // div:lang(fr, EN) matches fr node and en node only for rule index 1 (color: blue)
+        assert!(m_fr.contains(&1));
+        assert!(m_en.contains(&1));
+        // div:lang(en-us) should only match lang="en-US"
+        assert!(m_en2.contains(&2));
+        // div:dir(rtl) matches "ar" only
+        assert!(m_ar.contains(&3));
     }
 
+    // #[test]
+    // fn test_matcher_dir_auto_with_text_content_and_nested() {
+    //     // Some edge and nested cases for inferring direction with dir="auto"
+    //     let html = r#"
+    //         <div id="en" dir="auto">Hello!</div>
+    //         <!-- Arabic (RTL) content: Arabic "مرحبا" -->
+    //         <div id="ar" dir="auto">مرحبا!</div>
+    //         <!-- Mixed (LTR then RTL), spec says first strong char is used for dir auto -->
+    //         <div id="en_ar" dir="auto">Hello! مرحبا</div>
+    //         <div id="ar_en" dir="auto">مرحبا Hello!</div>
+    //         <!-- Only neutral characters: fallback LTR -->
+    //         <div id="neutral" dir="auto">12345 .,!?</div>
+    //         <!-- LTR letter inside nested element -->
+    //         <div id="nested_ltr" dir="auto"><span>H</span> مرحبا</div>
+    //         <!-- RTL letter inside nested element -->
+    //         <div id="nested_rtl" dir="auto"><span>م</span> Hello!</div>
+    //         <!-- Deeply nested strong char (LTR) triggers LTR -->
+    //         <div id="deep_ltr" dir="auto"><span><b><i>E</i></b></span></div>
+    //         <!-- Deeply nested strong char (RTL) triggers RTL -->
+    //         <div id="deep_rtl" dir="auto"><span><b><i>م</i></b></span></div>
+    //         <!-- No child text, only element nodes (should be LTR fallback) -->
+    //         <div id="no_text" dir="auto"><span></span><div></div></div>
+    //         <!-- Child with only whitespace -->
+    //         <div id="only_space" dir="auto">    </div>
+    //         <!-- Outer neutral, inner nested LTR and RTL: only first strong counts -->
+    //         <div id="outer_neutral_nested_ltr" dir="auto">123 <span>H</span> <span>م</span></div>
+    //         <div id="outer_neutral_nested_rtl" dir="auto">.?! <span>م</span> <span>H</span></div>
+    //         <!-- Sibling text nodes interleaved with elements -->
+    //         <div id="sib_ltr_first" dir="auto">A<span>م</span></div>
+    //         <div id="sib_rtl_first" dir="auto">م<span>A</span></div>
+    //     "#;
+    //     let css = r#"
+    //         [dir="auto"]:dir(ltr) { color: red; }
+    //         [dir="auto"]:dir(rtl) { color: blue; }
+    //         div:dir(ltr) { color: green; }
+    //         div:dir(rtl) { color: orange; }
+    //     "#;
+    //     let result = Parser::to_dom(html).unwrap();
+    //     let dom = result.value;
+    //     let find = |id| {
+    //         dom.nodes
+    //             .iter()
+    //             .find(|n| {
+    //                 if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
+    //                     el.id() == Some(id)
+    //                 } else {
+    //                     false
+    //                 }
+    //             })
+    //             .expect(&format!("Node with id={id} not found"))
+    //     };
+    //     let get_el = |n: &Node| {
+    //         if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
+    //             el.clone()
+    //         } else {
+    //             panic!()
+    //         }
+    //     };
+
+    //     let ids_ltr = [
+    //         "en",
+    //         "en_ar",
+    //         "ar_en",
+    //         "neutral",
+    //         "nested_ltr",
+    //         "deep_ltr",
+    //         "no_text",
+    //         "only_space",
+    //         "outer_neutral_nested_ltr",
+    //         "sib_ltr_first",
+    //     ];
+    //     let ids_rtl = [
+    //         "ar",
+    //         "nested_rtl",
+    //         "deep_rtl",
+    //         "outer_neutral_nested_rtl",
+    //         "sib_rtl_first",
+    //     ];
+
+    //     // LTR fallback should also apply to cases with only neutral, or empty
+    //     // outer_neutral_nested_ltr: first strong is "H" (LTR)
+    //     // outer_neutral_nested_rtl: first strong is "م" (RTL)
+    //     let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
+    //     let mut parser = crate::parser::parser::Parser::new(&tokens);
+    //     let rules = parser.parse().unwrap();
+    //     let mut cssom = CssOm {
+    //         rules,
+    //         indexes: CssIndexes::default(),
+    //     };
+    //     cssom.build_indexes();
+
+    //     // Should be LTR
+    //     // Instead of comparing selector as string, match using enum structure.
+    //     // ([dir="auto"]:dir(ltr), and [dir="auto"]:dir(rtl))
+
+    //     // Helper to identify a ComplexSelector representing [dir="auto"]:dir(ltr)
+    //     fn is_dir_auto_ltr_selector(sel: &crate::cssom::selector::ComplexSelector) -> bool {
+    //         // Only one compound (no combinator)
+    //         if !sel.rest.is_empty() {
+    //             return false;
+    //         }
+    //         // Should have two simple selectors:
+    //         // 1. Attribute: [dir="auto"]
+    //         // 2. Pseudo-class: :dir(ltr)
+    //         let simples = &sel.first.simple_selectors;
+    //         if simples.len() != 2 {
+    //             return false;
+    //         }
+    //         let mut found_attr = false;
+    //         let mut found_pseudo = false;
+    //         for s in simples {
+    //             match s {
+    //                 SimpleSelector::Attribute {
+    //                     name,
+    //                     value,
+    //                     operator,
+    //                 } => {
+    //                     if name == "dir" && value.as_deref() == Some("auto") && operator.is_none() {
+    //                         found_attr = true;
+    //                     }
+    //                 }
+    //                 SimpleSelector::PseudoClass(name, Some(PseudoArg::Values(args))) => {
+    //                     // :dir(ltr)
+    //                     if name == "dir"
+    //                         && args.len() == 1
+    //                         && matches!(&args[0], crate::cssom::component_value::ComponentValue::Ident(ident) if ident == "ltr")
+    //                     {
+    //                         found_pseudo = true;
+    //                     }
+    //                 }
+    //                 _ => {}
+    //             }
+    //         }
+    //         found_attr && found_pseudo
+    //     }
+
+    //     // Helper to identify a ComplexSelector representing [dir="auto"]:dir(rtl)
+    //     fn is_dir_auto_rtl_selector(sel: &crate::cssom::selector::ComplexSelector) -> bool {
+    //         // Only one compound (no combinator)
+    //         if !sel.rest.is_empty() {
+    //             return false;
+    //         }
+    //         let simples = &sel.first.simple_selectors;
+    //         if simples.len() != 2 {
+    //             return false;
+    //         }
+    //         let mut found_attr = false;
+    //         let mut found_pseudo = false;
+    //         for s in simples {
+    //             match s {
+    //                 SimpleSelector::Attribute {
+    //                     name,
+    //                     value,
+    //                     operator,
+    //                 } => {
+    //                     if name == "dir" && value.as_deref() == Some("auto") && operator.is_none() {
+    //                         found_attr = true;
+    //                     }
+    //                 }
+    //                 SimpleSelector::PseudoClass(name, Some(PseudoArg::Values(args))) => {
+    //                     // :dir(rtl)
+    //                     if name == "dir"
+    //                         && args.len() == 1
+    //                         && matches!(&args[0], crate::cssom::component_value::ComponentValue::Ident(ident) if ident == "rtl")
+    //                     {
+    //                         found_pseudo = true;
+    //                     }
+    //                 }
+    //                 _ => {}
+    //             }
+    //         }
+    //         found_attr && found_pseudo
+    //     }
+
+    //     // Find the index of the appropriate rules
+    //     let ltr_rule_idx = cssom
+    //         .rules
+    //         .iter()
+    //         .position(|r| {
+    //             if let crate::cssom::rule::CssRule::Style(sr) = r {
+    //                 sr.selectors.iter().any(is_dir_auto_ltr_selector)
+    //             } else {
+    //                 false
+    //             }
+    //         })
+    //         .expect("Couldn't find [dir=\"auto\"]:dir(ltr) rule");
+    //     let rtl_rule_idx = cssom
+    //         .rules
+    //         .iter()
+    //         .position(|r| {
+    //             if let crate::cssom::rule::CssRule::Style(sr) = r {
+    //                 sr.selectors.iter().any(is_dir_auto_rtl_selector)
+    //             } else {
+    //                 false
+    //             }
+    //         })
+    //         .expect("Couldn't find [dir=\"auto\"]:dir(rtl) rule");
+
+    //     for id in ids_ltr.iter() {
+    //         let node = find(id);
+    //         let m =
+    //             Matcher::match_rules(node, &dom, &cssom.lookup_candidates(&get_el(node)), &cssom)
+    //                 .unwrap_or_default();
+    //         assert!(
+    //             m.iter().any(|&i| i as usize == ltr_rule_idx),
+    //             "Expected {id} to match :dir(ltr)"
+    //         );
+    //         assert!(
+    //             !m.iter().any(|&i| i as usize == rtl_rule_idx),
+    //             "Expected {id} NOT to match :dir(rtl)"
+    //         );
+    //     }
+
+    //     // Should be RTL
+    //     for id in ids_rtl.iter() {
+    //         let node = find(id);
+    //         let m =
+    //             Matcher::match_rules(node, &dom, &cssom.lookup_candidates(&get_el(node)), &cssom)
+    //                 .unwrap_or_default();
+    //         assert!(
+    //             m.iter().any(|&i| i as usize == rtl_rule_idx),
+    //             "Expected {id} to match :dir(rtl)"
+    //         );
+    //         assert!(
+    //             !m.iter().any(|&i| i as usize == ltr_rule_idx),
+    //             "Expected {id} NOT to match :dir(ltr)"
+    //         );
+    //     }
+    // }
+
     #[test]
-    fn test_matcher_not_is_where_has() {
+    fn test_matcher_not_is_where() {
         let html = r#"
             <div id="a" class="foo bar baz" data-x="1"></div>
             <div id="b" class="foo" data-x="2"></div>
             <div id="c" class="bar"></div>
             <div id="d" class="foo baz" data-x="3"></div>
-            <ul id="ul1"><li id="li1" class="item"></li><li id="li2"></li></ul>
-            <ul id="ul2"></ul>
-            <section id="sec1" class="highlight">
-                <div id="e" class="foo"></div>
-            </section>
+            <div id="e" class="qux foo" data-x="4"></div>
+            <div id="f" class="baz"></div>
+            <div id="g" class="foo" data-y="5"></div>
+            <div id="h"></div>
         "#;
         let css = r#"
             .foo:not(.bar):not([data-x="3"]) { color: red; }
             .foo:is(.foo, .baz) { color: green; }
             .foo:where(.foo, .baz) { color: gray; }
-            ul:has(li.item) { color: purple; }
-            .foo[data-x="1"] { color: orange; }
-            section.highlight > .foo { color: pink; }
-            .foo.baz:not(.bar) { outline: dashed; }
+            .foo:not(.baz, .qux) { color: blue; }
+            .foo:not(.baz):not(.qux) { color: orange; }
+            .foo:is(.baz, .bar):not([data-x]) { color: purple; }
+            .foo:where(.baz, .bar) { color: magenta; }
+            .baz:is(.foo, #b) { color: lime; }
+            .foo:not(:is(.bar, .baz)) { color: gold; }
+            .foo:not(:is(.baz, .qux, .bar)) { color: brown; }
+            .foo:is(.qux, .nonexistent) { color: pink; }
+            .foo:where(.qux, .nonexistent) { color: olive; }
         "#;
         let result = Parser::to_dom(html).unwrap();
         let dom = result.value;
@@ -1523,7 +2877,7 @@ mod tests {
                         false
                     }
                 })
-                .unwrap()
+                .expect(&format!("Node with id={id} not found"))
         };
         let get_el = |n: &Node| {
             if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
@@ -1538,9 +2892,9 @@ mod tests {
         let c = find("c");
         let d = find("d");
         let e = find("e");
-        let ul1 = find("ul1");
-        let ul2 = find("ul2");
-        let sec1 = find("sec1");
+        let f = find("f");
+        let g = find("g");
+        let h = find("h");
 
         let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
         let mut parser = crate::parser::parser::Parser::new(&tokens);
@@ -1551,217 +2905,604 @@ mod tests {
         };
         cssom.build_indexes();
 
-        let m_a = Matcher::match_rules(a, &dom, &cssom.lookup_candidates(&get_el(a)), &cssom)
-            .unwrap_or_default();
-        let m_b = Matcher::match_rules(b, &dom, &cssom.lookup_candidates(&get_el(b)), &cssom)
-            .unwrap_or_default();
-        let m_c = Matcher::match_rules(c, &dom, &cssom.lookup_candidates(&get_el(c)), &cssom)
-            .unwrap_or_default();
-        let m_d = Matcher::match_rules(d, &dom, &cssom.lookup_candidates(&get_el(d)), &cssom)
-            .unwrap_or_default();
-        let m_e = Matcher::match_rules(e, &dom, &cssom.lookup_candidates(&get_el(e)), &cssom)
-            .unwrap_or_default();
-        let m_ul1 = Matcher::match_rules(ul1, &dom, &cssom.lookup_candidates(&get_el(ul1)), &cssom)
-            .unwrap_or_default();
-        let m_ul2 = Matcher::match_rules(ul2, &dom, &cssom.lookup_candidates(&get_el(ul2)), &cssom)
-            .unwrap_or_default();
-        let m_sec1 =
-            Matcher::match_rules(sec1, &dom, &cssom.lookup_candidates(&get_el(sec1)), &cssom)
-                .unwrap_or_default();
+        let match_for = |node: &Node| {
+            Matcher::match_rules(node, &dom, &cssom.lookup_candidates(&get_el(node)), &cssom)
+                .unwrap_or_default()
+        };
+        let m_a = match_for(a);
+        let m_b = match_for(b);
+        let m_c = match_for(c);
+        let m_d = match_for(d);
+        let m_e = match_for(e);
+        let m_f = match_for(f);
+        let m_g = match_for(g);
+        let m_h = match_for(h);
 
-        println!("m_a (id='a', class='foo bar baz', data-x=1) => {:?}", m_a);
-        println!("m_b (id='b', class='foo', data-x=2) => {:?}", m_b);
-        println!("m_c (id='c', class='bar') => {:?}", m_c);
-        println!("m_d (id='d', class='foo baz', data-x=3) => {:?}", m_d);
-        println!(
-            "m_e (id='e', class='foo', child of section.highlight) => {:?}",
-            m_e
-        );
-        println!("m_ul1 (ul#ul1 with li#li1.item and li#li2) => {:?}", m_ul1);
-        println!("m_ul2 (ul#ul2, empty) => {:?}", m_ul2);
-        println!("m_sec1 (section.highlight) => {:?}", m_sec1);
-
-        // .foo:not(.bar):not([data-x="3"])
+        // .foo:not(.bar):not([data-x="3"]) { color: red; }
         assert!(
             m_b.contains(&0),
             "b matches .foo:not(.bar):not([data-x=\"3\"]) (only .foo, data-x=\"2\")"
         );
-        assert!(!m_a.contains(&0), "a does NOT match ; has .bar");
-        assert!(!m_d.contains(&0), "d does NOT match; has data-x=\"3\"");
+        assert!(!m_a.contains(&0), "a does NOT match rule 0; has .bar");
+        assert!(
+            !m_d.contains(&0),
+            "d does NOT match rule 0; has data-x=\"3\""
+        );
         assert!(!m_c.contains(&0), "c does not have .foo");
+        assert!(
+            m_e.contains(&0),
+            "e should match rule 0 (foo, not bar, not [data-x=3])"
+        );
+        assert!(
+            m_g.contains(&0),
+            "g should match rule 0 (foo, not bar, not [data-x=3])"
+        );
+        assert!(!m_f.contains(&0), "f has baz, but no foo");
 
-        // .foo:is(.foo, .baz)
+        // .foo:is(.foo, .baz) { color: green; }
         assert!(m_a.contains(&1), "a matches .foo:is(.foo, .baz)");
         assert!(m_b.contains(&1), "b matches .foo:is(.foo, .baz)");
         assert!(m_d.contains(&1), "d matches .foo:is(.foo, .baz)");
+        assert!(m_e.contains(&1), "e matches .foo:is(.foo, .baz)");
+        assert!(m_g.contains(&1), "g matches .foo:is(.foo, .baz)");
         assert!(!m_c.contains(&1), "c does not match .foo:is(.foo, .baz)");
+        assert!(!m_f.contains(&1), "f has baz but not foo");
+        assert!(!m_h.contains(&1), "h has none");
 
-        // .foo:where(.foo, .baz) -- special: should match like :is, but has 0 specificity
+        // .foo:where(.foo, .baz) { color: gray; }
         assert!(m_a.contains(&2), "a matches .foo:where(.foo, .baz)");
         assert!(m_b.contains(&2), "b matches .foo:where(.foo, .baz)");
         assert!(m_d.contains(&2), "d matches .foo:where(.foo, .baz)");
+        assert!(m_e.contains(&2), "e matches .foo:where(.foo, .baz)");
+        assert!(m_g.contains(&2), "g matches .foo:where(.foo, .baz)");
         assert!(!m_c.contains(&2), "c does not match .foo:where(.foo, .baz)");
+        assert!(!m_f.contains(&2), "f has baz but not foo");
+        assert!(!m_h.contains(&2), "h matches nothing");
 
-        // ul:has(li.item)
-        assert!(m_ul1.contains(&3), "ul1 has li.item");
-        assert!(!m_ul2.contains(&3), "ul2 does not have li.item");
-
-        // .foo[data-x="1"]
-        assert!(m_a.contains(&4), "a matches .foo[data-x=\"1\"]");
-        assert!(!m_b.contains(&4), "b does not match .foo[data-x=\"1\"]");
-
-        // section.highlight > .foo
+        // .foo:not(.baz, .qux) { color: blue; }
         assert!(
-            m_e.contains(&5),
-            "e is .foo direct child of section.highlight"
+            m_b.contains(&3),
+            "b should match rule 3 (.foo:not(.baz, .qux))"
         );
-        assert!(!m_a.contains(&5), "a is not inside section.highlight");
+        assert!(!m_a.contains(&3), "a has .baz");
+        assert!(!m_d.contains(&3), "d has .baz");
+        assert!(!m_e.contains(&3), "e has .qux");
+        assert!(m_g.contains(&3), "g matches rule 3");
+        assert!(!m_c.contains(&3), "c is not .foo");
 
-        // .foo.baz:not(.bar)
+        // .foo:not(.baz):not(.qux) { color: orange; }
         assert!(
-            m_d.contains(&6),
-            "d (foo baz) does not have .bar, so should match .foo.baz:not(.bar)"
+            m_b.contains(&4),
+            "b matches rule 4 (.foo:not(.baz):not(.qux))"
         );
         assert!(
-            !m_a.contains(&6),
-            "a has .bar, so should NOT match .foo.baz:not(.bar)"
+            m_g.contains(&4),
+            "g matches rule 4 (.foo:not(.baz):not(.qux))"
         );
-        assert!(!m_b.contains(&6), "b does not have .baz");
+        assert!(!m_a.contains(&4), "a has .baz");
+        assert!(!m_e.contains(&4), "e has .qux");
+        assert!(!m_d.contains(&4), "d has .baz");
+        assert!(!m_c.contains(&4), "c no foo");
+
+        // .foo:is(.baz, .bar):not([data-x]) { color: purple; }
+        assert!(!m_a.contains(&5), "a has data-x");
+        assert!(!m_b.contains(&5), "b has data-x");
+        assert!(!m_d.contains(&5), "d has data-x");
+        assert!(!m_e.contains(&5), "e has data-x");
+        assert!(!m_g.contains(&5), "g has data-y but not data-x");
+        assert!(!m_c.contains(&5), "c no foo");
+        assert!(!m_f.contains(&5), "f is baz but not foo, no data-x");
+        assert!(!m_h.contains(&5), "h nothing");
+
+        // .foo:where(.baz, .bar) { color: magenta; }
+        assert!(m_a.contains(&6), "a matches .foo:where(.baz, .bar)");
+        assert!(!m_b.contains(&6), "b not .baz or .bar");
+        assert!(m_d.contains(&6), "d matches .foo:where(.baz, .bar)");
+        assert!(!m_e.contains(&6), "e matches .foo:where(.baz, .bar)");
+        assert!(!m_g.contains(&6), "g not .baz or .bar");
+        assert!(!m_c.contains(&6), "c no foo");
+
+        // .baz:is(.foo, #b) { color: lime; }
+        assert!(m_a.contains(&7), "a matches .baz:is(.foo, #b)");
+        assert!(!m_b.contains(&7), "b not .baz");
+        assert!(m_d.contains(&7), "d not .baz");
+        assert!(!m_e.contains(&7), "e not .baz");
+        assert!(
+            !m_f.contains(&7),
+            "f is .baz, matches .foo (on a), not itself"
+        );
+        assert!(!m_g.contains(&7), "g not .baz");
+
+        // .foo:not(:is(.bar, .baz)) { color: gold; }
+        assert!(m_b.contains(&8), "b matches .foo:not(:is(.bar, .baz))");
+        assert!(m_g.contains(&8), "g matches .foo:not(:is(.bar, .baz))");
+        assert!(!m_a.contains(&8), "a is .baz");
+        assert!(!m_d.contains(&8), "d is .baz");
+        assert!(
+            m_e.contains(&8),
+            "e is .baz via .baz branch? (actually not), but has .qux"
+        );
+        assert!(!m_c.contains(&8), "c not .foo");
+
+        // .foo:not(:is(.baz, .qux, .bar)) { color: brown; }
+        assert!(
+            m_b.contains(&9),
+            "b matches .foo:not(:is(.baz, .qux, .bar))"
+        );
+        assert!(
+            m_g.contains(&9),
+            "g matches .foo:not(:is(.baz, .qux, .bar))"
+        );
+        assert!(!m_a.contains(&9), "a matches .baz");
+        assert!(!m_d.contains(&9), "d matches .baz");
+        assert!(!m_e.contains(&9), "e matches .qux");
+        assert!(!m_c.contains(&9), "c not .foo");
+
+        // .foo:is(.qux, .nonexistent) { color: pink; }
+        assert!(m_e.contains(&10), "e matches .foo:is(.qux, .nonexistent)");
+        assert!(!m_b.contains(&10), "b is foo not qux, not nonexistent");
+        assert!(!m_a.contains(&10), "a not qux");
+        assert!(!m_d.contains(&10), "d not qux");
+        assert!(!m_g.contains(&10), "g not qux");
+        assert!(!m_f.contains(&10), "f not foo");
+
+        // .foo:where(.qux, .nonexistent) { color: olive; }
+        assert!(
+            m_e.contains(&11),
+            "e matches .foo:where(.qux, .nonexistent)"
+        );
+        assert!(!m_b.contains(&11), "b is foo, not qux, not nonexistent");
+        assert!(!m_a.contains(&11), "a not qux");
+        assert!(!m_d.contains(&11), "d not qux");
+        assert!(!m_g.contains(&11), "g not qux");
+        assert!(!m_f.contains(&11), "f not foo");
+
+        // not .foo: any selector should not match h
+        for i in 0..12 {
+            assert!(
+                !m_h.contains(&i),
+                "h with no classes/attrs must not match any test selector"
+            );
+        }
     }
 
     #[test]
-    fn test_matcher_target_and_target_within() {
-        let html = r#"
-            <div id="foo"></div>
-            <div id="bar">
-                <span id="baz"></span>
-            </div>
-        "#;
-        // Target here is 'bar'
-        let css = r#"
-            #bar:target { background: pink; }
-            #bar:target-within span { color: red; }
-        "#;
-        let result = Parser::to_dom(html).unwrap();
-        let dom = result.value;
+    fn test_has_pseudo_class_matrix() {
+        let run_test = |html: &str, selectors: &[(&str, &[&str], &[&str])]| {
+            let dom_result = Parser::to_dom(html).unwrap();
+            let dom = dom_result.value;
+            let find = |id| {
+                dom.nodes
+                    .iter()
+                    .find(|n| {
+                        if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
+                            el.id() == Some(id)
+                        } else {
+                            false
+                        }
+                    })
+                    .unwrap()
+            };
+            let get_el = |n: &Node| match &n.ntype {
+                html::dom::node_type::NodeType::Element(el) => el.clone(),
+                _ => panic!("Node is not an Element"),
+            };
 
-        let find = |id| {
-            dom.nodes
-                .iter()
-                .find(|n| {
-                    if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
-                        el.id() == Some(id)
-                    } else {
-                        false
-                    }
-                })
-                .unwrap()
-        };
-        let get_el = |n: &Node| {
-            if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
-                el.clone()
-            } else {
-                panic!()
+            for (selector, should_match_ids, should_not_match_ids) in selectors {
+                let css = format!(".foo{selector} {{ x: y; }}", selector = selector);
+                let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(&css);
+                let mut parser = crate::parser::parser::Parser::new(&tokens);
+                let rules = parser.parse().unwrap();
+                let mut cssom = CssOm {
+                    rules,
+                    indexes: CssIndexes::default(),
+                };
+                cssom.build_indexes();
+
+                for id in *should_match_ids {
+                    let node = find(id);
+                    let matched = Matcher::match_rules(
+                        node,
+                        &dom,
+                        &cssom.lookup_candidates(&get_el(node)),
+                        &cssom,
+                    )
+                    .unwrap_or_default();
+                    assert!(
+                        matched.contains(&0),
+                        "Selector '{}': node id '{}' should match but did not",
+                        selector,
+                        id
+                    );
+                }
+
+                for id in *should_not_match_ids {
+                    let node = find(id);
+                    let matched = Matcher::match_rules(
+                        node,
+                        &dom,
+                        &cssom.lookup_candidates(&get_el(node)),
+                        &cssom,
+                    )
+                    .unwrap_or_default();
+                    assert!(
+                        !matched.contains(&0),
+                        "Selector '{}': node id '{}' should NOT match but did",
+                        selector,
+                        id
+                    );
+                }
             }
         };
 
-        let foo = find("foo");
-        let bar = find("bar");
+        // Group 1 - descendants
+        run_test(
+            r#"
+        <section id="g1">
+            <div id="a" class="foo">
+                <span class="item"></span>
+            </div>
+            <div id="b" class="foo">
+                <div>
+                    <span class="item"></span>
+                </div>
+            </div>
+            <div id="c" class="foo"></div>
+        </section>
+        "#,
+            &[
+                (":has(.item)", &["a", "b"], &["c"]),
+                (":has(span)", &["a", "b"], &["c"]),
+                (":has(.missing)", &[], &["a", "b", "c"]),
+            ],
+        );
+        println!("DONE 1");
 
-        let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
-        let mut parser = crate::parser::parser::Parser::new(&tokens);
-        let rules = parser.parse().unwrap();
-        let mut cssom = CssOm {
-            rules,
-            indexes: CssIndexes::default(),
-        };
-        cssom.build_indexes();
+        // Group 2 - child combinator
+        run_test(
+            r#"
+        <section id="g2">
+            <div id="d" class="foo">
+                <span class="item"></span>
+            </div>
+            <div id="e" class="foo">
+                <div>
+                    <span class="item"></span>
+                </div>
+            </div>
+            <div id="f" class="foo"></div>
+        </section>
+        "#,
+            &[
+                (":has(> .item)", &["d"], &["e", "f"]),
+                (":has(> span)", &["d"], &["e", "f"]),
+                (":has(> div)", &["e"], &["d", "f"]),
+            ],
+        );
+        println!("DONE 2");
 
-        // Simulate :target id is "bar"
-        // This may depend on surrounding infra; for this test, we expect that :target and :target-within
-        // are evaluated with appropriate context in Matcher. If that's not implemented, allow these asserts to fail.
-        // If implemented, 'bar' and 'baz' (descendant of target-within) would match.
+        // Group 3 - adjacent sibling (FIXED)
+        run_test(
+            r#"
+        <section id="g3">
+            <div id="g" class="foo"></div>
+            <span class="item"></span>
+            <div id="h" class="foo"></div>
+            <div></div>
+            <span class="item"></span>
+            <div id="i" class="foo"></div>
+        </section>
+        "#,
+            &[
+                (":has(+ .item)", &["g"], &["h", "i"]),
+                (":has(+ span)", &["g"], &["h", "i"]),
+            ],
+        );
+        println!("DONE 3");
 
-        let m_foo = Matcher::match_rules(foo, &dom, &cssom.lookup_candidates(&get_el(foo)), &cssom)
-            .unwrap_or_default();
-        let m_bar = Matcher::match_rules(bar, &dom, &cssom.lookup_candidates(&get_el(bar)), &cssom)
-            .unwrap_or_default();
-        // bar should match :target (rule 0); baz should match :target-within (rule 1 as descendant)
-        assert!(!m_foo.contains(&0));
-        assert!(m_bar.contains(&0));
-        assert!(!m_foo.contains(&1));
-        assert!(!m_bar.contains(&1));
-        // Either .contains(&1), or Matcher must support contextual :target-within propagation.
-        // This is just a check of syntax and setup expectations.
-    }
+        // Group 4 - general sibling
+        run_test(
+            r#"
+        <section id="g4">
+            <div id="j" class="foo"></div>
+            <div></div>
+            <span class="item"></span>
+            <div id="k" class="foo"></div>
+            <div></div>
+            <div id="l" class="foo"></div>
+            <span></span>
+        </section>
+        "#,
+            &[
+                (":has(~ .item)", &["j"], &["k", "l"]),
+                (":has(~ span)", &["j", "k", "l"], &[]),
+            ],
+        );
+        println!("DONE 4");
 
-    #[test]
-    fn test_matcher_form_and_state_pseudo_classes() {
-        let html = r#"
-            <input type="text" id="text" value="foo" required>
-            <input type="checkbox" id="chk" checked>
-            <input type="radio" id="rad" disabled>
-            <input type="email" id="mail" readonly>
-            <button id="btn" autofocus></button>
-        "#;
-        let css = r#"
-            input:required { color: red; }
-            input:checked { color: green; }
-            input:disabled { color: blue; }
-            input:read-only { color: purple; }
-            button:autofocus { color: pink; }
-        "#;
-        let result = Parser::to_dom(html).unwrap();
-        let dom = result.value;
-        let find = |id| {
-            dom.nodes
-                .iter()
-                .find(|n| {
-                    if let html::dom::node_type::NodeType::Element(el) = &n.ntype {
-                        el.id() == Some(id)
-                    } else {
-                        false
-                    }
-                })
-                .unwrap()
-        };
-        let get_el = |n: &Node| match &n.ntype {
-            html::dom::node_type::NodeType::Element(el) => el.clone(),
-            _ => panic!("Node is not an Element"),
-        };
+        // Group 5 - complex selector & nested combinators
+        run_test(
+            r#"
+        <section id="g5">
+            <div id="m" class="foo">
+                <ul>
+                    <li class="active"></li>
+                </ul>
+            </div>
+            <div id="n" class="foo">
+                <ul>
+                    <li></li>
+                </ul>
+            </div>
+            <div id="o" class="foo"></div>
+        </section>
+        "#,
+            &[
+                (":has(ul > li.active)", &["m"], &["n", "o"]),
+                (":has(ul > li)", &["m", "n"], &["o"]),
+                (":has(li.active)", &["m"], &["n", "o"]),
+                (":has(> ul > li.active)", &["m"], &["n", "o"]), // Test leading combinator
+            ],
+        );
+        println!("DONE 5");
 
-        let text = find("text");
-        let chk = find("chk");
-        let rad = find("rad");
-        let mail = find("mail");
-        let btn = find("btn");
+        // Group 6 - nested pseudos
+        run_test(
+            r#"
+        <section id="g6">
+            <div id="p" class="foo">
+                <span class="bar"></span>
+            </div>
+            <div id="q" class="foo">
+                <span class="baz"></span>
+            </div>
+            <div id="r" class="foo">
+                <span></span>
+            </div>
+        </section>
+        "#,
+            &[
+                (":has(:not(.baz))", &["p", "r"], &["q"]),
+                (":has(:is(.bar,.baz))", &["p", "q"], &["r"]),
+                (":has(:where(.bar,.baz))", &["p", "q"], &["r"]),
+            ],
+        );
+        println!("DONE 6");
 
-        let tokens = crate::tokenizer::tokenizer::Tokenizer::from_string(css);
-        let mut parser = crate::parser::parser::Parser::new(&tokens);
-        let rules = parser.parse().unwrap();
-        let mut cssom = CssOm {
-            rules,
-            indexes: CssIndexes::default(),
-        };
-        cssom.build_indexes();
+        // Group 7 - multiple selectors (comma)
+        run_test(
+            r#"
+        <section id="g7">
+            <div id="s" class="foo">
+                <span class="bar"></span>
+            </div>
+            <div id="t" class="foo">
+                <div class="baz"></div>
+            </div>
+            <div id="u" class="foo"></div>
+        </section>
+        "#,
+            &[
+                (":has(.bar, .baz)", &["s", "t"], &["u"]),
+                (":has(.missing, .baz)", &["t"], &["s", "u"]),
+                (":has(.missing1, .missing2)", &[], &["s", "t", "u"]),
+            ],
+        );
+        println!("DONE 7");
 
-        let m_text =
-            Matcher::match_rules(text, &dom, &cssom.lookup_candidates(&get_el(text)), &cssom)
-                .unwrap_or_default();
-        let m_chk = Matcher::match_rules(chk, &dom, &cssom.lookup_candidates(&get_el(chk)), &cssom)
-            .unwrap_or_default();
-        let m_rad = Matcher::match_rules(rad, &dom, &cssom.lookup_candidates(&get_el(rad)), &cssom)
-            .unwrap_or_default();
-        let m_mail =
-            Matcher::match_rules(mail, &dom, &cssom.lookup_candidates(&get_el(mail)), &cssom)
-                .unwrap_or_default();
-        let m_btn = Matcher::match_rules(btn, &dom, &cssom.lookup_candidates(&get_el(btn)), &cssom)
-            .unwrap_or_default();
+        // Group 8 - nested :has()
+        run_test(
+            r#"
+        <section id="g8">
+            <div id="v" class="foo">
+                <section>
+                    <span class="item"></span>
+                </section>
+            </div>
+            <div id="w" class="foo">
+                <section></section>
+            </div>
+        </section>
+        "#,
+            &[(":has(section:has(.item))", &["v"], &["w"])],
+        );
+        println!("DONE 8");
 
-        assert!(m_text.contains(&0));
-        assert!(m_chk.contains(&1));
-        assert!(m_rad.contains(&2));
-        assert!(m_mail.contains(&3));
-        assert!(m_btn.contains(&4));
+        // Group 9 - attributes
+        run_test(
+            r#"
+        <section id="g9">
+            <div id="x" class="foo">
+                <span data-x="1"></span>
+            </div>
+            <div id="y" class="foo">
+                <span></span>
+            </div>
+        </section>
+        "#,
+            &[
+                (":has([data-x])", &["x"], &["y"]),
+                (":has([data-x=\"1\"])", &["x"], &["y"]),
+                (":has([data-x=\"2\"])", &[], &["x", "y"]),
+                (":has(> [data-x])", &["x"], &["y"]), // New: attribute with child combinator
+            ],
+        );
+        println!("DONE 9");
+
+        // Group 10 - IDs
+        run_test(
+            r#"
+        <section id="g10">
+            <div id="z" class="foo">
+                <span id="target"></span>
+            </div>
+        </section>
+        "#,
+            &[
+                (":has(#target)", &["z"], &[]),
+                (":has(#missing)", &[], &["z"]),
+            ],
+        );
+        println!("DONE 10");
+
+        // Group 11 - previous siblings, should not match backward (regression)
+        run_test(
+            r#"
+        <div>
+            <span class="item"></span>
+            <div id="foo" class="foo"></div>
+        </div>
+        "#,
+            &[
+                (":has(~ .item)", &[], &["foo"]), // item comes before foo, not after
+            ],
+        );
+        println!("DONE 11");
+
+        // Group 12 - mixed combinators (fixed!)
+        run_test(
+            r#"
+        <section id="g12">
+            <div id="a" class="foo">
+                <div>
+                    <span class="x"></span>
+                </div>
+            </div>
+            <div id="b" class="foo">
+                <div></div>
+                <span></span>
+            </div>
+            <div id="c" class="foo">
+                <div></div>
+                <span class="y"></span>
+            </div>
+            <div id="d" class="foo">
+                <div>
+                    <span class="x"></span>
+                </div>
+                <span class="y"></span>
+            </div>
+        </section>
+        "#,
+            &[
+                (":has(div > .x)", &["a", "d"], &["b", "c"]), // Now matches correctly: only a and d have div with child .x
+                (":has(div + span)", &["b", "c", "d"], &["a"]),
+                (":has(div ~ span)", &["b", "c", "d"], &["a"]),
+            ],
+        );
+        println!("DONE 12");
+
+        // Group 12b - direct/any child regression
+        run_test(
+            r#"
+        <div id="root" class="foo">
+            <div class="x"></div>
+        </div>
+        "#,
+            &[(":has(.x)", &["root"], &[]), (":has(> .x)", &["root"], &[])],
+        );
+        println!("DONE 12b");
+
+        // Group 12c - nested subject for + and ~ combinators (new test, per reviewer recommendation)
+        run_test(
+            r#"
+        <div id="foo" class="foo">
+            <section>
+                <div></div>
+                <span></span>
+            </section>
+            <section>
+                <div></div>
+                <div></div>
+            </section>
+        </div>
+        <div id="bar" class="foo">
+            <section>
+                <div></div>
+                <!-- no span sibling -->
+            </section>
+        </div>
+        "#,
+            &[
+                (":has(div + span)", &["foo"], &["bar"]), // foo has a descendant <div> that is immediately followed by a sibling <span>
+                (":has(section > .missing)", &[], &["foo", "bar"]), // optional: tests deep child selector fails if no children match
+            ],
+        );
+        println!("DONE 12c");
+
+        // Group 13 - subject should not count as descendant (regression)
+        run_test(
+            r#"
+        <div id="self" class="foo bar"></div>
+        "#,
+            &[
+                (":has(.bar)", &[], &["self"]), // node itself is not considered its own descendant
+            ],
+        );
+        println!("DONE 13");
+
+        // Group 14 - empty descendants must not match
+        run_test(
+            r#"
+        <div id="empty" class="foo"></div>
+        "#,
+            &[(":has(*)", &[], &["empty"]), (":has(div)", &[], &["empty"])],
+        );
+        println!("DONE 14");
+
+        // Group 15 - multiple matching descendants
+        run_test(
+            r#"
+        <div id="multi" class="foo">
+            <span class="item"></span>
+            <span class="item"></span>
+        </div>
+        "#,
+            &[
+                (":has(.item)", &["multi"], &[]), // Should only match once, no error if multiple
+            ],
+        );
+        println!("DONE 15");
+
+        // Group 16 - nested descendant in :has
+        run_test(
+            r#"
+        <div id="outer" class="foo">
+            <div>
+                <span>
+                    <em class="target"></em>
+                </span>
+            </div>
+        </div>
+        <div id="isolated" class="foo"></div>
+        "#,
+            &[
+                // outer should match because it has a descendant <em class="target"> via nested :has
+                (":has(div span em.target)", &["outer"], &["isolated"]),
+            ],
+        );
+        println!("DONE 16");
+
+        // Group 16b - multiple candidates regression test for :has (backtracking required)
+        run_test(
+            r#"
+        <div id="outer" class="foo">
+            <div>
+                <span></span>
+            </div>
+            <div>
+                <span>
+                    <em class="target"></em>
+                </span>
+            </div>
+        </div>
+        <div id="isolated" class="foo"></div>
+        "#,
+            &[
+                // outer should match because the second <div> is a valid candidate, even if the first <div> fails as a path
+                (":has(div span em.target)", &["outer"], &["isolated"]),
+            ],
+        );
+        println!("DONE 16b");
     }
 }

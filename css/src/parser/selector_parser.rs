@@ -8,7 +8,6 @@ use crate::{
     parser::parser::Parser,
     tokenizer::css_token::CssToken,
 };
-
 pub struct SelectorParser<'a, 'b> {
     parser: &'b mut Parser<'a>,
 }
@@ -200,17 +199,32 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
             }
             self.parser.skip_whitespace();
         }
-        Some(PseudoArg::SelectorList(selectors))
+        if selectors.is_empty() {
+            None
+        } else {
+            Some(PseudoArg::SelectorList(selectors))
+        }
     }
 
     fn parse_values_pseudo_arg(&mut self) -> Option<PseudoArg> {
         let mut values = Vec::new();
-        while let Some(value) = self.parser.parse_component_value() {
-            values.push(value);
+        loop {
+            if let Some(value) = self.parser.parse_component_value() {
+                values.push(value);
+            } else if self.parser.expect(CssToken::Comma).is_some() {
+                // Found a comma, continue to try parsing next value
+                self.parser.skip_whitespace();
+                continue;
+            } else {
+                break;
+            }
         }
-        Some(PseudoArg::Values(values))
+        if values.is_empty() {
+            None
+        } else {
+            Some(PseudoArg::Values(values))
+        }
     }
-
     fn parse_attribute_selector(
         &mut self,
     ) -> (Option<String>, Option<String>, Option<AttrSelectorOperator>) {

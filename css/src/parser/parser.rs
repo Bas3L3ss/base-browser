@@ -1588,10 +1588,7 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Type("div".to_string()),
-                SimpleSelector::PseudoClass(
-                    "is".to_string(),
-                    Some(PseudoArg::SelectorList(vec![]))
-                ),
+                SimpleSelector::PseudoClass("is".to_string(), None),
             ]
         );
 
@@ -1600,10 +1597,7 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Type("div".to_string()),
-                SimpleSelector::PseudoClass(
-                    "not".to_string(),
-                    Some(PseudoArg::SelectorList(vec![]))
-                ),
+                SimpleSelector::PseudoClass("not".to_string(), None),
             ]
         );
     }
@@ -1611,6 +1605,7 @@ mod tests {
     #[test]
     fn test_deeply_nested_parens() {
         let selector = parse_first_selector("div:is(:not(:has(img)))");
+
         assert_eq!(
             selector.first.simple_selectors[0],
             SimpleSelector::Type("div".to_string())
@@ -1952,6 +1947,7 @@ mod tests {
         };
 
         let selector = parse_first_selector(":has(:not(.foo))");
+
         assert_eq!(selector.first.simple_selectors.len(), 2);
         match &selector.first.simple_selectors[1] {
             SimpleSelector::PseudoClass(name, Some(PseudoArg::SelectorList(args)))
@@ -1986,7 +1982,7 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Universal,
-                SimpleSelector::PseudoClass("where".into(), Some(PseudoArg::SelectorList(vec![])))
+                SimpleSelector::PseudoClass("where".into(), None)
             ]
         );
 
@@ -2025,7 +2021,7 @@ mod tests {
             selector.first.simple_selectors,
             vec![
                 SimpleSelector::Universal,
-                SimpleSelector::PseudoClass("not".into(), Some(PseudoArg::SelectorList(vec![])))
+                SimpleSelector::PseudoClass("not".into(), None)
             ]
         );
 
