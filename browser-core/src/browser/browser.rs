@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use css::cssom::cssom::CssOm;
+use url::url::Url;
 
 use crate::tab::tab::Tab;
 
@@ -50,13 +52,13 @@ impl Browser {
         }
     }
 
-    pub fn open_tab(&mut self, url: url::url::Url) -> anyhow::Result<()> {
-        let tab = crate::tab::tab::Tab::new(self.shared.clone(), url)?;
+    pub fn open_tab(&mut self, url: Url) -> Result<()> {
+        let tab = Tab::new(self.shared.clone(), url)?;
         self.tabs.push(tab);
         Ok(())
     }
 
-    pub fn run(&self) -> anyhow::Result<()> {
+    pub fn run(&self) -> Result<()> {
         for tab in &self.tabs {
             tab.render()?;
         }
@@ -66,6 +68,8 @@ impl Browser {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_eq;
+
     use input_parser::traits::Parse;
 
     use super::*;
@@ -73,7 +77,7 @@ mod tests {
     #[test]
     fn browser_can_create_and_open_tabs() {
         let mut browser = Browser::new();
-        let url = url::url::Url::parse("https://example.com").unwrap().value;
+        let url = Url::parse("https://example.com").unwrap().value;
 
         browser.open_tab(url.clone()).unwrap();
 
