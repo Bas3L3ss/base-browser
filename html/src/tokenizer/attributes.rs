@@ -35,6 +35,8 @@ pub struct Attributes {
     pub hidden: Option<bool>,
     pub role: Option<String>,
     pub aria_label: Option<String>,
+    pub dir: Option<String>,
+    pub lang: Option<String>,
     pub custom: Option<HashMap<String, String>>,
 }
 
@@ -64,7 +66,6 @@ impl Attributes {
                     _ => Some(true),
                 }
             }
-
             "checked" => self.checked = Some(true),
             "readonly" => self.readonly = Some(true),
             "selected" => self.selected = Some(true),
@@ -85,11 +86,227 @@ impl Attributes {
             "hidden" => self.hidden = Some(true),
             "role" => self.role = Some(value.to_string()),
             "aria-label" => self.aria_label = Some(value.to_string()),
+            "dir" => self.dir = Some(value.to_string()),
+            "lang" => self.lang = Some(value.to_string()),
             _ => {
                 let mut map = self.custom.take().unwrap_or_default();
                 map.insert(key.to_string(), value.to_string());
                 self.custom = Some(map);
             }
         }
+    }
+
+    /// Returns Some(attribute_value) if present for the given key, or if the attribute is a boolean
+    /// and true, returns Some(attribute_key) as a string, otherwise returns None.
+    pub fn contains(&self, key: &str) -> Option<String> {
+        match key {
+            "id" => self.id.clone(),
+            "class" => self.class.clone(),
+            "style" => self.style.clone(),
+            "title" => self.title.clone(),
+            "name" => self.name.clone(),
+            "value" => self.value.clone(),
+            "href" => self.href.clone(),
+            "src" => self.src.clone(),
+            "alt" => self.alt.clone(),
+            "type" => self.type_attr.clone(),
+            "placeholder" => self.placeholder.clone(),
+            "tabindex" => self.tabindex.clone(),
+            "disabled" => self.disabled.and_then(|b| {
+                if b {
+                    Some("disabled".to_string())
+                } else {
+                    None
+                }
+            }),
+            "checked" => self
+                .checked
+                .and_then(|b| if b { Some("checked".to_string()) } else { None }),
+            "readonly" => self.readonly.and_then(|b| {
+                if b {
+                    Some("readonly".to_string())
+                } else {
+                    None
+                }
+            }),
+            "selected" => self.selected.and_then(|b| {
+                if b {
+                    Some("selected".to_string())
+                } else {
+                    None
+                }
+            }),
+            "required" => self.required.and_then(|b| {
+                if b {
+                    Some("required".to_string())
+                } else {
+                    None
+                }
+            }),
+            "maxlength" => self.maxlength.clone(),
+            "minlength" => self.minlength.clone(),
+            "width" => self.width.clone(),
+            "height" => self.height.clone(),
+            "rel" => self.rel.clone(),
+            "action" => self.action.clone(),
+            "method" => self.method.clone(),
+            "enctype" => self.enctype.clone(),
+            "for" => self.for_attr.clone(),
+            "target" => self.target.clone(),
+            "pattern" => self.pattern.clone(),
+            "autocomplete" => self.autocomplete.clone(),
+            "multiple" => self.multiple.and_then(|b| {
+                if b {
+                    Some("multiple".to_string())
+                } else {
+                    None
+                }
+            }),
+            "hidden" => self
+                .hidden
+                .and_then(|b| if b { Some("hidden".to_string()) } else { None }),
+            "role" => self.role.clone(),
+            "aria-label" => self.aria_label.clone(),
+            "dir" => self.dir.clone(),
+            "lang" => self.lang.clone(),
+            _ => {
+                // custom attributes
+                self.custom.as_ref().and_then(|map| map.get(key).cloned())
+            }
+        }
+    }
+
+    /// Returns a vector of all attribute keys currently set on this element, including standard and custom attributes.
+    /// Only the names of attributes that are set will be returned.
+    pub fn keys(&self) -> Vec<&str> {
+        let mut keys = Vec::new();
+
+        if self.id.is_some() {
+            keys.push("id");
+        }
+        if self.class.is_some() {
+            keys.push("class");
+        }
+        if self.style.is_some() {
+            keys.push("style");
+        }
+        if self.title.is_some() {
+            keys.push("title");
+        }
+        if self.name.is_some() {
+            keys.push("name");
+        }
+        if self.value.is_some() {
+            keys.push("value");
+        }
+        if self.href.is_some() {
+            keys.push("href");
+        }
+        if self.src.is_some() {
+            keys.push("src");
+        }
+        if self.alt.is_some() {
+            keys.push("alt");
+        }
+        if self.type_attr.is_some() {
+            keys.push("type");
+        }
+        if self.placeholder.is_some() {
+            keys.push("placeholder");
+        }
+        if self.tabindex.is_some() {
+            keys.push("tabindex");
+        }
+        if let Some(disabled) = self.disabled {
+            if disabled {
+                keys.push("disabled");
+            }
+        }
+        if let Some(checked) = self.checked {
+            if checked {
+                keys.push("checked");
+            }
+        }
+        if let Some(readonly) = self.readonly {
+            if readonly {
+                keys.push("readonly");
+            }
+        }
+        if let Some(selected) = self.selected {
+            if selected {
+                keys.push("selected");
+            }
+        }
+        if let Some(required) = self.required {
+            if required {
+                keys.push("required");
+            }
+        }
+        if self.maxlength.is_some() {
+            keys.push("maxlength");
+        }
+        if self.minlength.is_some() {
+            keys.push("minlength");
+        }
+        if self.width.is_some() {
+            keys.push("width");
+        }
+        if self.height.is_some() {
+            keys.push("height");
+        }
+        if self.rel.is_some() {
+            keys.push("rel");
+        }
+        if self.action.is_some() {
+            keys.push("action");
+        }
+        if self.method.is_some() {
+            keys.push("method");
+        }
+        if self.enctype.is_some() {
+            keys.push("enctype");
+        }
+        if self.for_attr.is_some() {
+            keys.push("for");
+        }
+        if self.target.is_some() {
+            keys.push("target");
+        }
+        if self.pattern.is_some() {
+            keys.push("pattern");
+        }
+        if self.autocomplete.is_some() {
+            keys.push("autocomplete");
+        }
+        if let Some(multiple) = self.multiple {
+            if multiple {
+                keys.push("multiple");
+            }
+        }
+        if let Some(hidden) = self.hidden {
+            if hidden {
+                keys.push("hidden");
+            }
+        }
+        if self.role.is_some() {
+            keys.push("role");
+        }
+        if self.aria_label.is_some() {
+            keys.push("aria-label");
+        }
+        if self.dir.is_some() {
+            keys.push("dir");
+        }
+        if self.lang.is_some() {
+            keys.push("lang");
+        }
+        // Add custom keys
+        if let Some(custom) = &self.custom {
+            for key in custom.keys() {
+                keys.push(key.as_str());
+            }
+        }
+
+        keys
     }
 }

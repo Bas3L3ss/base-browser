@@ -1,5 +1,5 @@
 use base_browser::cli::command::Command;
-use css::style_engine::StyleEngine;
+use css::style::engine::StyleEngine;
 use input_parser::traits::Parse;
 use network::{http::client::HttpClient, resource_loader::resource_loader::ResourceLoader};
 use std::{println, unimplemented};
@@ -43,11 +43,13 @@ fn main() -> anyhow::Result<()> {
         let loader = ResourceLoader::new(http);
 
         let html = loader.load_html(&url)?;
-        let dom = html::parser::parser::Parser::to_dom(&html)?;
 
+        let dom = html::parser::parser::Parser::to_dom(&html)?;
         let cssom = StyleEngine::build_cssom(&dom.value, &loader, &url)?;
 
-        println!("{cssom:#?}");
+        let styled_dom = StyleEngine::resolve_styles(&dom.value, &cssom);
+
+        println!("{styled_dom:#?}");
 
         Ok(())
     } else {

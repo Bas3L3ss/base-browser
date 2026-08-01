@@ -1,13 +1,16 @@
 use std::matches;
 
 use crate::{
-    cssom::selector::{
-        AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, SimpleSelector,
+    cssom::{
+        selector::{
+            AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, PseudoArg,
+            SimpleSelector,
+        },
+        specificity::Specificity,
     },
     parser::parser::Parser,
     tokenizer::css_token::CssToken,
 };
-
 pub struct SelectorParser<'a, 'b> {
     parser: &'b mut Parser<'a>,
 }
@@ -28,7 +31,13 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
             rest.push(selector);
         }
         if !first.is_empty() || !rest.is_empty() {
-            Some(ComplexSelector { first, rest })
+            let specificity: Specificity = Specificity::compute_complex_selector(&first, &rest);
+
+            Some(ComplexSelector {
+                first,
+                rest,
+                specificity,
+            })
         } else {
             None
         }
@@ -39,6 +48,10 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
         while !self.parser.is_eof() {
             let before = self.parser.pos;
             if let Some(simple) = self.parse_simple_selector() {
+                if !simple.is_subject_selector() && compound.is_empty() {
+                    compound.push(SimpleSelector::Universal);
+                }
+
                 compound.push(simple);
             } else if before == self.parser.pos {
                 break;
@@ -96,7 +109,9 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
             }
             CssToken::Colon => {
                 let start_pos = self.parser.pos;
+
                 let selector = self.parse_pseudo_selector();
+
                 if selector.is_some() {
                     selector
                 } else {
@@ -168,27 +183,56 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
 
         self.parser.skip_whitespace();
 
-        let mut args: Vec<ComplexSelector> = Vec::new();
-
-        loop {
-            if let Some(selector) = self.parse_complex_selector() {
-                args.push(selector);
-            } else {
-                break;
-            }
-
-            self.parser.skip_whitespace();
-
-            if self.parser.expect(CssToken::Comma).is_none() {
-                break;
-            }
-
-            self.parser.skip_whitespace();
-        }
+        let args: Option<PseudoArg> = if matches!(name.as_str(), "not" | "is" | "where" | "has") {
+            self.parse_selector_list_pseudo_arg()
+        } else {
+            self.parse_values_pseudo_arg()
+        };
 
         self.parser.expect(CssToken::RightParen)?;
 
-        Some(SimpleSelector::PseudoClass(name, Some(args)))
+        Some(SimpleSelector::PseudoClass(name, args))
+    }
+
+    fn parse_selector_list_pseudo_arg(&mut self) -> Option<PseudoArg> {
+        let mut selectors = Vec::new();
+        loop {
+            if let Some(selector) = self.parse_complex_selector() {
+                selectors.push(selector);
+            } else {
+                break;
+            }
+            self.parser.skip_whitespace();
+            if self.parser.expect(CssToken::Comma).is_none() {
+                break;
+            }
+            self.parser.skip_whitespace();
+        }
+        if selectors.is_empty() {
+            None
+        } else {
+            Some(PseudoArg::SelectorList(selectors))
+        }
+    }
+
+    fn parse_values_pseudo_arg(&mut self) -> Option<PseudoArg> {
+        let mut values = Vec::new();
+        loop {
+            if let Some(value) = self.parser.parse_component_value() {
+                values.push(value);
+            } else if self.parser.expect(CssToken::Comma).is_some() {
+                // Found a comma, continue to try parsing next value
+                self.parser.skip_whitespace();
+                continue;
+            } else {
+                break;
+            }
+        }
+        if values.is_empty() {
+            None
+        } else {
+            Some(PseudoArg::Values(values))
+        }
     }
     fn parse_attribute_selector(
         &mut self,

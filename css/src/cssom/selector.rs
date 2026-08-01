@@ -1,3 +1,7 @@
+use std::matches;
+
+use crate::cssom::{component_value::ComponentValue, specificity::Specificity};
+
 /// Operators for attribute selectors, e.g. [attr=value], [attr^="foo"], etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttrSelectorOperator {
@@ -7,6 +11,12 @@ pub enum AttrSelectorOperator {
     PrefixMatch,    // ^=
     SuffixMatch,    // $=
     SubstringMatch, // *=
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PseudoArg {
+    SelectorList(Vec<ComplexSelector>),
+    Values(Vec<ComponentValue>), // or Vec<ComponentValue>, etc.
 }
 
 /// Represents an indivisible simple selector.
@@ -32,10 +42,17 @@ pub enum SimpleSelector {
     },
 
     /// Pseudo-class selector (optionally with argument): :hover, :nth-child(2)
-    PseudoClass(String, Option<Vec<ComplexSelector>>),
+    PseudoClass(String, Option<PseudoArg>),
 
     /// Pseudo-element selector: ::before, ::after
     PseudoElement(String),
+}
+
+impl SimpleSelector {
+    /// Returns true if this is a universal or type selector.
+    pub fn is_subject_selector(&self) -> bool {
+        matches!(self, Self::Universal | Self::Type(_))
+    }
 }
 
 /// A compound selector: one or more simple selectors without combinators.
@@ -84,4 +101,24 @@ pub enum Combinator {
 pub struct ComplexSelector {
     pub first: CompoundSelector,
     pub rest: Vec<(Combinator, CompoundSelector)>,
+    pub specificity: Specificity,
+}
+
+impl ComplexSelector {
+    pub fn rightmost(&self) -> &CompoundSelector {
+        self.rest
+            .last()
+            .map(|(_, compound)| compound)
+            .unwrap_or(&self.first)
+    }
+
+    /// Create a new ComplexSelector, automatically computing specificity
+    pub fn new(first: CompoundSelector, rest: Vec<(Combinator, CompoundSelector)>) -> Self {
+        let specificity = Specificity::compute_complex_selector(&first, &rest);
+        Self {
+            first,
+            rest,
+            specificity,
+        }
+    }
 }

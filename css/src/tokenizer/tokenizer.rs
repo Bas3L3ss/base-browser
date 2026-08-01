@@ -1,5 +1,3 @@
-use std::println;
-
 use utils::profile_scope;
 
 use crate::tokenizer::css_token::{CssToken, CssTokenizerError};
@@ -123,7 +121,6 @@ impl<'a> Tokenizer<'a> {
                     self.consume_numeric_token()
                 }
                 '.' => {
-                    println!("dot");
                     self.advance();
                     CssToken::Dot
                 }
@@ -941,7 +938,6 @@ mod tests {
     fn test_ident_starts_with_escape() {
         // Backslash escaping the first character of an identifier: .\31test
         let tokens = Tokenizer::from_string(".\\31 test");
-        println!("{tokens:?}");
         assert_eq!(tokens[0], CssToken::Dot);
         assert_eq!(tokens[1], CssToken::Ident("1test".into()));
 
