@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use html::dom::{dom::Dom, node_type::NodeType, style_sheet_ref::StyleSheetRef};
 use url::url::Url;
+use utils::profile_scope;
 
 use crate::http::client::HttpClient;
 
@@ -13,6 +14,7 @@ impl ResourceLoader {
     }
 
     pub fn load_html(&self, url: &Url) -> Result<String> {
+        profile_scope!("Load HTML");
         let response = self.http.get(url)?;
         Ok(response.body_as_string())
     }
@@ -22,6 +24,7 @@ impl ResourceLoader {
         stylesheet: &StyleSheetRef,
         base_url: &Url,
     ) -> anyhow::Result<String> {
+        profile_scope!("Load StyleSheet");
         match stylesheet {
             StyleSheetRef::InlineStyle(node_id) => {
                 let child = dom.nodes[*node_id].children[0];

@@ -568,4 +568,66 @@ impl Property {
             _ => Property::Unknown(s.to_string()),
         }
     }
+
+    /// Determines if a property is inherited by default according to CSS specifications.
+    /// Returns true if the property is inherited, otherwise false.
+    pub fn is_inherited(&self) -> bool {
+        match self {
+            // See: https://www.w3.org/TR/CSS21/propidx.html#initial-value
+            // Typography
+            Property::Color
+            | Property::Font
+            | Property::FontFamily
+            | Property::FontSize
+            | Property::FontStyle
+            | Property::FontVariant
+            | Property::FontWeight
+            | Property::FontStretch
+            | Property::FontFeatureSettings
+            | Property::FontKerning
+            | Property::FontOpticalSizing
+            | Property::FontPalette
+            | Property::FontSynthesis
+            | Property::FontVariationSettings
+            | Property::FontVariantCaps
+            | Property::FontVariantLigatures
+            | Property::FontVariantNumeric
+            | Property::LineHeight
+            | Property::LetterSpacing
+            | Property::WordSpacing
+            | Property::TextAlign
+            | Property::TextIndent
+            | Property::TextTransform
+            | Property::TextDecoration
+            | Property::TextDecorationColor
+            | Property::TextDecorationStyle
+            | Property::TextDecorationLine
+            | Property::TextDecorationThickness
+            | Property::TextShadow
+            | Property::TextOverflow
+            // Directionality
+            | Property::Direction
+            | Property::UnicodeBidi
+            // List
+            | Property::ListStyle
+            | Property::ListStyleType
+            | Property::ListStylePosition
+            | Property::ListStyleImage
+            // Misc
+            | Property::Cursor
+            | Property::Quotes
+            | Property::Visibility
+            | Property::WhiteSpace
+            | Property::WordBreak
+            | Property::OverflowWrap
+            | Property::PointerEvents
+            | Property::UserSelect
+            | Property::CaretColor
+            // SVG & other inherited CSS
+            | Property::TabSize
+            => true,
+            Property::Unknown(_) => false,
+            _ => false,
+        }
+    }
 }

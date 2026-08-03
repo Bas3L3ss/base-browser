@@ -3,8 +3,11 @@ use html::{Dom, NodeType};
 use network::ResourceLoader;
 use std::vec;
 use url::Url;
+use utils::profile_scope;
 
-use crate::{ComputedStyle, CssOm, Matcher, Parser, Tokenizer};
+use crate::{
+    Cascade, CascadeSource, ComputedStyle, CssOm, Inheritance, Matcher, Origin, Parser, Tokenizer,
+};
 
 pub struct StyleContext<'a> {
     pub url: &'a Url,
@@ -30,6 +33,7 @@ impl<'a> StyleEngine<'a> {
         Self { context }
     }
     pub fn build_cssom(&self, dom: &Dom, loader: &ResourceLoader) -> Result<CssOm> {
+        profile_scope!("Build CSSOM");
         let mut cssom = CssOm::default();
 
         for stylesheet in &dom.style_sheets {
@@ -46,6 +50,8 @@ impl<'a> StyleEngine<'a> {
         Ok(cssom)
     }
     pub fn resolve_styles(&self, dom: &Dom, cssom: &CssOm) -> Vec<Option<ComputedStyle>> {
+        profile_scope!("Resolve Styles");
+
         let mut styled_nodes = vec![None; dom.nodes.len()];
 
         for node_id in 0..dom.nodes.len() {
@@ -89,15 +95,27 @@ impl<'a> StyleEngine<'a> {
 
                 let author_matches = Matcher::match_rules(node, dom, &author_candidates, &cssom);
 
-                // let mut style =
-                //     Cascade::compute(node, dom, matching.as_ref().map(|v| v.as_slice()));
+                let mut style = Cascade::compute(
+                    element,
+                    &[
+                        CascadeSource {
+                            origin: Origin::UserAgent,
+                            matches: ua_matches,
+                            cssom: &self.context.ua_cssom,
+                        },
+                        CascadeSource {
+                            origin: Origin::Author,
+                            matches: author_matches,
+                            cssom: &cssom,
+                        },
+                    ],
+                );
 
-                if let Some(parent_style) = parent_style_opt {
-
-                    // Inheritance::apply(node, dom, &mut style);
+                if let Some(_parent_style) = parent_style_opt {
+                    Inheritance::apply(node, &mut style, styled_nodes);
                 }
 
-                // styled_nodes[node.id] = style;
+                styled_nodes[node.id] = Some(style);
             }
 
             NodeType::Text(_) => {
