@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, write};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Host {

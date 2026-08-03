@@ -189,6 +189,7 @@ dependencies = [
 name = "layout"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "css",
  "html",
 ]
