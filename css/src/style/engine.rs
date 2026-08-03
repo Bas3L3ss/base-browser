@@ -5,7 +5,9 @@ use std::vec;
 use url::Url;
 use utils::profile_scope;
 
-use crate::{Cascade, CascadeSource, ComputedStyle, CssOm, Matcher, Origin, Parser, Tokenizer};
+use crate::{
+    Cascade, CascadeSource, ComputedStyle, CssOm, Inheritance, Matcher, Origin, Parser, Tokenizer,
+};
 
 pub struct StyleContext<'a> {
     pub url: &'a Url,
@@ -110,8 +112,7 @@ impl<'a> StyleEngine<'a> {
                 );
 
                 if let Some(_parent_style) = parent_style_opt {
-
-                    // Inheritance::apply(node, dom, &mut style);
+                    Inheritance::apply(node, &mut style, styled_nodes);
                 }
 
                 styled_nodes[node.id] = Some(style);
