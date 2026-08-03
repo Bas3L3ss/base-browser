@@ -1,14 +1,16 @@
 use anyhow::Result;
-use css::{StyleContext, cssom::cssom::CssOm, style::engine::StyleEngine};
-use html::{dom::dom::Dom, parser::parser::Parser};
-use network::{http::client::HttpClient, resource_loader::resource_loader::ResourceLoader};
+use css::{ComputedStyle, CssOm, StyleContext, StyleEngine};
+use html::{Dom, Parser};
+use layout::LayoutTree;
+use network::{HttpClient, ResourceLoader};
 use url::url::Url;
 
 pub struct Document {
     pub url: Url,
     pub dom: Dom,
     pub cssom: CssOm,
-    // layout_tree: Option<LayoutTree>,
+    pub computed_styles: Vec<Option<ComputedStyle>>,
+    pub layout_tree: LayoutTree,
 }
 
 impl Document {
@@ -17,16 +19,19 @@ impl Document {
         let loader = ResourceLoader::new(http);
 
         let html = loader.load_html(&url)?;
-        let dom = Parser::to_dom(&html)?;
+        let parsed_dom = Parser::to_dom(&html)?;
         let context = StyleContext::new(&url, ua_cssom);
         let style_engine = StyleEngine::new(context);
-        let cssom = style_engine.build_cssom(&dom.value, &loader)?;
-        let styled_dom = style_engine.resolve_styles(&dom.value, &cssom);
+        let cssom = style_engine.build_cssom(&parsed_dom.value, &loader)?;
+        let computed_styles = style_engine.resolve_styles(&parsed_dom.value, &cssom);
+        let layout_tree = LayoutTree::build(&parsed_dom.value, &computed_styles);
 
         Ok(Self {
             url,
-            dom: dom.value,
+            dom: parsed_dom.value,
             cssom,
+            computed_styles,
+            layout_tree,
         })
     }
 }
