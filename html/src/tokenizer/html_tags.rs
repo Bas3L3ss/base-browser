@@ -1,3 +1,5 @@
+use std::format;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HtmlTag {
     // Document Structure
@@ -25,7 +27,7 @@ pub enum HtmlTag {
     Div, // <div>
 
     // Headings
-    Header(u8), // Header(1) means H1, Header(2) means H2, etc.
+    Header(u8), // <h1> to <h6>; Header(1) = <h1>, etc.
 
     // Text content
     Paragraph, // <p>
@@ -64,14 +66,14 @@ pub enum HtmlTag {
     Span, // <span>
     Br,
     Wbr,
-    // Ruby annotation tags (some modern HTML)
     Ruby,
     Rt,
     Rp,
     Bdi,
     Bdo,
-    S, // <s>
-    U, // <u>
+    S,          // <s>
+    U,          // <u>
+    Blockquote, // <blockquote>
 
     // Image and multimedia
     Image, // <img>
@@ -130,9 +132,9 @@ pub enum HtmlTag {
     Summary,
     Dialog,
 
-    // Others and special
+    // Special/other
     Pre,               // <pre>
-    CustomTag(String), // Any unknown tag for extensibility
+    CustomTag(String), // Any unknown tag
 }
 
 impl HtmlTag {
@@ -218,6 +220,7 @@ impl HtmlTag {
             "bdo" => HtmlTag::Bdo,
             "s" => HtmlTag::S,
             "u" => HtmlTag::U,
+            "blockquote" => HtmlTag::Blockquote,
 
             // Image and multimedia
             "img" => HtmlTag::Image,
@@ -291,7 +294,7 @@ impl HtmlTag {
             HtmlTag::Meta => "meta".to_string(),
             HtmlTag::Link => "link".to_string(),
             HtmlTag::Style => "style".to_string(),
-            HtmlTag::Script => "script".to_string(), // Compatibility for variant called Script
+            HtmlTag::Script => "script".to_string(),
             HtmlTag::Base => "base".to_string(),
 
             HtmlTag::HeaderTag => "header".to_string(),
@@ -304,7 +307,7 @@ impl HtmlTag {
             HtmlTag::Div => "div".to_string(),
 
             HtmlTag::Header(n) if *n >= 1 && *n <= 6 => format!("h{}", n),
-            HtmlTag::Header(_) => "h".to_string(), // fallback
+            HtmlTag::Header(n) => format!("h{n}"),
 
             HtmlTag::Paragraph => "p".to_string(),
             HtmlTag::Text => "#text".to_string(),
@@ -347,6 +350,7 @@ impl HtmlTag {
             HtmlTag::Bdo => "bdo".to_string(),
             HtmlTag::S => "s".to_string(),
             HtmlTag::U => "u".to_string(),
+            HtmlTag::Blockquote => "blockquote".to_string(),
 
             HtmlTag::Image => "img".to_string(),
             HtmlTag::Figure => "figure".to_string(),

@@ -1,20 +1,12 @@
 use std::{format, matches};
 
-use html::{
-    dom::{dom::Dom, dom_element::DomElement, node::Node, node_type::NodeType},
-    tokenizer::html_tags::HtmlTag,
+use html::{Dom, DomElement, Node, NodeType, html_tags::HtmlTag};
+
+use crate::{
+    AttrSelectorOperator, Combinator, ComplexSelector, ComponentValue, CompoundSelector, CssOm,
+    CssRule, PseudoArg, RuleRef, SimpleSelector,
 };
 
-use crate::cssom::{
-    component_value::ComponentValue,
-    css_indexes::RuleRef,
-    cssom::CssOm,
-    rule::CssRule,
-    selector::{
-        AttrSelectorOperator, Combinator, ComplexSelector, CompoundSelector, PseudoArg,
-        SimpleSelector,
-    },
-};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Argument {
     AnPlusB(i32, i32), // (a, b)
@@ -227,7 +219,7 @@ impl Matcher {
             SimpleSelector::PseudoClass(name, pseudo_args) => {
                 self.match_pseudo_class(name, pseudo_args.as_ref(), element, node, dom)
             }
-            SimpleSelector::PseudoElement(_) => true,
+            SimpleSelector::PseudoElement(_) => false,
         }
     }
 
@@ -1027,6 +1019,7 @@ mod tests {
     use std::{assert_eq, format, matches, println, vec};
 
     use super::*;
+    use crate::Origin;
     use crate::cssom::css_indexes::{CssIndexes, RuleRef};
     use crate::cssom::cssom::CssOm;
     use crate::cssom::rule::{CssRule, StyleRule};
@@ -1133,6 +1126,8 @@ mod tests {
         });
 
         let cssom = CssOm {
+            origin: Origin::Author,
+
             rules: vec![style_rule],
             indexes: Default::default(),
         };
@@ -1170,6 +1165,8 @@ mod tests {
         });
 
         let cssom_wrong_id = CssOm {
+            origin: Origin::Author,
+
             rules: vec![style_rule_wrong_id],
             indexes: Default::default(),
         };
@@ -1373,6 +1370,8 @@ mod tests {
         });
 
         let cssom = CssOm {
+            origin: Origin::Author,
+
             rules: vec![style_rule],
             indexes: Default::default(),
         };
@@ -1643,6 +1642,8 @@ mod tests {
         assert!(!rules.is_empty());
 
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: Default::default(),
         };
@@ -1775,6 +1776,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().expect("Should parse without error");
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -1873,6 +1876,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().expect("Should parse without error");
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -1949,6 +1954,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -2013,6 +2020,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -2114,6 +2123,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -2348,6 +2359,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -2575,6 +2588,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -2652,6 +2667,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -2765,6 +2782,7 @@ mod tests {
     //     let mut parser = crate::parser::parser::Parser::new(&tokens);
     //     let rules = parser.parse().unwrap();
     //     let mut cssom = CssOm {
+
     //         rules,
     //         indexes: CssIndexes::default(),
     //     };
@@ -2970,6 +2988,8 @@ mod tests {
         let mut parser = crate::parser::parser::Parser::new(&tokens);
         let rules = parser.parse().unwrap();
         let mut cssom = CssOm {
+            origin: Origin::Author,
+
             rules,
             indexes: CssIndexes::default(),
         };
@@ -3195,6 +3215,8 @@ mod tests {
                 let mut parser = crate::parser::parser::Parser::new(&tokens);
                 let rules = parser.parse().unwrap();
                 let mut cssom = CssOm {
+                    origin: Origin::Author,
+
                     rules,
                     indexes: CssIndexes::default(),
                 };

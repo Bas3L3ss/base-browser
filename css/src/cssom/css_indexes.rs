@@ -178,14 +178,17 @@ mod tests {
     use std::assert_eq;
 
     use super::*;
-    use crate::cssom::{
-        component_value::ComponentValue,
-        css_value::CssValue,
-        property::Property,
-        rule::{AtRule, AtRuleBlock, CssRule, StyleRule},
-        selector::{AttrSelectorOperator, ComplexSelector, CompoundSelector, SimpleSelector},
-    };
     use crate::tokenizer::css_token::CssToken;
+    use crate::{
+        Origin,
+        cssom::{
+            component_value::ComponentValue,
+            css_value::CssValue,
+            property::Property,
+            rule::{AtRule, AtRuleBlock, CssRule, StyleRule},
+            selector::{AttrSelectorOperator, ComplexSelector, CompoundSelector, SimpleSelector},
+        },
+    };
 
     fn style_rule_with_simple_selector(selector: SimpleSelector) -> CssRule {
         CssRule::Style(StyleRule {
@@ -206,6 +209,7 @@ mod tests {
     #[test]
     fn test_index_simple_type_selector() {
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
             rules: vec![style_rule_with_simple_selector(SimpleSelector::Type(
                 "div".into(),
             ))],
@@ -218,6 +222,8 @@ mod tests {
     #[test]
     fn test_index_by_id_and_class() {
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![
                 style_rule_with_simple_selector(SimpleSelector::Id("main".into())),
                 style_rule_with_simple_selector(SimpleSelector::Class("foo".into())),
@@ -232,6 +238,8 @@ mod tests {
     #[test]
     fn test_index_by_attribute() {
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![style_rule_with_simple_selector(SimpleSelector::Attribute {
                 name: "data-x".into(),
                 value: Some("test".into()),
@@ -249,6 +257,8 @@ mod tests {
     #[test]
     fn test_index_universal_selector() {
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![style_rule_with_simple_selector(SimpleSelector::Universal)],
             indexes: Default::default(),
         };
@@ -270,6 +280,8 @@ mod tests {
             ..Default::default()
         };
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![CssRule::Style(StyleRule {
                 selectors: vec![complex_sel],
                 declarations: vec![],
@@ -285,6 +297,8 @@ mod tests {
     #[test]
     fn test_index_at_font_face() {
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![CssRule::At(AtRule {
                 name: "font-face".into(),
                 prelude: vec![],
@@ -309,6 +323,8 @@ mod tests {
     #[test]
     fn test_index_at_keyframes() {
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![CssRule::At(AtRule {
                 name: "keyframes".into(),
                 prelude: vec![CssToken::Ident("spin".into())],
@@ -325,6 +341,8 @@ mod tests {
     fn test_index_at_media_nested_rules() {
         let inner_rule = style_rule_with_simple_selector(SimpleSelector::Type("span".into()));
         let cssom = crate::cssom::cssom::CssOm {
+            origin: Origin::Author,
+
             rules: vec![CssRule::At(AtRule {
                 name: "media".into(),
                 prelude: vec![CssToken::Ident("screen".into())],

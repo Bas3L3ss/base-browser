@@ -36,6 +36,20 @@ name = "base-browser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "browser_core",
+ "css",
+ "html",
+ "input_parser",
+ "network",
+ "url",
+ "utils",
+]
+
+[[package]]
+name = "browser_core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "css",
  "html",
  "input_parser",

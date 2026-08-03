@@ -1,0 +1,14 @@
+[package]
+name = "base-browser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+url = { path = "../url" }
+input_parser = { path = "../input_parser" }
+network = {path = "../network"}
+html ={ path="../html" }
+utils = {path = "../utils"}
+css = {path="../css"}
+browser_core = { path = "../browser_core" }

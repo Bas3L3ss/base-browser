@@ -1,22 +1,35 @@
-use html::dom::dom_element::DomElement;
+use html::DomElement;
 
 use crate::cssom::{
     css_indexes::{CssIndexes, RuleRef},
     rule::CssRule,
 };
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Origin {
+    UserAgent,
+    Author,
+}
+
+impl Default for Origin {
+    fn default() -> Self {
+        Origin::Author
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CssOm {
     pub rules: Vec<CssRule>,
+    pub origin: Origin,
     pub indexes: CssIndexes,
 }
 
 impl CssOm {
-    pub(crate) fn append_stylesheet(&mut self, rules: Vec<CssRule>) {
+    pub fn append_stylesheet(&mut self, rules: Vec<CssRule>) {
         self.rules.extend(rules);
     }
 
-    pub(crate) fn build_indexes(&mut self) {
+    pub fn build_indexes(&mut self) {
         self.indexes = CssIndexes::build(self)
     }
 
