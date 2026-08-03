@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use url::Url;
 
-use crate::{browser::browser::BrowserShared, document::document::Document};
+use crate::{browser::BrowserShared, document::document::Document};
 
 pub struct Tab {
     pub shared: Arc<BrowserShared>,
@@ -16,8 +17,8 @@ pub struct Tab {
 }
 
 impl Tab {
-    pub fn new(shared: Arc<BrowserShared>, url: url::url::Url) -> Result<Self> {
-        let document = Document::new(url)?;
+    pub fn new(shared: Arc<BrowserShared>, url: Url) -> Result<Self> {
+        let document = Document::new(&shared.ua_stylesheet, url)?;
         Ok(Self { shared, document })
     }
 

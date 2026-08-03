@@ -36,7 +36,7 @@ name = "base-browser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "browser-core",
+ "browser_core",
  "css",
  "html",
  "input_parser",
@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "browser-core"
+name = "browser_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",

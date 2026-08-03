@@ -1,27 +1,39 @@
-use std::println;
-
 use anyhow::Result;
-use html::dom::{dom::Dom, node_type::NodeType};
-use network::resource_loader::resource_loader::ResourceLoader;
-use url::url::Url;
+use html::{Dom, NodeType};
+use network::ResourceLoader;
+use std::vec;
+use url::Url;
 
-use crate::{
-    cssom::cssom::CssOm,
-    parser::parser::Parser,
-    style::{
-        cascade::Cascade, inheritence::Inheritance, matcher::Matcher, styled_node::StyledNode,
-    },
-    tokenizer::tokenizer::Tokenizer,
-};
+use crate::{ComputedStyle, CssOm, Matcher, Parser, Tokenizer};
 
-pub struct StyleEngine;
+pub struct StyleContext<'a> {
+    pub url: &'a Url,
+    pub ua_cssom: &'a CssOm,
+    // later:
+    // viewport
+    // media query values
+    // visited link checker
+}
 
-impl StyleEngine {
-    pub fn build_cssom(dom: &Dom, loader: &ResourceLoader, base_url: &Url) -> Result<CssOm> {
+impl<'a> StyleContext<'a> {
+    pub fn new(url: &'a Url, ua_cssom: &'a CssOm) -> Self {
+        Self { url, ua_cssom }
+    }
+}
+
+pub struct StyleEngine<'a> {
+    context: StyleContext<'a>,
+}
+
+impl<'a> StyleEngine<'a> {
+    pub fn new(context: StyleContext<'a>) -> Self {
+        Self { context }
+    }
+    pub fn build_cssom(&self, dom: &Dom, loader: &ResourceLoader) -> Result<CssOm> {
         let mut cssom = CssOm::default();
 
         for stylesheet in &dom.style_sheets {
-            let source = loader.load_stylesheet(dom, stylesheet, base_url)?;
+            let source = loader.load_stylesheet(dom, stylesheet, self.context.url)?;
             let tokens = Tokenizer::from_string(&source);
 
             let mut parser = Parser::new(&tokens);
@@ -33,37 +45,69 @@ impl StyleEngine {
 
         Ok(cssom)
     }
-    pub fn resolve_styles(dom: &Dom, cssom: &CssOm) -> Vec<StyledNode> {
-        let mut styled_nodes = Vec::new();
+    pub fn resolve_styles(&self, dom: &Dom, cssom: &CssOm) -> Vec<Option<ComputedStyle>> {
+        let mut styled_nodes = vec![None; dom.nodes.len()];
 
-        for node in &dom.nodes {
-            match &node.ntype {
-                NodeType::Element(element) => {
-                    let candidates = cssom.lookup_candidates(element);
-
-                    let matching = if candidates.is_empty() {
-                        None
-                    } else {
-                        Some(Matcher::match_rules(node, dom, &candidates, &cssom))
-                    };
-
-                    // let mut style =
-                    //     Cascade::compute(node, dom, matching.as_ref().map(|v| v.as_slice()));
-
-                    // Inheritance::apply(node, dom, &mut style);
-
-                    // styled_nodes.push(StyledNode::new(node_id, style));
-                }
-
-                NodeType::Text(_) => {
-                    // let mut style = Cascade::compute(node, dom, None);
-                    // Inheritance::apply(node, dom, &mut style);
-                    // styled_nodes.push(StyledNode::new(node_id, style));
-                }
-                _ => {}
-            }
+        for node_id in 0..dom.nodes.len() {
+            self.resolve(dom, node_id, &mut styled_nodes, cssom);
         }
 
         styled_nodes
+    }
+
+    pub fn resolve(
+        &self,
+        dom: &Dom,
+        node_id: usize,
+        styled_nodes: &mut [Option<ComputedStyle>],
+        cssom: &CssOm,
+    ) {
+        let node = &dom.nodes[node_id];
+
+        if styled_nodes[node_id].is_some() {
+            return;
+        }
+
+        let parent_style_opt: Option<&ComputedStyle> = if let Some(parent_id) = node.parent {
+            if let Some(parent_style) = styled_nodes[parent_id].as_ref() {
+                Some(parent_style)
+            } else {
+                self.resolve(dom, parent_id, styled_nodes, cssom);
+                styled_nodes[parent_id].as_ref()
+            }
+        } else {
+            None
+        };
+
+        match &node.ntype {
+            NodeType::Element(element) => {
+                let candidates = cssom.lookup_candidates(element);
+
+                let matching = if candidates.is_empty() {
+                    None
+                } else {
+                    Some(Matcher::match_rules(node, dom, &candidates, &cssom))
+                };
+
+                // let mut style =
+                //     Cascade::compute(node, dom, matching.as_ref().map(|v| v.as_slice()));
+
+                if let Some(parent_style) = parent_style_opt {
+
+                    // Inheritance::apply(node, dom, &mut style);
+                }
+
+                // styled_nodes[node.id] = style;
+            }
+
+            NodeType::Text(_) => {
+                if let Some(parent_style) = parent_style_opt {
+                    let style = parent_style.clone();
+                    styled_nodes[node.id] = Some(style);
+                }
+            }
+
+            _ => {}
+        }
     }
 }

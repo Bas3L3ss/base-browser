@@ -1,5 +1,5 @@
 [package]
-name = "base-browser"
+name = "browser_core"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,4 +11,3 @@ network = {path = "../network"}
 html ={ path="../html" }
 utils = {path = "../utils"}
 css = {path="../css"}
-browser-core = { path = "../browser-core" }

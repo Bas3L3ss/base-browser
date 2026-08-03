@@ -1,53 +1,23 @@
-use std::sync::Arc;
+use std::{eprintln, sync::Arc};
 
 use anyhow::Result;
-use css::cssom::cssom::CssOm;
 use url::url::Url;
 
-use crate::tab::tab::Tab;
+use crate::{browser::BrowserShared, tab::tab::Tab};
 
 pub struct Browser {
     pub shared: Arc<BrowserShared>,
     pub tabs: Vec<Tab>,
 }
 
-pub struct BrowserShared {
-    // CSS
-    pub ua_stylesheet: CssOm,
-    // Networking
-    // dns_cache: DnsCache,
-    // http_cache: HttpCache,
-    // cookie_store: CookieStore,
-
-    // Resources
-    // image_cache: ImageCache,
-    // font_manager: FontManager,
-
-    // History
-    // history: HistoryDatabase,
-
-    // Configuration
-    // settings: BrowserSettings,
-}
-
-impl BrowserShared {
-    pub fn new() -> Self {
-        Self {
-            ua_stylesheet: CssOm::default(),
-        }
-    }
-}
-
-impl Default for BrowserShared {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Browser {
     pub fn new() -> Self {
         Self {
-            shared: Arc::new(BrowserShared::new()),
+            shared: Arc::new(BrowserShared::new().unwrap_or_else(|e| {
+                eprintln!("Failed to initialize BrowserShared: {}", e);
+                std::process::exit(1);
+            })),
+
             tabs: Vec::new(),
         }
     }
