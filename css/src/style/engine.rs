@@ -4,7 +4,7 @@ use network::ResourceLoader;
 use std::vec;
 use url::Url;
 
-use crate::{ComputedStyle, CssOm, Matcher, Parser, Tokenizer};
+use crate::{Cascade, CascadeSource, ComputedStyle, CssOm, Matcher, Origin, Parser, Tokenizer};
 
 pub struct StyleContext<'a> {
     pub url: &'a Url,
@@ -89,15 +89,29 @@ impl<'a> StyleEngine<'a> {
 
                 let author_matches = Matcher::match_rules(node, dom, &author_candidates, &cssom);
 
-                // let mut style =
-                //     Cascade::compute(node, dom, matching.as_ref().map(|v| v.as_slice()));
+                let mut style = Cascade::compute(
+                    node,
+                    dom,
+                    &[
+                        CascadeSource {
+                            origin: Origin::UserAgent,
+                            matches: ua_matches,
+                            cssom: &self.context.ua_cssom,
+                        },
+                        CascadeSource {
+                            origin: Origin::Author,
+                            matches: author_matches,
+                            cssom: &cssom,
+                        },
+                    ],
+                );
 
-                if let Some(parent_style) = parent_style_opt {
+                if let Some(_parent_style) = parent_style_opt {
 
                     // Inheritance::apply(node, dom, &mut style);
                 }
 
-                // styled_nodes[node.id] = style;
+                styled_nodes[node.id] = Some(style);
             }
 
             NodeType::Text(_) => {
