@@ -81,13 +81,13 @@ impl<'a> StyleEngine<'a> {
 
         match &node.ntype {
             NodeType::Element(element) => {
-                let candidates = cssom.lookup_candidates(element);
+                let author_candidates = cssom.lookup_candidates(element);
+                let ua_candidates = self.context.ua_cssom.lookup_candidates(element);
 
-                let matching = if candidates.is_empty() {
-                    None
-                } else {
-                    Some(Matcher::match_rules(node, dom, &candidates, &cssom))
-                };
+                let ua_matches =
+                    Matcher::match_rules(node, dom, &ua_candidates, &self.context.ua_cssom);
+
+                let author_matches = Matcher::match_rules(node, dom, &author_candidates, &cssom);
 
                 // let mut style =
                 //     Cascade::compute(node, dom, matching.as_ref().map(|v| v.as_slice()));
