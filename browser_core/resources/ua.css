@@ -237,3 +237,15 @@ blockquote {
   border-left: 3px solid #eee;
   color: #555;
 }
+
+figure {
+  display: block;
+  margin: 1em 40px;
+}
+
+figcaption {
+  display: block;
+  text-align: center;
+  font-size: 0.95em;
+  color: #555;
+}

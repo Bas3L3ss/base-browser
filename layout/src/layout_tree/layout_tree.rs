@@ -1,4 +1,4 @@
-use std::{todo, unreachable, vec};
+use std::{println, todo, unreachable, vec};
 
 use crate::{
     BoxType, LayoutNode,
@@ -46,7 +46,7 @@ impl LayoutTree {
                     .expect("every element should have a computed style");
 
                 let display = style.display();
-                // println!("{computed_styles:#?} ,{node:#?}");
+
                 match display {
                     Display::None => return None,
                     Display::Flex => {
@@ -65,6 +65,8 @@ impl LayoutTree {
                     Display::Block => BoxType::Block,
                     Display::Inline => BoxType::Inline,
                     Display::None => unreachable!(), // already skipped above
+                    Display::InlineBlock => BoxType::Unknown, // Todo
+                    Display::ListItem => BoxType::Unknown, // TODO
                     Display::Flex => BoxType::Unknown, // TODO
                     Display::Grid => BoxType::Unknown, // TODO
                     Display::Unknown(_) => BoxType::Unknown, // TODO
