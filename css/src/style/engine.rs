@@ -3,6 +3,7 @@ use html::{Dom, NodeType};
 use network::ResourceLoader;
 use std::vec;
 use url::Url;
+use utils::profile_scope;
 
 use crate::{Cascade, CascadeSource, ComputedStyle, CssOm, Matcher, Origin, Parser, Tokenizer};
 
@@ -30,6 +31,7 @@ impl<'a> StyleEngine<'a> {
         Self { context }
     }
     pub fn build_cssom(&self, dom: &Dom, loader: &ResourceLoader) -> Result<CssOm> {
+        profile_scope!("Build CSSOM");
         let mut cssom = CssOm::default();
 
         for stylesheet in &dom.style_sheets {
@@ -46,6 +48,8 @@ impl<'a> StyleEngine<'a> {
         Ok(cssom)
     }
     pub fn resolve_styles(&self, dom: &Dom, cssom: &CssOm) -> Vec<Option<ComputedStyle>> {
+        profile_scope!("Resolve Styles");
+
         let mut styled_nodes = vec![None; dom.nodes.len()];
 
         for node_id in 0..dom.nodes.len() {
@@ -90,8 +94,7 @@ impl<'a> StyleEngine<'a> {
                 let author_matches = Matcher::match_rules(node, dom, &author_candidates, &cssom);
 
                 let mut style = Cascade::compute(
-                    node,
-                    dom,
+                    element,
                     &[
                         CascadeSource {
                             origin: Origin::UserAgent,

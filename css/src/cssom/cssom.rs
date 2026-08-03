@@ -5,10 +5,11 @@ use crate::cssom::{
     rule::CssRule,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Origin {
     UserAgent,
     Author,
+    Inline,
 }
 
 impl Default for Origin {

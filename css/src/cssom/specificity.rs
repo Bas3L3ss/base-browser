@@ -12,6 +12,12 @@ pub struct Specificity {
 }
 
 impl Specificity {
+    pub const INLINE: Self = Self {
+        ids: 1,
+        classes: 0,
+        types: 0,
+    };
+
     pub const ZERO: Self = Self {
         ids: 0,
         classes: 0,

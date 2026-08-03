@@ -363,7 +363,7 @@ impl<'a> Parser<'a> {
         selectors
     }
 
-    fn parse_declarations(&mut self) -> Vec<Declaration> {
+    pub fn parse_declarations(&mut self) -> Vec<Declaration> {
         let mut declarations = Vec::new();
 
         while !self.is_eof() {
