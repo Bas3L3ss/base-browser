@@ -1,11 +1,12 @@
-use crate::BoxType;
+use crate::{BoxType, Dimensions};
 use html::NodeID;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LayoutNode {
     pub source: LayoutSource,
     pub box_type: BoxType,
     pub children: Vec<LayoutNode>,
+    pub dimensions: Dimensions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +21,7 @@ impl LayoutNode {
             source,
             box_type,
             children,
+            dimensions: Dimensions::default(),
         }
     }
 

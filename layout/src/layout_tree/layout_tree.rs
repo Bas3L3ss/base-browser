@@ -1,13 +1,13 @@
-use std::{println, todo, unreachable, vec};
+use std::{todo, unreachable, vec};
 
 use crate::{
     BoxType, LayoutNode,
     LayoutSource::{self, DomNode},
 };
-use css::{ComputedStyle, Display};
+use css::{ComputedStyle, display::Display};
 use html::{Dom, NodeType, html_tags::HtmlTag};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LayoutTree {
     pub root: Option<LayoutNode>,
 }
