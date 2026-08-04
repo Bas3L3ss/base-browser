@@ -9,7 +9,6 @@ pub enum BoxType {
     // TODO: Add `Flex`
     // TODO: Add `Grid`
     // TODO: Add `Table`
-    // TODO: Add `AnonymousBlock`
 }
 
 impl BoxType {

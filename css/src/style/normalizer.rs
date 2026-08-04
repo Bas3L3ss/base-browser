@@ -10,7 +10,19 @@ impl Normalizer {
         candidate: DeclarationCandidate,
     ) {
         match candidate.property {
-            // Box Model Shorthands
+            Property::Inset => {
+                // Handles the shorthand "inset" by expanding into top/right/bottom/left with default `auto`
+                Self::expand_and_insert_box_edges(
+                    properties,
+                    &candidate,
+                    Property::Top,
+                    Property::Right,
+                    Property::Bottom,
+                    Property::Left,
+                    ComponentValue::Ident(String::from("auto")),
+                );
+            }
+
             Property::Margin => {
                 Self::expand_and_insert_box_edges(
                     properties,
@@ -22,6 +34,7 @@ impl Normalizer {
                     ComponentValue::Ident(String::from("auto")),
                 );
             }
+
             Property::Padding => {
                 Self::expand_and_insert_box_edges(
                     properties,
@@ -34,7 +47,6 @@ impl Normalizer {
                 );
             }
             Property::BorderWidth => {
-                // Border width default value is 'medium' per CSS spec.
                 Self::expand_and_insert_box_edges(
                     properties,
                     &candidate,
@@ -46,7 +58,6 @@ impl Normalizer {
                 );
             }
             Property::Border => {
-                // Expand border shorthand to Border{Top,Right,Bottom,Left}{Width,Style,Color}
                 let border_defaults = (
                     ComponentValue::Ident(String::from("medium")),
                     ComponentValue::Ident(String::from("none")),

@@ -3,6 +3,15 @@
  * Basic CSS to provide default styling for HTML elements
  */
 
+* {
+  box-sizing: border-box; /* Chrome and most modern browsers use border-box for UA sheet, not content-box */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  vertical-align: baseline;
+}
+
 html {
   display: block;
   margin: 8px;

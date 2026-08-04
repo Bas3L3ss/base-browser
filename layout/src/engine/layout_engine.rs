@@ -45,11 +45,17 @@ impl LayoutEngine {
                     .as_ref()
                     .expect("Computed style for node is missing");
 
-                let padding = style.padding();
                 let margin = style.margin();
+                let padding = style.padding();
+                let border = style.border_width();
+
                 let width = style.width();
                 let height = style.height();
-                // let border = style.border();
+
+                let box_sizing = style.box_sizing();
+
+                let (min_width, max_width) = style.min_max_width();
+                let (min_height, max_height) = style.min_max_height();
             }
         }
     }

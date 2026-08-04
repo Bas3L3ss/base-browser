@@ -76,7 +76,23 @@ impl ComponentValue {
                 unit: unit.clone(),
             }),
             ComponentValue::Percentage(v) => Some(Length::Percent(*v)),
-            ComponentValue::Ident(s) if s == "auto" => Some(Length::Auto),
+            ComponentValue::Ident(s) => match s.as_str() {
+                "auto" => Some(Length::Auto),
+                "thin" => Some(Length::Dimension {
+                    value: 1.0,
+                    unit: Unit::Px,
+                }),
+                "medium" => Some(Length::Dimension {
+                    value: 3.0,
+                    unit: Unit::Px,
+                }),
+                "thick" => Some(Length::Dimension {
+                    value: 5.0,
+                    unit: Unit::Px,
+                }),
+                _ => None,
+            },
+
             _ => None,
         }
     }
@@ -85,9 +101,21 @@ impl ComponentValue {
         match self {
             ComponentValue::Ident(name) => Some(Color::Named(name.clone())),
             ComponentValue::Hash(hex) => Some(Color::Hex(hex.clone())),
-            ComponentValue::Function(_) => {
-                todo!()
-            }
+            ComponentValue::Function(func) => Color::parse_function(func),
+            _ => None,
+        }
+    }
+
+    pub fn as_delim(&self) -> Option<char> {
+        match self {
+            ComponentValue::Delim(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    pub fn as_number(&self) -> Option<f32> {
+        match self {
+            ComponentValue::Number(n) => Some(*n),
             _ => None,
         }
     }
