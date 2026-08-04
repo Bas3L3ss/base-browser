@@ -19,5 +19,8 @@ pub use aspect_ratio::*;
 pub mod visibility;
 pub use visibility::*;
 
+pub mod font_size;
+pub use font_size::*;
+
 pub mod overflow;
 pub use overflow::*;

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, Length, Overflow,
-    Position, Property, Unit, Visibility, display::Display,
+    AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, FontSize, Length,
+    Overflow, Position, Property, Unit, Visibility, display::Display,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -190,6 +190,12 @@ impl ComputedStyle {
             .and_then(|component| component.as_length())
             .unwrap_or(Length::Auto);
         (left, top, right, bottom)
+    }
+
+    pub fn font_size(&self) -> Option<Length> {
+        self.properties
+            .get(&Property::FontSize)
+            .and_then(|css_value| FontSize::from_css(css_value))
     }
 
     pub fn z_index(&self) -> Option<i32> {

@@ -18,6 +18,7 @@ impl ResourceLoader {
         let response = self.http.get(url)?;
         Ok(response.body_as_string())
     }
+
     pub fn load_stylesheet(
         &self,
         dom: &Dom,

@@ -1,4 +1,6 @@
-use crate::{EdgeSizes, Rect};
+use css::Edges;
+
+use crate::Rect;
 
 /// The `Dimensions` struct represents the rectangular areas of a CSS box model entity:
 /// - `content` is the area where the box's content is rendered.
@@ -7,12 +9,12 @@ use crate::{EdgeSizes, Rect};
 /// - `margin` is the space outside the border, separating the element from others.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Dimensions {
-    /// The content area (inner rectangle).
     pub content: Rect,
-    /// Padding around the content.
-    pub padding: EdgeSizes,
-    /// Border thickness around the padding.
-    pub border: EdgeSizes,
-    /// Margin area outside the border.
-    pub margin: EdgeSizes,
+    pub padding: Rect,
+    pub border: Rect,
+    pub margin: Rect,
+
+    pub padding_edges: Edges<f32>,
+    pub border_edges: Edges<f32>,
+    pub margin_edges: Edges<f32>,
 }
