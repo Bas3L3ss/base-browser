@@ -14,3 +14,7 @@ pub mod matcher;
 pub use matcher::*;
 
 pub mod styled_node;
+pub use styled_node::*;
+
+pub mod normalizer;
+pub use normalizer::*;
