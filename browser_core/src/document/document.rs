@@ -37,6 +37,7 @@ impl Document {
                 ..Default::default()
             },
             &computed_styles,
+            &parsed_dom.value,
         );
 
         Ok(Self {

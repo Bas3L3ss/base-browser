@@ -6,7 +6,8 @@ use url::Url;
 use utils::profile_scope;
 
 use crate::{
-    Cascade, CascadeSource, ComputedStyle, CssOm, Inheritance, Matcher, Origin, Parser, Tokenizer,
+    Cascade, CascadeSource, ComputedStyle, CssOm, CssRule, Inheritance, Matcher, Origin, Parser,
+    Tokenizer,
 };
 
 pub struct StyleContext<'a> {
@@ -32,23 +33,54 @@ impl<'a> StyleEngine<'a> {
     pub fn new(context: StyleContext<'a>) -> Self {
         Self { context }
     }
+
+    fn parse_stylesheet(
+        &self,
+        cssom: &mut CssOm,
+        source: &str,
+        loader: &ResourceLoader,
+    ) -> Result<()> {
+        let tokens = Tokenizer::from_string(source);
+
+        let mut parser = Parser::new(&tokens);
+
+        let rules = parser.parse()?;
+
+        for rule in rules {
+            match rule {
+                CssRule::At(at_rule) if at_rule.name == "import" => {
+                    let import = at_rule.parse_import();
+                    if let Some(href) = import.url {
+                        let imported_source =
+                            loader.load_stylesheet_url(&self.context.url, &href)?;
+                        self.parse_stylesheet(cssom, &imported_source, loader)?;
+                    }
+                }
+
+                rule => {
+                    cssom.append_rule(rule);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn build_cssom(&self, dom: &Dom, loader: &ResourceLoader) -> Result<CssOm> {
         profile_scope!("Build CSSOM");
         let mut cssom = CssOm::default();
 
         for stylesheet in &dom.style_sheets {
             let source = loader.load_stylesheet(dom, stylesheet, self.context.url)?;
-            let tokens = Tokenizer::from_string(&source);
 
-            let mut parser = Parser::new(&tokens);
-            let rules = parser.parse()?;
-            cssom.append_stylesheet(rules);
+            self.parse_stylesheet(&mut cssom, &source, loader)?;
         }
 
         cssom.build_indexes();
 
         Ok(cssom)
     }
+
     pub fn resolve_styles(&self, dom: &Dom, cssom: &CssOm) -> Vec<Option<ComputedStyle>> {
         profile_scope!("Resolve Styles");
 

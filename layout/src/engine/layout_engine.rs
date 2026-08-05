@@ -1,6 +1,7 @@
-use std::todo;
+use std::{todo, unreachable};
 
 use css::{BoxSizing, ComputedStyle, Length, LengthContext, MaxLength, MinLength};
+use html::{Dom, NodeType, dom};
 
 use crate::{
     BoxType, Dimensions, HorizontalEdges, HorizontalLayout, HorizontalSpecified, LayoutNode,
@@ -31,6 +32,7 @@ struct LayoutContext {
 
 pub struct LayoutEngine<'a> {
     context: LayoutContext,
+    dom: &'a Dom,
     computed_style: &'a [Option<ComputedStyle>],
 }
 
@@ -39,6 +41,7 @@ impl<'a> LayoutEngine<'a> {
         tree: &mut LayoutTree,
         viewport: Dimensions,
         computed_style: &[Option<ComputedStyle>],
+        dom: &Dom,
     ) {
         let root = match tree.root.as_mut() {
             Some(root) => root,
@@ -58,7 +61,7 @@ impl<'a> LayoutEngine<'a> {
             LayoutSource::Anonymous => return,
         };
 
-        let ctx = LayoutContext {
+        let context = LayoutContext {
             viewport_height: viewport.content.height,
             viewport_width: viewport.content.width,
             root_font_size,
@@ -68,7 +71,8 @@ impl<'a> LayoutEngine<'a> {
         };
 
         let mut engine = LayoutEngine {
-            context: ctx,
+            context,
+            dom,
             computed_style,
         };
         engine.layout_node(root, &viewport, viewport.content.y);
@@ -79,12 +83,40 @@ impl<'a> LayoutEngine<'a> {
             BoxType::Block => self.layout_block(node, containing_block, cursor_y),
             BoxType::Anonymous => self.layout_block(node, containing_block, cursor_y),
 
+            BoxType::Text => self.layout_text(node, containing_block, cursor_y),
             BoxType::Inline => todo!(),
-            BoxType::Text => todo!(),
 
             _ => todo!(),
         }
     }
+
+    fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+        let node_id = match node.source {
+            LayoutSource::DomNode(id) => id,
+            _ => unreachable!(),
+        };
+
+        let style = self.computed_style[node_id]
+            .as_ref()
+            .expect("Computed style for node is missing");
+
+        let length_context: LengthContext = LengthContext {
+            font_size: self.context.current_font_size,
+            root_font_size: self.context.root_font_size,
+            ex_height: self.context.ex_height,
+            ch_width: self.context.ch_width,
+            viewport_width: self.context.viewport_width,
+            viewport_height: self.context.viewport_height,
+        };
+
+        let font_size = self.context.current_font_size;
+
+        let text = match &self.dom.nodes[node_id].ntype {
+            NodeType::Text(text) => text,
+            _ => return,
+        };
+    }
+
     fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
         match node.source {
             LayoutSource::Anonymous => {

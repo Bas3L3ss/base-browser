@@ -1039,4 +1039,56 @@ mod tests {
         assert_eq!(tokens[3], CssToken::Number(3.0));
         assert_eq!(tokens[4], CssToken::RightParen);
     }
+
+    #[test]
+    fn test_string_token_in_url_function() {
+        // Double-quoted string in url()
+        let tokens = Tokenizer::from_string("url(\"foo/bar.css\")");
+        assert_eq!(tokens[0], CssToken::Ident("url".into()));
+        assert_eq!(tokens[1], CssToken::LeftParen);
+        assert_eq!(tokens[2], CssToken::String("foo/bar.css".into()));
+        assert_eq!(tokens[3], CssToken::RightParen);
+
+        // Single-quoted string in url()
+        let tokens2 = Tokenizer::from_string("url('baz.css')");
+        assert_eq!(tokens2[0], CssToken::Ident("url".into()));
+        assert_eq!(tokens2[1], CssToken::LeftParen);
+        assert_eq!(tokens2[2], CssToken::String("baz.css".into()));
+        assert_eq!(tokens2[3], CssToken::RightParen);
+
+        // String in url( ... ) with whitespace
+        let tokens3 = Tokenizer::from_string("url(  \"theme.css\"  )");
+        assert_eq!(tokens3[0], CssToken::Ident("url".into()));
+        assert_eq!(tokens3[1], CssToken::LeftParen);
+        // there might be Whitespace tokens, but we just check string correctness
+        assert!(
+            tokens3
+                .iter()
+                .any(|t| t == &CssToken::String("theme.css".into()))
+        );
+        assert_eq!(tokens3.last().unwrap(), &CssToken::EOF);
+    }
+
+    #[test]
+    fn test_string_token_as_import_value() {
+        // Double-quoted string after @import
+        let tokens = Tokenizer::from_string("@import \"foo/bar.css\";");
+        assert_eq!(tokens[0], CssToken::AtKeyword("import".into()));
+        assert_eq!(tokens[2], CssToken::String("foo/bar.css".into()));
+        assert_eq!(tokens[3], CssToken::Semicolon);
+
+        // String passed as url() argument after @import
+        let tokens2 = Tokenizer::from_string("@import url(\"baz.css\");");
+
+        assert_eq!(tokens2[0], CssToken::AtKeyword("import".into()));
+        assert_eq!(tokens2[2], CssToken::Ident("url".into()));
+        assert_eq!(tokens2[3], CssToken::LeftParen);
+        assert_eq!(tokens2[4], CssToken::String("baz.css".into()));
+        assert_eq!(tokens2[5], CssToken::RightParen);
+        assert_eq!(tokens2[6], CssToken::Semicolon);
+
+        // Single-quoted string in url()
+        let tokens3 = Tokenizer::from_string("@import url('foo.css');");
+        assert_eq!(tokens3[4], CssToken::String("foo.css".into()));
+    }
 }

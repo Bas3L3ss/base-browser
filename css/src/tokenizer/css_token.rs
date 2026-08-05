@@ -46,3 +46,39 @@ pub enum CssToken {
     Error(CssTokenizerError), // e.g. Error(CssTokenizerError::UnexpectedChar('#', 3))
     EOF,                      // End of file/input
 }
+
+impl CssToken {
+    /// Returns the *string value* that would be extracted from the token in CSS.
+    /// For error returns error message, for EOF returns empty string,
+    /// for Delim and symbols returns the corresponding character string.
+    pub fn to_string(&self) -> String {
+        match self {
+            CssToken::Ident(s) => s.clone(),
+            CssToken::Number(n) => n.to_string(),
+            CssToken::Dimension { value, unit } => format!("{}{}", value, unit),
+            CssToken::Percentage(p) => format!("{}%", p),
+            CssToken::String(s) => s.clone(),
+            CssToken::Hash(s) => s.clone(),
+            CssToken::Colon => ":".to_string(),
+            CssToken::Semicolon => ";".to_string(),
+            CssToken::LeftBrace => "{".to_string(),
+            CssToken::RightBrace => "}".to_string(),
+            CssToken::LeftParen => "(".to_string(),
+            CssToken::RightParen => ")".to_string(),
+            CssToken::Comma => ",".to_string(),
+            CssToken::Whitespace => " ".to_string(),
+            CssToken::AtKeyword(s) => s.clone(),
+            CssToken::Delim(c) => c.to_string(),
+            CssToken::Star => "*".to_string(),
+            CssToken::Plus => "+".to_string(),
+            CssToken::GreaterThan => ">".to_string(),
+            CssToken::Tilde => "~".to_string(),
+            CssToken::Dot => ".".to_string(),
+            CssToken::OpenBracket => "[".to_string(),
+            CssToken::CloseBracket => "]".to_string(),
+            CssToken::Equals => "=".to_string(),
+            CssToken::Error(_) => "error".to_string(),
+            CssToken::EOF => String::new(),
+        }
+    }
+}

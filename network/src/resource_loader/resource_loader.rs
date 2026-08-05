@@ -19,6 +19,13 @@ impl ResourceLoader {
         Ok(response.body_as_string())
     }
 
+    pub fn load_stylesheet_url(&self, base_url: &Url, href: &String) -> Result<String> {
+        profile_scope!("Load StyleSheetUrl");
+        let url = base_url.resolve(href)?;
+        let response = self.http.get(&url)?;
+        Ok(response.body_as_string())
+    }
+
     pub fn load_stylesheet(
         &self,
         dom: &Dom,
@@ -46,10 +53,7 @@ impl ResourceLoader {
                     _ => return Err(anyhow!("expected element")),
                 };
 
-                let url = base_url.resolve(href)?;
-                let response = self.http.get(&url)?;
-
-                Ok(response.body_as_string())
+                self.load_stylesheet_url(base_url, href)
             }
         }
     }
