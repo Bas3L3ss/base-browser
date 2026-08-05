@@ -88,7 +88,15 @@ impl<'a> LayoutEngine<'a> {
     fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
         match node.source {
             LayoutSource::Anonymous => {
-                todo!()
+                node.dimensions.content.width = parent.content.width;
+
+                Self::calculate_x(node, parent);
+                Self::calculate_y(node, cursor_y);
+
+                self.layout_descendants(node);
+
+                Self::resolve_auto_height(node);
+                Self::finalize_box_height(node);
             }
             LayoutSource::DomNode(node_id) => {
                 let style = self.computed_style[node_id]
@@ -235,25 +243,7 @@ impl<'a> LayoutEngine<'a> {
         layout.apply(node, &edges);
     }
 
-    fn finalize_height(
-        node: &mut LayoutNode,
-        style: &StyleComponents,
-        parent: &Dimensions,
-        length_context: &LengthContext,
-    ) {
-        if !node.dimensions.is_height_definite {
-            let mut h: f32 = node
-                .children
-                .iter()
-                .map(|child| child.dimensions.margin.height)
-                .sum();
-
-            h = Self::clamp_height(h, style, parent, length_context);
-
-            node.dimensions.content.height = h;
-            node.dimensions.is_height_definite = true;
-        }
-
+    fn finalize_box_height(node: &mut LayoutNode) {
         node.dimensions.padding.height = node.dimensions.content.height
             + node.dimensions.padding_edges.top
             + node.dimensions.padding_edges.bottom;
@@ -265,6 +255,36 @@ impl<'a> LayoutEngine<'a> {
         node.dimensions.margin.height = node.dimensions.border.height
             + node.dimensions.margin_edges.top
             + node.dimensions.margin_edges.bottom;
+    }
+
+    fn resolve_auto_height(node: &mut LayoutNode) {
+        node.dimensions.content.height = node
+            .children
+            .iter()
+            .map(|child| child.dimensions.margin.height)
+            .sum();
+
+        node.dimensions.is_height_definite = true;
+    }
+
+    fn finalize_height(
+        node: &mut LayoutNode,
+        style: &StyleComponents,
+        parent: &Dimensions,
+        length_context: &LengthContext,
+    ) {
+        if !node.dimensions.is_height_definite {
+            Self::resolve_auto_height(node);
+
+            node.dimensions.content.height = Self::clamp_height(
+                node.dimensions.content.height,
+                style,
+                parent,
+                length_context,
+            );
+        }
+
+        Self::finalize_box_height(node);
     }
 
     fn clamp_height(
