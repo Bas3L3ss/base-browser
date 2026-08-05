@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, FontSize, Length,
-    Overflow, Position, Property, Unit, Visibility, display::Display,
+    MaxLength, MinLength, Overflow, Position, Property, Unit, Visibility, display::Display,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,38 +93,34 @@ impl ComputedStyle {
         }
     }
 
-    pub fn min_max_width(&self) -> (Length, Length) {
+    pub fn min_max_width(&self) -> (MinLength, MaxLength) {
         let min = self
             .properties
             .get(&Property::MinWidth)
-            .and_then(|v| v.components.first())
-            .and_then(|component| component.as_length())
-            .unwrap_or(Length::Auto);
+            .map(MinLength::from_css)
+            .unwrap_or(MinLength::Auto);
 
         let max = self
             .properties
             .get(&Property::MaxWidth)
-            .and_then(|v| v.components.first())
-            .and_then(|component| component.as_length())
-            .unwrap_or(Length::Auto);
+            .map(MaxLength::from_css)
+            .unwrap_or(MaxLength::None);
 
         (min, max)
     }
 
-    pub fn min_max_height(&self) -> (Length, Length) {
+    pub fn min_max_height(&self) -> (MinLength, MaxLength) {
         let min = self
             .properties
             .get(&Property::MinHeight)
-            .and_then(|v| v.components.first())
-            .and_then(|component| component.as_length())
-            .unwrap_or(Length::Auto);
+            .map(MinLength::from_css)
+            .unwrap_or(MinLength::Auto);
 
         let max = self
             .properties
             .get(&Property::MaxHeight)
-            .and_then(|v| v.components.first())
-            .and_then(|component| component.as_length())
-            .unwrap_or(Length::Auto);
+            .map(MaxLength::from_css)
+            .unwrap_or(MaxLength::None);
 
         (min, max)
     }

@@ -1,6 +1,6 @@
-use std::{iter::FlatMap, todo};
+use std::todo;
 
-use css::{BoxSizing, ComputedStyle, Length, LengthContext};
+use css::{BoxSizing, ComputedStyle, Length, LengthContext, MaxLength, MinLength};
 
 use crate::{
     BoxType, Dimensions, HorizontalEdges, HorizontalLayout, HorizontalSpecified, LayoutNode,
@@ -131,7 +131,7 @@ impl<'a> LayoutEngine<'a> {
 
                 self.layout_descendants(node);
 
-                Self::finalize_height(node);
+                Self::finalize_height(node, &style_components, parent, &element_ctx);
 
                 self.context.current_font_size = old_font_size;
             }
@@ -181,6 +181,9 @@ impl<'a> LayoutEngine<'a> {
                     h -= node.dimensions.border_edges.top + node.dimensions.border_edges.bottom;
                     h = h.max(0.0);
                 }
+
+                h = Self::clamp_height(h, style, parent, length_context);
+
                 node.dimensions.content.height = h;
                 node.dimensions.is_height_definite = true;
             }
@@ -212,23 +215,43 @@ impl<'a> LayoutEngine<'a> {
             &edges,
         );
 
+        let min_width = match &style.min_width {
+            MinLength::Auto => 0.0,
+            MinLength::Length(length) => length.to_f32(parent.content.width, None, length_context),
+        };
+        let max_width = match &style.max_width {
+            MaxLength::None => f32::INFINITY,
+            MaxLength::Length(length) => length.to_f32(parent.content.width, None, length_context),
+        }
+        .max(min_width);
+
         let layout = HorizontalLayout::solve_horizontal_constraints(
             parent.content.width,
             &edges,
             &specified,
+            min_width,
+            max_width,
         );
         layout.apply(node, &edges);
     }
 
-    fn finalize_height(node: &mut LayoutNode) {
+    fn finalize_height(
+        node: &mut LayoutNode,
+        style: &StyleComponents,
+        parent: &Dimensions,
+        length_context: &LengthContext,
+    ) {
         if !node.dimensions.is_height_definite {
-            let h = node
+            let mut h: f32 = node
                 .children
                 .iter()
                 .map(|child| child.dimensions.margin.height)
                 .sum();
 
+            h = Self::clamp_height(h, style, parent, length_context);
+
             node.dimensions.content.height = h;
+            node.dimensions.is_height_definite = true;
         }
 
         node.dimensions.padding.height = node.dimensions.content.height
@@ -242,5 +265,30 @@ impl<'a> LayoutEngine<'a> {
         node.dimensions.margin.height = node.dimensions.border.height
             + node.dimensions.margin_edges.top
             + node.dimensions.margin_edges.bottom;
+    }
+
+    fn clamp_height(
+        h: f32,
+        style: &StyleComponents,
+        parent: &Dimensions,
+        length_context: &LengthContext,
+    ) -> f32 {
+        let min_height = match &style.min_height {
+            MinLength::Auto => 0.0,
+            MinLength::Length(length) => match length {
+                Length::Percent(_) if !parent.is_height_definite => 0.0,
+                _ => length.to_f32(parent.content.height, None, length_context),
+            },
+        };
+        let max_height = match &style.max_height {
+            MaxLength::None => f32::INFINITY,
+            MaxLength::Length(length) => match length {
+                Length::Percent(_) if !parent.is_height_definite => f32::INFINITY,
+                _ => length.to_f32(parent.content.height, None, length_context),
+            },
+        }
+        .max(min_height);
+
+        h.max(min_height).min(max_height)
     }
 }

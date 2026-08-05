@@ -24,3 +24,7 @@ pub use font_size::*;
 
 pub mod overflow;
 pub use overflow::*;
+
+pub mod min_max;
+
+pub use min_max::*;

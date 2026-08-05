@@ -108,10 +108,59 @@ pub(crate) struct HorizontalLayout {
 }
 
 impl HorizontalLayout {
+    pub(crate) fn resolve_width(available: f32, specified: &HorizontalSpecified) -> f32 {
+        match specified.width {
+            Some(w) => w,
+            None => {
+                let ml = specified.margin_left.unwrap_or(0.0);
+                let mr = specified.margin_right.unwrap_or(0.0);
+
+                (available - ml - mr).max(0.0)
+            }
+        }
+    }
+
+    pub(crate) fn clamp_width(width: f32, min: f32, max: f32) -> f32 {
+        width.max(min).min(max)
+    }
+
+    pub(crate) fn resolve_margins(
+        available: f32,
+        width: f32,
+        specified: &HorizontalSpecified,
+    ) -> (f32, f32) {
+        match (specified.margin_left, specified.margin_right) {
+            (None, None) => {
+                // both margins auto, distribute space equally
+                let remain = available - width;
+                let margin = remain / 2.0;
+                (margin, margin)
+            }
+            (None, Some(mr)) => {
+                // left margin auto, right margin specified
+                let right = mr;
+                let left = available - width - right;
+                (left, right)
+            }
+            (Some(ml), None) => {
+                // right margin auto, left margin specified
+                let left = ml;
+                let right = available - width - left;
+                (left, right)
+            }
+            (Some(ml), Some(mr)) => {
+                // no auto, both margins specified
+                (ml, mr)
+            }
+        }
+    }
+
     pub(crate) fn solve_horizontal_constraints(
         containing_width: f32,
         edges: &HorizontalEdges,
         specified: &HorizontalSpecified,
+        min: f32,
+        max: f32,
     ) -> Self {
         let available = containing_width
             - edges.padding_left
@@ -119,60 +168,12 @@ impl HorizontalLayout {
             - edges.border_left
             - edges.border_right;
 
-        let resolved_width;
-        let resolved_margin_left;
-        let resolved_margin_right;
+        let resolved_width = Self::resolve_width(available, specified);
 
-        match (
-            specified.width,
-            specified.margin_left,
-            specified.margin_right,
-        ) {
-            // width:auto
-            (None, ml, mr) => {
-                let ml = ml.unwrap_or(0.0);
-                let mr = mr.unwrap_or(0.0);
+        let resolved_width = Self::clamp_width(resolved_width, min, max);
 
-                resolved_margin_left = ml;
-                resolved_margin_right = mr;
-
-                resolved_width = (available - ml - mr).max(0.0);
-            }
-
-            // fixed width, left margin auto
-            (Some(w), None, Some(mr)) => {
-                resolved_width = w;
-                resolved_margin_right = mr;
-                resolved_margin_left = available - w - mr;
-            }
-
-            // fixed width, right margin auto
-            (Some(w), Some(ml), None) => {
-                resolved_width = w;
-                resolved_margin_left = ml;
-                resolved_margin_right = available - w - ml;
-            }
-
-            // fixed width, both margins auto
-            (Some(w), None, None) => {
-                resolved_width = w;
-
-                let remain = available - w;
-
-                resolved_margin_left = remain / 2.0;
-                resolved_margin_right = remain / 2.0;
-            }
-
-            // nothing auto
-            (Some(w), Some(ml), Some(_)) => {
-                resolved_width = w;
-                resolved_margin_left = ml;
-
-                // CSS 2.1 LTR:
-                // any leftover (positive or negative) goes to the right margin
-                resolved_margin_right = available - w - ml;
-            }
-        };
+        let (resolved_margin_left, resolved_margin_right) =
+            Self::resolve_margins(available, resolved_width, specified);
 
         HorizontalLayout {
             width: resolved_width,

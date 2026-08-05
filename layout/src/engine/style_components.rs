@@ -1,4 +1,4 @@
-use css::{BoxSizing, ComputedStyle, Edges, Length};
+use css::{BoxSizing, ComputedStyle, Edges, Length, MaxLength, MinLength};
 
 pub(crate) struct StyleComponents {
     pub(crate) box_sizing: BoxSizing,
@@ -7,10 +7,10 @@ pub(crate) struct StyleComponents {
     pub(crate) border: Edges<Length>,
     pub(crate) width: Length,
     pub(crate) height: Length,
-    pub(crate) min_width: Length,
-    pub(crate) max_width: Length,
-    pub(crate) min_height: Length,
-    pub(crate) max_height: Length,
+    pub(crate) min_width: MinLength,
+    pub(crate) max_width: MaxLength,
+    pub(crate) min_height: MinLength,
+    pub(crate) max_height: MaxLength,
     pub(crate) offset: Edges<Length>,
     pub(crate) font_size: Option<Length>,
 }
@@ -19,6 +19,7 @@ impl StyleComponents {
     pub(crate) fn new(style: &ComputedStyle) -> Self {
         let (min_width, max_width) = style.min_max_width();
         let (min_height, max_height) = style.min_max_height();
+
         let (left, top, right, bottom) = style.offset();
         let font_size = style.font_size();
         Self {
