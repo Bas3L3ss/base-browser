@@ -1,6 +1,6 @@
-use std::todo;
+use std::{iter::FlatMap, todo};
 
-use css::{ComputedStyle, LengthContext};
+use css::{BoxSizing, ComputedStyle, Length, LengthContext};
 
 use crate::{
     BoxType, Dimensions, HorizontalEdges, HorizontalLayout, HorizontalSpecified, LayoutNode,
@@ -29,11 +29,12 @@ struct LayoutContext {
     ch_width: f32,
 }
 
-pub struct LayoutEngine {
+pub struct LayoutEngine<'a> {
     context: LayoutContext,
+    computed_style: &'a [Option<ComputedStyle>],
 }
 
-impl LayoutEngine {
+impl<'a> LayoutEngine<'a> {
     pub fn layout(
         tree: &mut LayoutTree,
         viewport: Dimensions,
@@ -66,19 +67,17 @@ impl LayoutEngine {
             ex_height: root_font_size * 0.5,
         };
 
-        let mut engine = LayoutEngine { context: ctx };
-        engine.layout_node(root, &viewport, computed_style);
+        let mut engine = LayoutEngine {
+            context: ctx,
+            computed_style,
+        };
+        engine.layout_node(root, &viewport, viewport.content.y);
     }
 
-    fn layout_node(
-        &mut self,
-        node: &mut LayoutNode,
-        containing_block: &Dimensions,
-        computed_style: &[Option<ComputedStyle>],
-    ) {
+    fn layout_node(&mut self, node: &mut LayoutNode, containing_block: &Dimensions, cursor_y: f32) {
         match node.box_type {
-            BoxType::Block => self.layout_block(node, containing_block, computed_style),
-            BoxType::Anonymous => self.layout_block(node, containing_block, computed_style),
+            BoxType::Block => self.layout_block(node, containing_block, cursor_y),
+            BoxType::Anonymous => self.layout_block(node, containing_block, cursor_y),
 
             BoxType::Inline => todo!(),
             BoxType::Text => todo!(),
@@ -86,22 +85,20 @@ impl LayoutEngine {
             _ => todo!(),
         }
     }
-    fn layout_block(
-        &mut self,
-        node: &mut LayoutNode,
-        parent: &Dimensions,
-        computed_style: &[Option<ComputedStyle>],
-    ) {
+    fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
         match node.source {
             LayoutSource::Anonymous => {
                 todo!()
             }
             LayoutSource::DomNode(node_id) => {
-                let style = computed_style[node_id]
+                let style = self.computed_style[node_id]
                     .as_ref()
                     .expect("Computed style for node is missing");
 
-                let length_context = LengthContext {
+                let old_font_size = self.context.current_font_size;
+                let style_components = StyleComponents::new(&style);
+
+                let inherited_ctx: LengthContext = LengthContext {
                     font_size: self.context.current_font_size,
                     root_font_size: self.context.root_font_size,
                     ex_height: self.context.ex_height,
@@ -110,18 +107,82 @@ impl LayoutEngine {
                     viewport_height: self.context.viewport_height,
                 };
 
-                let style_components = StyleComponents::new(&style);
+                if let Some(new_font_size) = &style_components.font_size {
+                    self.context.current_font_size =
+                        new_font_size.to_f32(parent.content.width, None, &inherited_ctx);
+                }
 
-                Self::calculate_width(node, parent, &style_components, &length_context);
+                let element_ctx = LengthContext {
+                    font_size: self.context.current_font_size,
+                    root_font_size: self.context.root_font_size,
+                    ex_height: self.context.ex_height,
+                    ch_width: self.context.ch_width,
+                    viewport_width: self.context.viewport_width,
+                    viewport_height: self.context.viewport_height,
+                };
+
+                Self::calculate_width(node, parent, &style_components, &element_ctx);
 
                 Self::calculate_x(node, parent);
 
-                // Self::calculate_height(node, parent, &style_components, &length_context);
+                Self::resolve_specified_height(node, &style_components, parent, &element_ctx);
 
-                if let Some(new_font_size) = style_components.font_size {
-                    self.context.current_font_size =
-                        new_font_size.to_f32(parent.content.width, None, &length_context);
+                Self::calculate_y(node, cursor_y);
+
+                self.layout_descendants(node);
+
+                Self::finalize_height(node);
+
+                self.context.current_font_size = old_font_size;
+            }
+        }
+    }
+
+    fn calculate_y(node: &mut LayoutNode, cursor_y: f32) {
+        node.dimensions.margin.y = cursor_y;
+
+        node.dimensions.border.y = node.dimensions.margin.y + node.dimensions.margin_edges.top;
+
+        node.dimensions.padding.y = node.dimensions.border.y + node.dimensions.border_edges.top;
+
+        node.dimensions.content.y = node.dimensions.padding.y + node.dimensions.padding_edges.top;
+    }
+
+    fn layout_descendants(&mut self, node: &mut LayoutNode) {
+        let mut cursor_y = node.dimensions.content.y;
+
+        for child in &mut node.children {
+            self.layout_node(child, &node.dimensions, cursor_y);
+
+            cursor_y += child.dimensions.margin.height;
+        }
+    }
+
+    fn resolve_specified_height(
+        node: &mut LayoutNode,
+        style: &StyleComponents,
+        parent: &Dimensions,
+        length_context: &LengthContext,
+    ) {
+        match &style.height {
+            Length::Auto => {
+                node.dimensions.is_height_definite = false;
+            }
+            Length::Percent(_) if !parent.is_height_definite => {
+                node.dimensions.is_height_definite = false;
+            }
+            _ => {
+                let mut h = style
+                    .height
+                    .to_f32(parent.content.height, None, length_context);
+
+                if style.box_sizing == BoxSizing::BorderBox {
+                    h -= node.dimensions.padding_edges.top + node.dimensions.padding_edges.bottom;
+                    h -= node.dimensions.border_edges.top + node.dimensions.border_edges.bottom;
+                    h = h.max(0.0);
                 }
+                node.dimensions.content.height = h;
+                node.dimensions.is_height_definite = true;
             }
         }
     }
@@ -159,15 +220,27 @@ impl LayoutEngine {
         layout.apply(node, &edges);
     }
 
-    // fn calculate_height(
-    //     node: &mut LayoutNode,
-    //     parent: &Dimensions,
-    //     style: &StyleComponents,
-    //     Length_context: &LengthContext,
-    // ) {
-    //     match style.box_sizing {
-    //         BoxSizing::BorderBox => {}
-    //         BoxSizing::ContentBox => {}
-    //     }
-    // }
+    fn finalize_height(node: &mut LayoutNode) {
+        if !node.dimensions.is_height_definite {
+            let h = node
+                .children
+                .iter()
+                .map(|child| child.dimensions.margin.height)
+                .sum();
+
+            node.dimensions.content.height = h;
+        }
+
+        node.dimensions.padding.height = node.dimensions.content.height
+            + node.dimensions.padding_edges.top
+            + node.dimensions.padding_edges.bottom;
+
+        node.dimensions.border.height = node.dimensions.padding.height
+            + node.dimensions.border_edges.top
+            + node.dimensions.border_edges.bottom;
+
+        node.dimensions.margin.height = node.dimensions.border.height
+            + node.dimensions.margin_edges.top
+            + node.dimensions.margin_edges.bottom;
+    }
 }

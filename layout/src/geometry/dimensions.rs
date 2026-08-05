@@ -17,4 +17,6 @@ pub struct Dimensions {
     pub padding_edges: Edges<f32>,
     pub border_edges: Edges<f32>,
     pub margin_edges: Edges<f32>,
+
+    pub is_height_definite: bool,
 }

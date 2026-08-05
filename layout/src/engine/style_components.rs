@@ -41,14 +41,4 @@ impl StyleComponents {
             font_size: font_size,
         }
     }
-
-    // pub(crate) fn containing_width(&self) -> f32 {
-    //     self.margin.left
-    //         + self.border.left
-    //         + self.padding.left
-    //         + self.width
-    //         + self.padding.right
-    //         + self.border.right
-    //         + self.margin.right
-    // }
 }
