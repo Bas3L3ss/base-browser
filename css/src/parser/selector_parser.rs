@@ -218,22 +218,24 @@ impl<'a, 'b> SelectorParser<'a, 'b> {
     fn parse_values_pseudo_arg(&mut self) -> Option<PseudoArg> {
         let mut values = Vec::new();
         loop {
+            self.parser.skip_whitespace();
             if let Some(value) = self.parser.parse_component_value() {
                 values.push(value);
             } else if self.parser.expect(CssToken::Comma).is_some() {
                 // Found a comma, continue to try parsing next value
-                self.parser.skip_whitespace();
                 continue;
             } else {
                 break;
             }
         }
+
         if values.is_empty() {
             None
         } else {
             Some(PseudoArg::Values(values))
         }
     }
+
     fn parse_attribute_selector(
         &mut self,
     ) -> (Option<String>, Option<String>, Option<AttrSelectorOperator>) {

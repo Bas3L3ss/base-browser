@@ -1,7 +1,7 @@
 use std::{todo, unreachable};
 
 use css::{BoxSizing, ComputedStyle, Length, LengthContext, MaxLength, MinLength};
-use html::{Dom, NodeType, dom};
+use html::{Dom, NodeType};
 
 use crate::{
     BoxType, Dimensions, HorizontalEdges, HorizontalLayout, HorizontalSpecified, LayoutNode,

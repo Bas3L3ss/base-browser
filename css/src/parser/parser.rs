@@ -1,4 +1,4 @@
-use std::{matches, println};
+use std::matches;
 
 use anyhow::{Ok, Result};
 use utils::profile_scope;
