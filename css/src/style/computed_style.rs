@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use crate::{
-    AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, FontSize, Length,
-    MaxLength, MinLength, Overflow, Position, Property, Unit, Visibility, display::Display,
+    AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, FontFamily, FontSize,
+    Length, MaxLength, MinLength, Overflow, Position, Property, Unit, Visibility, display::Display,
+    font_stretch::FontStretch, font_style::FontStyle, font_weight::FontWeight,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,6 +239,33 @@ impl ComputedStyle {
             .get(&Property::Overflow)
             .map(Overflow::from_css)
             .unwrap_or(Overflow::Visible)
+    }
+
+    pub fn font_family(&self) -> Vec<String> {
+        self.properties
+            .get(&Property::FontFamily)
+            .map(FontFamily::from_css)
+            .unwrap_or(vec!["sans-serif".to_owned()])
+    }
+
+    pub fn font_weight(&self) -> Option<FontWeight> {
+        self.properties
+            .get(&Property::FontWeight)
+            .map(FontWeight::from_css)
+    }
+
+    pub fn font_stretch(&self) -> FontStretch {
+        self.properties
+            .get(&Property::FontStretch)
+            .map(FontStretch::from_css)
+            .unwrap_or(FontStretch::Normal)
+    }
+
+    pub fn font_style(&self) -> FontStyle {
+        self.properties
+            .get(&Property::FontStyle)
+            .map(FontStyle::from_css)
+            .unwrap_or(FontStyle::Normal)
     }
 
     fn get(&self, property: &Property) -> Option<&CssValue> {

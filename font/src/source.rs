@@ -2,6 +2,21 @@ use std::{fmt, matches, write};
 
 use url::Url;
 
+use crate::{FontStretch, FontStyle};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FontSourceRef {
+    Web {
+        url: Url,
+    },
+    Local {
+        family: String,
+        weight: u16,
+        // style: FontStyle,
+        // stretch: FontStretch,
+    },
+}
+
 /// Where a font can be loaded from.
 ///
 /// This is the runtime representation of a font source.

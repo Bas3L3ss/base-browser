@@ -7,3 +7,4 @@ edition = "2024"
 html={ path = "../html"}
 css={path = "../css"}
 anyhow = "1.0.104"
+font= {path = "../font"}

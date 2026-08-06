@@ -1,11 +1,12 @@
 use std::{todo, unreachable};
 
-use css::{BoxSizing, ComputedStyle, Length, LengthContext, MaxLength, MinLength};
+use css::{BoxSizing, ComputedStyle, CssOm, Length, LengthContext, MaxLength, MinLength};
+use font::{FontManager, FontRequest};
 use html::{Dom, NodeType};
 
 use crate::{
-    BoxType, Dimensions, HorizontalEdges, HorizontalLayout, HorizontalSpecified, LayoutNode,
-    LayoutSource, LayoutTree, StyleComponents,
+    BoxType, Dimensions, FontComponents, HorizontalEdges, HorizontalLayout, HorizontalSpecified,
+    LayoutNode, LayoutSource, LayoutTree, StyleComponents,
 };
 
 struct LayoutContext {
@@ -14,6 +15,7 @@ struct LayoutContext {
 
     root_font_size: f32,
     current_font_size: f32,
+    current_font_weight: u16,
 
     // ex_height and ch_width are generally determined by font metrics
     // of the font in use, which could depend on the system or user agent default settings.
@@ -34,6 +36,8 @@ pub struct LayoutEngine<'a> {
     context: LayoutContext,
     dom: &'a Dom,
     computed_style: &'a [Option<ComputedStyle>],
+    font_manager: &'a mut FontManager,
+    cssom: &'a CssOm,
 }
 
 impl<'a> LayoutEngine<'a> {
@@ -42,22 +46,37 @@ impl<'a> LayoutEngine<'a> {
         viewport: Dimensions,
         computed_style: &[Option<ComputedStyle>],
         dom: &Dom,
+        cssom: &CssOm,
+        font_manager: &mut FontManager,
     ) {
         let root = match tree.root.as_mut() {
             Some(root) => root,
             None => return,
         };
 
-        let root_font_size = match &root.source {
-            LayoutSource::DomNode(node_id) => computed_style
-                .get(*node_id)
-                .and_then(Option::as_ref)
-                .and_then(|computed| {
-                    computed
-                        .font_size()
-                        .map(|fs| fs.to_f32(0.0, None, &LengthContext::default()))
-                })
-                .unwrap_or(16.0),
+        let (root_font_size, root_font_weight) = match &root.source {
+            LayoutSource::DomNode(node_id) => {
+                let maybe_computed = computed_style.get(*node_id).and_then(Option::as_ref);
+
+                let font_size = maybe_computed
+                    .and_then(|computed| {
+                        computed
+                            .font_size()
+                            .map(|fs| fs.to_f32(0.0, None, &LengthContext::default()))
+                    })
+                    .unwrap_or(16.0);
+
+                let font_weight = maybe_computed
+                    .map(|computed| {
+                        computed
+                            .font_weight()
+                            .unwrap_or(css::FontWeight::Normal)
+                            .to_u16(400)
+                    })
+                    .unwrap_or(400);
+
+                (font_size, font_weight)
+            }
             LayoutSource::Anonymous => return,
         };
 
@@ -66,6 +85,7 @@ impl<'a> LayoutEngine<'a> {
             viewport_width: viewport.content.width,
             root_font_size,
             current_font_size: root_font_size,
+            current_font_weight: root_font_weight,
             ch_width: root_font_size * 0.5,
             ex_height: root_font_size * 0.5,
         };
@@ -73,8 +93,11 @@ impl<'a> LayoutEngine<'a> {
         let mut engine = LayoutEngine {
             context,
             dom,
+            font_manager,
             computed_style,
+            cssom,
         };
+
         engine.layout_node(root, &viewport, viewport.content.y);
     }
 
@@ -91,16 +114,23 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+        // Get node id and check  type
         let node_id = match node.source {
             LayoutSource::DomNode(id) => id,
             _ => unreachable!(),
+        };
+
+        let text = match &self.dom.nodes[node_id].ntype {
+            NodeType::Text(text) => text,
+            _ => return,
         };
 
         let style = self.computed_style[node_id]
             .as_ref()
             .expect("Computed style for node is missing");
 
-        let length_context: LengthContext = LengthContext {
+        // Prepare the length context using the current layout context
+        let length_context = LengthContext {
             font_size: self.context.current_font_size,
             root_font_size: self.context.root_font_size,
             ex_height: self.context.ex_height,
@@ -110,11 +140,17 @@ impl<'a> LayoutEngine<'a> {
         };
 
         let font_size = self.context.current_font_size;
+        let font_components = FontComponents::new(style, self.context.current_font_weight);
+        let request = FontRequest::new(
+            &font_components.families,
+            font_components.weight,
+            font_components.style,
+            font_components.stretch,
+        );
 
-        let text = match &self.dom.nodes[node_id].ntype {
-            NodeType::Text(text) => text,
-            _ => return,
-        };
+        let loaded_font = self
+            .font_manager
+            .resolve_font(&self.cssom.indexes.fonts, &request);
     }
 
     fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
@@ -136,6 +172,7 @@ impl<'a> LayoutEngine<'a> {
                     .expect("Computed style for node is missing");
 
                 let old_font_size = self.context.current_font_size;
+                let old_font_weight = self.context.current_font_weight;
                 let style_components = StyleComponents::new(&style);
 
                 let inherited_ctx: LengthContext = LengthContext {
@@ -150,6 +187,10 @@ impl<'a> LayoutEngine<'a> {
                 if let Some(new_font_size) = &style_components.font_size {
                     self.context.current_font_size =
                         new_font_size.to_f32(parent.content.width, None, &inherited_ctx);
+                }
+
+                if let Some(new_font_weight) = &style.font_weight() {
+                    self.context.current_font_weight = new_font_weight.to_u16(old_font_weight);
                 }
 
                 let element_ctx = LengthContext {
@@ -173,6 +214,7 @@ impl<'a> LayoutEngine<'a> {
 
                 Self::finalize_height(node, &style_components, parent, &element_ctx);
 
+                self.context.current_font_weight = old_font_weight;
                 self.context.current_font_size = old_font_size;
             }
         }

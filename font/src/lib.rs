@@ -1,17 +1,25 @@
+pub mod cache;
 pub mod database;
 pub mod face;
 pub mod glyph;
 pub mod loaded;
 pub mod loader;
+pub mod manager;
 pub mod metrics;
+pub mod provider;
+pub mod request;
 pub mod shaping;
 pub mod source;
 
+pub use cache::*;
 pub use database::*;
 pub use face::*;
 pub use glyph::*;
 pub use loaded::*;
 pub use loader::*;
+pub use manager::*;
 pub use metrics::*;
+pub use provider::*;
+pub use request::*;
 pub use shaping::*;
 pub use source::*;

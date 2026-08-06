@@ -12,3 +12,4 @@ html ={ path="../html" }
 utils = {path = "../utils"}
 css = {path="../css"}
 layout={path = "../layout"}
+font = {path = "../font"}

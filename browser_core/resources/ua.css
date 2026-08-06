@@ -12,17 +12,7 @@
   vertical-align: baseline;
 }
 
-html {
-  display: block;
-  margin: 8px;
-  padding: 0;
-  border: 0;
-  font-family: sans-serif;
-  font-size: 16px;
-  background: #fff;
-  color: #000;
-}
-
+html,
 body {
   display: block;
   margin: 8px;
@@ -30,6 +20,7 @@ body {
   border: 0;
   font-family: sans-serif;
   font-size: 16px;
+  font-weight: normal;
   background: #fff;
   color: #000;
 }

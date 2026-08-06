@@ -5,7 +5,7 @@ use crate::scheme::Scheme;
 use anyhow::Result;
 use input_parser::traits::Parse;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Url {
     pub scheme: Scheme,
     pub host: Host,

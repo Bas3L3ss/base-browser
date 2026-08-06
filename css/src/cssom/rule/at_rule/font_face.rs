@@ -1,6 +1,6 @@
 use std::{matches, println, unreachable, vec};
 
-use crate::{AtRule, AtRuleBlock, ComponentValue, Property};
+use crate::{Angle, AngleUnit, AtRule, AtRuleBlock, ComponentValue, Property};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontStyle {
@@ -8,6 +8,12 @@ pub enum FontStyle {
     Italic,
     /// For Oblique, support both single angle and range.
     Oblique(ObliqueStyle),
+}
+
+impl Default for FontStyle {
+    fn default() -> Self {
+        FontStyle::Normal
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,15 +24,26 @@ pub enum ObliqueStyle {
     Range(Angle, Angle),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Angle {
-    pub value: f32,
-    pub unit: AngleUnit,
+impl Default for ObliqueStyle {
+    fn default() -> Self {
+        // Default to oblique 14deg per CSS spec
+        ObliqueStyle::Single(Angle {
+            value: 14.0,
+            unit: AngleUnit::Deg,
+        })
+    }
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontWeight {
     Single(u16),
     Range { min: u16, max: u16 },
+}
+
+impl Default for FontWeight {
+    fn default() -> Self {
+        FontWeight::Single(400)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,12 +57,13 @@ pub enum FontStretch {
     Expanded,
     ExtraExpanded,
     UltraExpanded,
-    /// Variable font support:
-    /// font-stretch: 75% 125%;
-    Range {
-        min: f32,
-        max: f32,
-    },
+    Range { min: f32, max: f32 },
+}
+
+impl Default for FontStretch {
+    fn default() -> Self {
+        FontStretch::Normal
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +75,12 @@ pub enum FontDisplay {
     Optional,
 }
 
+impl Default for FontDisplay {
+    fn default() -> Self {
+        FontDisplay::Auto
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontTechnology {
     Variations,
@@ -64,6 +88,12 @@ pub enum FontTechnology {
     Features,
     Color,
     Other(String),
+}
+
+impl Default for FontTechnology {
+    fn default() -> Self {
+        FontTechnology::Variations
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -78,6 +108,16 @@ pub enum FontSource {
     },
 }
 
+impl Default for FontSource {
+    fn default() -> Self {
+        FontSource::Url {
+            url: String::new(),
+            formats: vec![],
+            techs: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FontFormat {
     Woff,
@@ -90,28 +130,27 @@ pub enum FontFormat {
     Other(String),
 }
 
+impl Default for FontFormat {
+    fn default() -> Self {
+        FontFormat::Woff
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnicodeRange {
     pub start: u32,
     pub end: u32,
-}
-#[derive(Debug, Clone, PartialEq)]
-pub enum AngleUnit {
-    Deg,
-    Grad,
-    Rad,
-    Turn,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FontFaceRule {
     pub family: String,
     pub sources: Vec<FontSource>,
-    pub style: Option<FontStyle>,
-    pub weight: Option<FontWeight>,
-    pub stretch: Option<FontStretch>,
-    pub display: Option<FontDisplay>,
-    pub unicode_range: Option<Vec<UnicodeRange>>,
+    pub style: FontStyle,
+    pub weight: FontWeight,
+    pub stretch: FontStretch,
+    pub display: FontDisplay,
+    pub unicode_range: Vec<UnicodeRange>,
 }
 
 impl FontFaceRule {
@@ -214,36 +253,40 @@ impl FontFaceRule {
                                 if let Some(style_val) = declaration.value.components.first() {
                                     // Match known font-style strings
                                     font_face.style = match style_val.as_ident() {
-                                        Some("normal") => Some(FontStyle::Normal),
-                                        Some("italic") => Some(FontStyle::Italic),
+                                        Some("normal") => FontStyle::Normal,
+                                        Some("italic") => FontStyle::Italic,
                                         Some("oblique") => {
                                             Self::parse_oblique(&declaration.value.components[1..])
                                         }
-                                        _ => None,
+                                        _ => FontStyle::Normal,
                                     };
                                 }
                             }
                             Property::FontWeight => {
                                 let comps = &declaration.value.components;
-                                font_face.weight = if let Some(first) = comps.get(0) {
-                                    let first_weight = Self::parse_weight(first);
-                                    match comps.get(1) {
-                                        // Range: two weights
-                                        Some(second) => {
-                                            let second_weight = Self::parse_weight(second);
-                                            match (first_weight, second_weight) {
-                                                (Some(min), Some(max)) => {
-                                                    Some(FontWeight::Range { min, max })
+                                font_face.weight = {
+                                    if let Some(first) = comps.get(0) {
+                                        let first_weight = Self::parse_weight(first);
+                                        match comps.get(1) {
+                                            // Range: two weights
+                                            Some(second) => {
+                                                let second_weight = Self::parse_weight(second);
+                                                match (first_weight, second_weight) {
+                                                    (Some(min), Some(max)) => {
+                                                        FontWeight::Range { min, max }
+                                                    }
+                                                    _ => FontWeight::default(),
                                                 }
-                                                _ => None,
                                             }
+                                            // Single: just one value
+                                            None => first_weight
+                                                .map(FontWeight::Single)
+                                                .unwrap_or_else(FontWeight::default),
                                         }
-                                        // Single: just one value
-                                        None => first_weight.map(FontWeight::Single),
+                                    } else {
+                                        // If no components, weight is set to default
+                                        FontWeight::default()
                                     }
-                                } else {
-                                    // If no components, weight is left as None
-                                    None
                                 };
                             }
 
@@ -287,7 +330,7 @@ impl FontFaceRule {
                                     _ => None,
                                 };
                                 if let Some(valid_stretch) = stretch {
-                                    font_face.stretch = Some(valid_stretch);
+                                    font_face.stretch = valid_stretch;
                                 }
                             }
 
@@ -332,19 +375,19 @@ impl FontFaceRule {
                                 }
 
                                 if !ranges.is_empty() && !failed {
-                                    font_face.unicode_range = Some(ranges);
+                                    font_face.unicode_range = ranges;
                                 }
                             }
 
                             Property::Unknown(str) if str.as_str() == "font-display" => {
                                 if let Some(display_val) = declaration.value.components.first() {
                                     font_face.display = match display_val.as_ident() {
-                                        Some("auto") => Some(FontDisplay::Auto),
-                                        Some("block") => Some(FontDisplay::Block),
-                                        Some("swap") => Some(FontDisplay::Swap),
-                                        Some("fallback") => Some(FontDisplay::Fallback),
-                                        Some("optional") => Some(FontDisplay::Optional),
-                                        _ => None,
+                                        Some("auto") => FontDisplay::Auto,
+                                        Some("block") => FontDisplay::Block,
+                                        Some("swap") => FontDisplay::Swap,
+                                        Some("fallback") => FontDisplay::Fallback,
+                                        Some("optional") => FontDisplay::Optional,
+                                        _ => FontDisplay::Auto,
                                     };
                                 }
                             }
@@ -429,16 +472,16 @@ impl FontFaceRule {
         }
     }
 
-    fn parse_oblique(vals: &[ComponentValue]) -> Option<FontStyle> {
+    fn parse_oblique(vals: &[ComponentValue]) -> FontStyle {
         let mut vals = vals.iter();
 
         let first = vals.next();
         match first {
             // No angle provided, use default 14deg for both min & max
-            None => Some(FontStyle::Oblique(ObliqueStyle::Single(Angle {
+            None => FontStyle::Oblique(ObliqueStyle::Single(Angle {
                 value: 14.0,
                 unit: AngleUnit::Deg,
-            }))),
+            })),
             Some(first_val) => {
                 let first_angle = Self::parse_angle(first_val);
                 let second = vals.next();
@@ -447,14 +490,20 @@ impl FontFaceRule {
                     Some(second_val) => {
                         let second_angle = Self::parse_angle(second_val);
                         match (first_angle, second_angle) {
-                            (Some(a1), Some(a2)) => {
-                                Some(FontStyle::Oblique(ObliqueStyle::Range(a1, a2)))
-                            }
-                            _ => None,
+                            (Some(a1), Some(a2)) => FontStyle::Oblique(ObliqueStyle::Range(a1, a2)),
+                            _ => FontStyle::Oblique(ObliqueStyle::Single(Angle {
+                                value: 14.0,
+                                unit: AngleUnit::Deg,
+                            })),
                         }
                     }
                     // oblique <angle>: min=max=angle
-                    None => first_angle.map(|a| FontStyle::Oblique(ObliqueStyle::Single(a))),
+                    None => first_angle
+                        .map(|a| FontStyle::Oblique(ObliqueStyle::Single(a)))
+                        .unwrap_or(FontStyle::Oblique(ObliqueStyle::Single(Angle {
+                            value: 14.0,
+                            unit: AngleUnit::Deg,
+                        }))),
                 }
             }
         }
@@ -609,11 +658,11 @@ mod tests {
                 techs: vec![]
             }]
         );
-        assert_eq!(ff.style, None);
-        assert_eq!(ff.weight, None);
-        assert_eq!(ff.stretch, None);
-        assert_eq!(ff.display, None);
-        assert_eq!(ff.unicode_range, None);
+        assert_eq!(ff.style, FontStyle::default());
+        assert_eq!(ff.weight, FontWeight::default());
+        assert_eq!(ff.stretch, FontStretch::default());
+        assert_eq!(ff.display, FontDisplay::default());
+        assert_eq!(ff.unicode_range, vec![]);
     }
 
     #[test]
@@ -628,7 +677,7 @@ mod tests {
         let at_rule = parse_font_face_at_rule(input);
         let ff = FontFaceRule::from_rule(&at_rule);
         assert_eq!(ff.family, "ItalicFont");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
+        assert_eq!(ff.style, FontStyle::Italic);
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -653,10 +702,10 @@ mod tests {
         assert_eq!(ff.family, "Example");
         assert_eq!(
             ff.style,
-            Some(FontStyle::Oblique(ObliqueStyle::Single(Angle {
+            FontStyle::Oblique(ObliqueStyle::Single(Angle {
                 value: 20.0,
                 unit: AngleUnit::Deg
-            })))
+            }))
         );
         assert_eq!(
             ff.sources,
@@ -709,7 +758,7 @@ mod tests {
         );
         assert_eq!(
             ff.unicode_range,
-            Some(vec![
+            vec![
                 UnicodeRange {
                     start: 0x0025,
                     end: 0x00FF
@@ -718,7 +767,7 @@ mod tests {
                     start: 0x4E00,
                     end: 0x9FFF
                 }
-            ])
+            ]
         );
     }
 
@@ -740,14 +789,14 @@ mod tests {
         assert_eq!(ff.family, "AllFields");
         assert_eq!(
             ff.style,
-            Some(FontStyle::Oblique(ObliqueStyle::Single(Angle {
+            FontStyle::Oblique(ObliqueStyle::Single(Angle {
                 value: 10.0,
                 unit: AngleUnit::Deg
-            })))
+            }))
         );
-        assert_eq!(ff.weight, Some(FontWeight::Range { min: 100, max: 900 }));
-        assert_eq!(ff.stretch, Some(FontStretch::Expanded));
-        assert_eq!(ff.display, Some(FontDisplay::Swap));
+        assert_eq!(ff.weight, FontWeight::Range { min: 100, max: 900 });
+        assert_eq!(ff.stretch, FontStretch::Expanded);
+        assert_eq!(ff.display, FontDisplay::Swap);
         assert_eq!(
             ff.sources,
             vec![
@@ -764,7 +813,7 @@ mod tests {
         );
         assert_eq!(
             ff.unicode_range,
-            Some(vec![
+            vec![
                 UnicodeRange {
                     start: 0x00,
                     end: 0xFF
@@ -773,7 +822,7 @@ mod tests {
                     start: 0x1234,
                     end: 0x1234
                 },
-            ])
+            ]
         );
     }
 
@@ -797,11 +846,11 @@ mod tests {
                 techs: vec![],
             }]
         );
-        assert_eq!(ff.style, None);
-        assert_eq!(ff.weight, None);
-        assert_eq!(ff.stretch, None);
-        assert_eq!(ff.display, None);
-        assert_eq!(ff.unicode_range, None);
+        assert_eq!(ff.style, FontStyle::default());
+        assert_eq!(ff.weight, FontWeight::default());
+        assert_eq!(ff.stretch, FontStretch::default());
+        assert_eq!(ff.display, FontDisplay::default());
+        assert_eq!(ff.unicode_range, vec![]);
     }
 
     #[test]
@@ -846,7 +895,7 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
 
         assert_eq!(ff.family, "KeywordWeight");
-        assert_eq!(ff.weight, Some(FontWeight::Single(700))); // "bold" stored as 700
+        assert_eq!(ff.weight, FontWeight::Single(700)); // "bold" stored as 700
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -873,9 +922,9 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
 
         assert_eq!(ff.family, "Inter");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
-        assert_eq!(ff.weight, Some(FontWeight::Range { min: 100, max: 900 }));
-        assert_eq!(ff.display, Some(FontDisplay::Swap));
+        assert_eq!(ff.style, FontStyle::Italic);
+        assert_eq!(ff.weight, FontWeight::Range { min: 100, max: 900 });
+        assert_eq!(ff.display, FontDisplay::Swap);
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -885,10 +934,7 @@ mod tests {
                 techs: vec![]
             }]
         );
-        let ranges = ff
-            .unicode_range
-            .as_ref()
-            .expect("unicode-range should be Some");
+        let ranges = &ff.unicode_range;
         assert_eq!(ranges.len(), 6);
         assert_eq!(ranges[0].start, 0x0460);
         assert_eq!(ranges[0].end, 0x052F);
@@ -912,9 +958,9 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
 
         assert_eq!(ff.family, "Inter");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
-        assert_eq!(ff.weight, Some(FontWeight::Range { min: 100, max: 900 }));
-        assert_eq!(ff.display, Some(FontDisplay::Swap));
+        assert_eq!(ff.style, FontStyle::Italic);
+        assert_eq!(ff.weight, FontWeight::Range { min: 100, max: 900 });
+        assert_eq!(ff.display, FontDisplay::Swap);
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -924,10 +970,7 @@ mod tests {
                 techs: vec![]
             }]
         );
-        let ranges = ff
-            .unicode_range
-            .as_ref()
-            .expect("unicode-range should be Some");
+        let ranges = &ff.unicode_range;
         assert_eq!(ranges.len(), 5);
         assert_eq!(ranges[0].start, 0x0301);
         assert_eq!(ranges[0].end, 0x0301);
@@ -953,9 +996,9 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
 
         assert_eq!(ff.family, "Inter");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
-        assert_eq!(ff.weight, Some(FontWeight::Range { min: 100, max: 900 }));
-        assert_eq!(ff.display, Some(FontDisplay::Swap));
+        assert_eq!(ff.style, FontStyle::Italic);
+        assert_eq!(ff.weight, FontWeight::Range { min: 100, max: 900 });
+        assert_eq!(ff.display, FontDisplay::Swap);
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -965,10 +1008,7 @@ mod tests {
                 techs: vec![]
             }]
         );
-        let ranges = ff
-            .unicode_range
-            .as_ref()
-            .expect("unicode-range should be Some");
+        let ranges = &ff.unicode_range;
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].start, 0x1F00);
         assert_eq!(ranges[0].end, 0x1FFF);
@@ -990,9 +1030,9 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
 
         assert_eq!(ff.family, "Inter");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
-        assert_eq!(ff.weight, Some(FontWeight::Range { min: 100, max: 900 }));
-        assert_eq!(ff.display, Some(FontDisplay::Swap));
+        assert_eq!(ff.style, FontStyle::Italic);
+        assert_eq!(ff.weight, FontWeight::Range { min: 100, max: 900 });
+        assert_eq!(ff.display, FontDisplay::Swap);
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -1002,10 +1042,7 @@ mod tests {
                 techs: vec![]
             }]
         );
-        let ranges = ff
-            .unicode_range
-            .as_ref()
-            .expect("unicode-range should be Some");
+        let ranges = &ff.unicode_range;
         assert_eq!(ranges.len(), 6);
         assert_eq!(ranges[0].start, 0x0370);
         assert_eq!(ranges[0].end, 0x0377);
@@ -1031,9 +1068,9 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
 
         assert_eq!(ff.family, "Inter");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
-        assert_eq!(ff.weight, Some(FontWeight::Range { min: 100, max: 900 }));
-        assert_eq!(ff.display, Some(FontDisplay::Swap));
+        assert_eq!(ff.style, FontStyle::Italic);
+        assert_eq!(ff.weight, FontWeight::Range { min: 100, max: 900 });
+        assert_eq!(ff.display, FontDisplay::Swap);
         assert_eq!(
             ff.sources,
             vec![FontSource::Url {
@@ -1043,10 +1080,7 @@ mod tests {
                 techs: vec![]
             }]
         );
-        let ranges = ff
-            .unicode_range
-            .as_ref()
-            .expect("unicode-range should be Some");
+        let ranges = &ff.unicode_range;
         assert_eq!(ranges.len(), 13);
         assert_eq!(ranges[0].start, 0x0102);
         assert_eq!(ranges[0].end, 0x0103);
@@ -1093,7 +1127,7 @@ mod tests {
         assert_eq!(ff.family, "ObliqueAngleRange");
         assert_eq!(
             ff.style,
-            Some(FontStyle::Oblique(ObliqueStyle::Range(
+            FontStyle::Oblique(ObliqueStyle::Range(
                 Angle {
                     value: 10.0,
                     unit: AngleUnit::Deg,
@@ -1102,7 +1136,7 @@ mod tests {
                     value: 20.0,
                     unit: AngleUnit::Deg,
                 }
-            )))
+            ))
         );
         assert_eq!(
             ff.sources,
@@ -1128,7 +1162,7 @@ mod tests {
         assert_eq!(ff.family, "UnicodeSingles");
         assert_eq!(
             ff.unicode_range,
-            Some(vec![
+            vec![
                 UnicodeRange {
                     start: 0x23A7,
                     end: 0x23A7
@@ -1141,7 +1175,7 @@ mod tests {
                     start: 0x23B7,
                     end: 0x23B7
                 },
-            ])
+            ]
         );
     }
 
@@ -1160,10 +1194,10 @@ mod tests {
         let at_rule = parse_font_face_at_rule(input);
         let ff = FontFaceRule::from_rule(&at_rule);
         assert_eq!(ff.family, "KWTest");
-        assert_eq!(ff.style, Some(FontStyle::Italic));
-        assert_eq!(ff.weight, Some(FontWeight::Single(400))); // "normal" stored as 400
-        assert_eq!(ff.stretch, Some(FontStretch::Normal));
-        assert_eq!(ff.display, Some(FontDisplay::Auto));
+        assert_eq!(ff.style, FontStyle::Italic);
+        assert_eq!(ff.weight, FontWeight::Single(400)); // "normal" stored as 400
+        assert_eq!(ff.stretch, FontStretch::Normal);
+        assert_eq!(ff.display, FontDisplay::Auto);
         assert_eq!(
             ff.sources,
             vec![FontSource::Local {
@@ -1182,10 +1216,10 @@ mod tests {
         let ff = FontFaceRule::from_rule(&at_rule);
         assert_eq!(ff.family, "");
         assert_eq!(ff.sources.len(), 0);
-        assert_eq!(ff.style, None);
-        assert_eq!(ff.weight, None);
-        assert_eq!(ff.stretch, None);
-        assert_eq!(ff.display, None);
-        assert_eq!(ff.unicode_range, None);
+        assert_eq!(ff.style, FontStyle::default());
+        assert_eq!(ff.weight, FontWeight::default());
+        assert_eq!(ff.stretch, FontStretch::default());
+        assert_eq!(ff.display, FontDisplay::default());
+        assert_eq!(ff.unicode_range, vec![]);
     }
 }

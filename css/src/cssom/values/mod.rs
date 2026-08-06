@@ -26,5 +26,19 @@ pub mod overflow;
 pub use overflow::*;
 
 pub mod min_max;
-
 pub use min_max::*;
+
+pub mod font_family;
+pub use font_family::*;
+
+pub mod font_stretch;
+pub use font_stretch::*;
+
+pub mod font_weight;
+pub use font_weight::*;
+
+pub mod font_style;
+pub use font_style::*;
+
+pub mod angle;
+pub use angle::*;
