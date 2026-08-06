@@ -175,7 +175,7 @@ impl CssIndexes {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_eq;
+    use std::{assert_eq, println, vec};
 
     use super::*;
     use crate::tokenizer::css_token::CssToken;
@@ -294,6 +294,12 @@ mod tests {
         assert!(indexes.selectors.by_class.get("c1").is_none());
     }
 
+    // CSS equivalent:
+    //
+    // @font-face {
+    //   font-family: "Roboto";
+    // }
+
     #[test]
     fn test_index_at_font_face() {
         let cssom = crate::cssom::cssom::CssOm {
@@ -314,8 +320,10 @@ mod tests {
             })],
             indexes: Default::default(),
         };
+
         let indexes = CssIndexes::build(&cssom);
-        let fonts = indexes.fonts.get("\"Roboto\"");
+
+        let fonts = indexes.fonts.get("Roboto");
         assert!(fonts.is_some());
         assert_eq!(fonts.unwrap().len(), 1);
     }

@@ -7,6 +7,7 @@ pub enum CssTokenizerError {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CssToken {
+    UnicodeRange(String),
     Ident(String), // e.g. Ident("color")
     Number(f32),   // e.g. Number(12.5)
     Dimension {
@@ -58,6 +59,7 @@ impl CssToken {
             CssToken::Dimension { value, unit } => format!("{}{}", value, unit),
             CssToken::Percentage(p) => format!("{}%", p),
             CssToken::String(s) => s.clone(),
+            CssToken::UnicodeRange(s) => s.clone(),
             CssToken::Hash(s) => s.clone(),
             CssToken::Colon => ":".to_string(),
             CssToken::Semicolon => ";".to_string(),

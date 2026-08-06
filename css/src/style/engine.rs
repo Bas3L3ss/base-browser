@@ -6,8 +6,8 @@ use url::Url;
 use utils::profile_scope;
 
 use crate::{
-    Cascade, CascadeSource, ComputedStyle, CssOm, CssRule, Inheritance, Matcher, Origin, Parser,
-    Tokenizer,
+    Cascade, CascadeSource, ComputedStyle, CssOm, CssRule, ImportRule, Inheritance, Matcher,
+    Origin, Parser, Tokenizer,
 };
 
 pub struct StyleContext<'a> {
@@ -49,7 +49,7 @@ impl<'a> StyleEngine<'a> {
         for rule in rules {
             match rule {
                 CssRule::At(at_rule) if at_rule.name == "import" => {
-                    let import = at_rule.parse_import();
+                    let import = ImportRule::from_rule(&at_rule);
                     if let Some(href) = import.url {
                         let imported_source =
                             loader.load_stylesheet_url(&self.context.url, &href)?;

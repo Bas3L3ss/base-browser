@@ -1,4 +1,4 @@
-use std::{matches, todo};
+use std::{format, matches, todo};
 
 use crate::{
     Color, Length,
@@ -36,7 +36,7 @@ impl ToString for ComponentValue {
     fn to_string(&self) -> String {
         match self {
             ComponentValue::Ident(ident) => ident.clone(),
-            ComponentValue::String(s) => format!("\"{}\"", s),
+            ComponentValue::String(s) => s.clone(),
             ComponentValue::Hash(hash) => format!("#{}", hash),
             ComponentValue::Number(n) => format!("{}", n),
             ComponentValue::Dimension { value, unit } => format!("{}{}", value, unit.to_string()),

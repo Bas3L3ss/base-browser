@@ -1,3 +1,5 @@
+use std::println;
+
 use utils::profile_scope;
 
 use crate::tokenizer::css_token::{CssToken, CssTokenizerError};
@@ -234,9 +236,131 @@ impl<'a> Tokenizer<'a> {
 
                 '0'..='9' => self.consume_numeric_token(),
 
+                // Check for unicode-range: U+XXXX, U+XXXX-YYYY, U+XX??
+                'U' | 'u' => {
+                    let saved = self.position;
+                    if self.peek_next() == Some('+') {
+                        self.advance(); // consume 'U' or 'u'
+                        self.advance(); // consume '+'
+                        let mut range = String::from("U+");
+
+                        // State for enforcing wildcard placement ('?') and ranges
+                        let mut valid = true;
+
+                        // Part 1: before optional '-'
+                        let mut saw_hex_first = false;
+                        let mut saw_q_first = false;
+
+                        // Parse hex digits and wildcards until '-' or something not allowed
+                        while let Some(ch) = self.peek() {
+                            if ch.is_ascii_hexdigit() {
+                                if saw_q_first {
+                                    // No hex after seeing any '?' in first part
+                                    valid = false;
+                                    break;
+                                }
+                                saw_hex_first = true;
+                                range.push(ch);
+                                self.advance();
+                            } else if ch == '?' {
+                                if !saw_hex_first {
+                                    // Can't have '?' before any hex digits
+                                    valid = false;
+                                    break;
+                                }
+                                saw_q_first = true;
+                                range.push('?');
+                                self.advance();
+
+                                // After seeing the first '?', every char must be '?' or a token boundary (not a Unicode-range error), or a dash for range (spec disallows dash after '?')
+                                while let Some(next_ch) = self.peek() {
+                                    if next_ch == '?' {
+                                        range.push('?');
+                                        self.advance();
+                                    } else if next_ch == '-' {
+                                        // Spec prohibits dash after '?', but let validation below handle rejecting U+??- (for now: treat as token boundary)
+                                        break;
+                                    } else if matches!(
+                                        next_ch,
+                                        ',' | ';' | ')' | ' ' | '\n' | '\t' | '\r' | '\x0C'
+                                    ) {
+                                        // Valid unicode-range with wildcards, finished by CSS token boundary
+                                        break;
+                                    } else {
+                                        // Non-token-boundary, non-? char (e.g., letter), treat as boundary, not an error here; parsing ends
+                                        break;
+                                    }
+                                }
+                                // After wildcard sequence, normal unicode-range parsing must stop. (Even if next is letter, that's another token.)
+                                break;
+                            } else if ch == '-' {
+                                if !saw_hex_first || saw_q_first {
+                                    // "-" only valid if there was hex, and no '?'s in first part
+                                    valid = false;
+                                    break;
+                                }
+                                range.push('-');
+                                self.advance();
+
+                                // Part 2: (after '-'), must be hex digits only (at least one)
+                                let mut saw_hex_second = false;
+                                while let Some(second_ch) = self.peek() {
+                                    if second_ch.is_ascii_hexdigit() {
+                                        range.push(second_ch);
+                                        saw_hex_second = true;
+                                        self.advance();
+                                    } else {
+                                        // Anything else stops the range
+                                        break;
+                                    }
+                                }
+                                if !saw_hex_second {
+                                    valid = false;
+                                }
+                                break; // dash indicates end of range parsing (and all range is consumed)
+                            } else if matches!(
+                                ch,
+                                ',' | ';' | ')' | ' ' | '\n' | '\t' | '\r' | '\x0C'
+                            ) {
+                                // Stop parsing at any CSS token boundary (comma, semicolon, etc). Accept as end of unicode-range.
+                                break;
+                            } else {
+                                // Anything else (e.g., "U+4aBz") ends the unicode run
+                                break;
+                            }
+                        }
+
+                        // Valid Unicode ranges:
+                        //  * U+XXXX
+                        //  * U+XX??  (wildcards only in first half)
+                        //  * U+XXXX-YYYY  (no '?' allowed)
+                        if valid
+                            && !range[2..].is_empty()
+                            && (
+                                // U+XXXX
+                                (!range.contains('-') && !range.contains('?') && saw_hex_first)
+                                // U+XX??
+                                || (!range.contains('-') && saw_q_first && saw_hex_first)
+                                // U+XXXX-YYYY
+                                || (range.contains('-') && !saw_q_first)
+                            )
+                        {
+                            CssToken::UnicodeRange(range)
+                        } else {
+                            self.position = saved;
+                            // Try as normal ident (fallthrough)
+                            let ident = self.consume_ident();
+                            CssToken::Ident(ident)
+                        }
+                    } else {
+                        // Not unicode-range, treat as ident like "url"
+                        let ident = self.consume_ident();
+                        CssToken::Ident(ident)
+                    }
+                }
+
                 _ if Self::is_ident_start(ch) => {
                     let ident = self.consume_ident();
-
                     CssToken::Ident(ident)
                 }
 

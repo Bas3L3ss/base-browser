@@ -1,4 +1,4 @@
-use std::matches;
+use std::{matches, println};
 
 use anyhow::{Ok, Result};
 use utils::profile_scope;
@@ -66,6 +66,7 @@ impl<'a> Parser<'a> {
         let block = if self.expect(CssToken::LeftBrace).is_some() {
             let block = self.parse_block(&name);
             self.expect(CssToken::RightBrace)?;
+
             block
         } else {
             self.expect(CssToken::Semicolon)?;
@@ -496,7 +497,25 @@ impl<'a> Parser<'a> {
                 self.advance(1);
                 Some(ComponentValue::Delim('~'))
             }
-            // If not known, try to put them in Delim
+            CssToken::Dot => {
+                self.advance(1);
+                Some(ComponentValue::Delim('.'))
+            }
+            CssToken::Comma => {
+                self.advance(1);
+                Some(ComponentValue::Delim(','))
+            }
+            CssToken::Colon => {
+                self.advance(1);
+                Some(ComponentValue::Delim(':'))
+            }
+
+            CssToken::UnicodeRange(s) => {
+                let value = ComponentValue::String(s.clone());
+                self.advance(1);
+                Some(value)
+            }
+
             _ => None,
         }
     }
@@ -528,7 +547,11 @@ impl<'a> Parser<'a> {
                 | CssToken::Percentage(_)
                 | CssToken::Delim(_)
                 | CssToken::Plus
+                | CssToken::Dot
+                | CssToken::Colon
+                | CssToken::UnicodeRange(_)
                 | CssToken::GreaterThan
+                | CssToken::Comma
                 | CssToken::Tilde => {
                     if let Some(component) = self.parse_component_value() {
                         components.push(component);
