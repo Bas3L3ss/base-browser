@@ -1,9 +1,9 @@
 use utils::profile_scope;
 
 use crate::{
+    FontFaceRule,
     cssom::{
         cssom::CssOm,
-        property::Property,
         rule::{AtRule, AtRuleBlock, CssRule, StyleRule},
         selector::SimpleSelector,
     },
@@ -44,7 +44,7 @@ pub struct SelectorIndex {
 pub struct CssIndexes {
     pub selectors: SelectorIndex,
     pub keyframes: HashMap<String, u32>,
-    pub fonts: HashMap<String, Vec<u32>>,
+    pub fonts: HashMap<String, Vec<FontFaceRule>>,
     pub media: Vec<MediaRuleIndex>,
 }
 
@@ -76,39 +76,45 @@ impl CssIndexes {
     /// For media, we record their parent index and still process contained style rules.
     /// For font-face and keyframes, we index their parent position, but do not index style selectors.
     fn handle_at_rule(&mut self, at_rule: &AtRule, rule_index: u32) {
-        if at_rule.name.eq_ignore_ascii_case("font-face") {
-            // For @font-face, parse declarations for font-family property
-            if let Some(AtRuleBlock::DeclarationList(decls)) = &at_rule.block {
-                for decl in decls {
-                    if decl.property == Property::FontFamily && decl.value.components.len() == 1 {
-                        let font_family = decl.value.components[0].to_string();
-                        self.fonts.entry(font_family).or_default().push(rule_index);
-                        break;
+        match at_rule.name.to_ascii_lowercase().as_str() {
+            "font-face" => {
+                // For @font-face, parse the full FontFaceRule (using from_rule). Index by family.
+                let font_face = FontFaceRule::from_rule(at_rule);
+                if !font_face.family.is_empty() {
+                    self.fonts
+                        .entry(font_face.family.clone())
+                        .or_default()
+                        .push(font_face);
+                }
+            }
+            "keyframes" => {
+                // TODO: IMPLEMENT FROM RULE AND HANDLE THIS LIKE FONT-FACE
+
+                // For @keyframes, get the name from prelude's first element if it is an Ident
+                if at_rule.prelude.len() == 1 {
+                    if let Some(CssToken::Ident(ident)) = at_rule.prelude.first() {
+                        self.keyframes.insert(ident.clone(), rule_index);
                     }
                 }
             }
-        } else if at_rule.name.eq_ignore_ascii_case("keyframes") {
-            // For @keyframes, get the name from prelude's first element if it is an Ident
-            if at_rule.prelude.len() == 1 {
-                if let Some(CssToken::Ident(ident)) = at_rule.prelude.first() {
-                    self.keyframes.insert(ident.clone(), rule_index);
+            "media" => {
+                // TODO: IMPLEMENT FROM RULE AND HANDLE THIS LIKE FONT-FACE
+
+                // Attempt to find the contained CssRule list (stylesheet block) of @media
+                if let Some(AtRuleBlock::RuleList(rules)) = &at_rule.block {
+                    // Build CssIndexes based on the CssRule list within this @media, without allocating a CssOm
+                    let mut child_index = CssIndexes::default();
+                    child_index.build_rules(rules);
+
+                    self.media.push(MediaRuleIndex {
+                        rule_index,
+                        indexes: child_index,
+                    });
                 }
             }
-        } else if at_rule.name.eq_ignore_ascii_case("media") {
-            // Attempt to find the contained CssRule list (stylesheet block) of @media
-            if let Some(AtRuleBlock::RuleList(rules)) = &at_rule.block {
-                // Build CssIndexes based on the CssRule list within this @media, without allocating a CssOm
-                let mut child_index = CssIndexes::default();
-                child_index.build_rules(rules);
-
-                self.media.push(MediaRuleIndex {
-                    rule_index,
-                    indexes: child_index,
-                });
-            }
+            _ => {}
         }
     }
-
     /// "best keys" in priority order: Id > Classes > Attributes > Type > Universal.
     fn handle_style_rule(&mut self, style_rule: &StyleRule, rule_idx: u32) {
         for (selector_idx, selector) in style_rule.selectors.iter().enumerate() {
@@ -175,7 +181,7 @@ impl CssIndexes {
 
 #[cfg(test)]
 mod tests {
-    use std::{assert_eq, println, vec};
+    use std::{assert_eq, vec};
 
     use super::*;
     use crate::tokenizer::css_token::CssToken;
