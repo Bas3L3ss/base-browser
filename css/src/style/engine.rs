@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use html::{Dom, NodeType, StyleSheetRef};
 use network::ResourceLoader;
-use std::vec;
+use std::{println, vec};
 use url::Url;
 use utils::profile_scope;
 

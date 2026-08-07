@@ -54,7 +54,8 @@ impl LayoutTree {
                     } // TODO!
                     Display::Unknown(ref v) => {
                         // Developer bug marker:
-                        todo!("unhandled display variant: {v:?}")
+                        // todo!("unhandled display variant: {v:?}")
+                        return Some(LayoutNode::new(DomNode(node_id), BoxType::Unknown, vec![]));
                     }
                     _ => {
                         // Continue

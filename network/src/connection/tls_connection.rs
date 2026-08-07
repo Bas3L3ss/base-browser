@@ -4,6 +4,7 @@ use rustls::{ClientConfig, ClientConnection};
 use std::io::Write;
 use std::io::{ErrorKind, Read};
 use std::net::TcpStream;
+use std::println;
 
 use crate::connection::connection::Connection;
 
@@ -51,25 +52,40 @@ impl Connection for TlsConnection {
     }
 
     fn read(&mut self) -> anyhow::Result<Vec<u8>> {
-        // Pre-allocate buffer with 4096 bytes, which is a common TLS record size,
-        // to efficiently handle typical TLS record reads and reduce early reallocations.
+        // Pre-allocate buffer with 4096 bytes to handle typical TLS record sizes efficiently.
         let mut buf = Vec::with_capacity(4096);
         loop {
-            // complete_io will handle the actual read from the TCP stream and decrypt
-            let io_result = self.tls.complete_io(&mut self.tcp);
-
-            match io_result {
-                Ok((_rd, _wr)) => {
+            match self.tls.complete_io(&mut self.tcp) {
+                Ok((rd, _)) => {
                     let mut tmp = [0u8; 4096];
-                    match self.tls.reader().read(&mut tmp) {
-                        Ok(0) => break, // No more data
-                        Ok(n) => buf.extend_from_slice(&tmp[..n]),
-                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
-                        Err(e) => return Err(e.into()),
+                    loop {
+                        match self.tls.reader().read(&mut tmp) {
+                            Ok(0) => break,
+                            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => break,
+                            Err(e) if e.kind() == ErrorKind::UnexpectedEof && !buf.is_empty() => {
+                                break;
+                            }
+                            Err(e) => {
+                                println!("TLS reader error: {:?}", e);
+
+                                return Err(e.into());
+                            }
+                        }
+                    }
+                    // If rd == 0, the remote closed the TLS connection.
+                    if rd == 0 {
+                        break;
                     }
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
-                Err(e) => return Err(e.into()),
+                Err(ref e) if e.kind() == ErrorKind::TimedOut => {
+                    // No more network data for now.
+                    break;
+                }
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => {
+                    return Err(e.into());
+                }
             }
         }
         Ok(buf)

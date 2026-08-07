@@ -8,3 +8,5 @@ html={ path = "../html"}
 css={path = "../css"}
 anyhow = "1.0.104"
 font= {path = "../font"}
+network = {path = "../network"}
+url = {path = "../url"}

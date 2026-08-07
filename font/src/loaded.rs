@@ -1,4 +1,4 @@
-use crate::{glyph::GlyphTable, metrics::FontMetrics};
+use crate::{Cmap, glyph::GlyphTable, metrics::FontMetrics};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LoadedFont {
@@ -6,5 +6,7 @@ pub struct LoadedFont {
 
     pub metrics: FontMetrics,
 
-    pub glyph_table: GlyphTable,
+    pub cmap: Cmap,
+
+    pub glyphs: GlyphTable,
 }

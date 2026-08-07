@@ -3,6 +3,8 @@ use std::{todo, unreachable};
 use css::{BoxSizing, ComputedStyle, CssOm, Length, LengthContext, MaxLength, MinLength};
 use font::{FontManager, FontRequest};
 use html::{Dom, NodeType};
+use network::ResourceLoader;
+use url::Url;
 
 use crate::{
     BoxType, Dimensions, FontComponents, HorizontalEdges, HorizontalLayout, HorizontalSpecified,
@@ -38,6 +40,8 @@ pub struct LayoutEngine<'a> {
     computed_style: &'a [Option<ComputedStyle>],
     font_manager: &'a mut FontManager,
     cssom: &'a CssOm,
+    loader: &'a ResourceLoader,
+    base_url: &'a Url,
 }
 
 impl<'a> LayoutEngine<'a> {
@@ -48,6 +52,8 @@ impl<'a> LayoutEngine<'a> {
         dom: &Dom,
         cssom: &CssOm,
         font_manager: &mut FontManager,
+        loader: &ResourceLoader,
+        base_url: &Url,
     ) {
         let root = match tree.root.as_mut() {
             Some(root) => root,
@@ -96,6 +102,8 @@ impl<'a> LayoutEngine<'a> {
             font_manager,
             computed_style,
             cssom,
+            loader,
+            base_url,
         };
 
         engine.layout_node(root, &viewport, viewport.content.y);
@@ -148,9 +156,12 @@ impl<'a> LayoutEngine<'a> {
             font_components.stretch,
         );
 
-        let loaded_font = self
-            .font_manager
-            .resolve_font(&self.cssom.indexes.fonts, &request);
+        let loaded_font = self.font_manager.resolve_font(
+            &self.cssom.indexes.fonts,
+            &request,
+            self.base_url,
+            self.loader,
+        );
     }
 
     fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {

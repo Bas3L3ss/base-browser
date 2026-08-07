@@ -4,8 +4,8 @@ use url::Url;
 use crate::{browser::BrowserShared, document::document::Document};
 use layout::{Dimensions, LayoutEngine, Rect};
 
-pub struct Tab {
-    pub document: Option<Document>,
+pub struct Tab<'a> {
+    pub document: Option<Document<'a>>,
     // session_history: SessionHistory,
 
     // loading_state: LoadingState,
@@ -13,13 +13,13 @@ pub struct Tab {
     // viewport: Viewport,
 }
 
-impl Tab {
+impl<'a> Tab<'a> {
     pub fn new() -> Self {
         Self { document: None }
     }
 
-    pub fn navigate(&mut self, url: Url, shared: &mut BrowserShared) -> Result<()> {
-        let mut document = Document::new(&shared.ua_stylesheet, url, &shared.resource_loader)?;
+    pub fn navigate(&mut self, url: &'a Url, shared: &mut BrowserShared) -> Result<()> {
+        let mut document = Document::new(&shared.ua_stylesheet, &url, &shared.resource_loader)?;
 
         LayoutEngine::layout(
             &mut document.layout_tree,
@@ -36,6 +36,8 @@ impl Tab {
             &document.dom,
             &document.cssom,
             &mut shared.font_manager,
+            &shared.resource_loader,
+            &url,
         );
 
         self.document = Some(document);
