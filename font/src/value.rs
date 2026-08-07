@@ -1,5 +1,3 @@
-use crate::{FontSource, LoadedFont};
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FontWeight(pub u16);
 
@@ -22,18 +20,4 @@ impl FontStyle {
             _ => FontStyle::Normal, // fallback to normal if unknown
         }
     }
-}
-
-pub struct FontFace {
-    pub family: String,
-
-    pub style: FontStyle,
-
-    pub weight: FontWeight,
-
-    pub stretch: FontStretch,
-
-    pub source: FontSource,
-
-    pub loaded: Option<LoadedFont>,
 }

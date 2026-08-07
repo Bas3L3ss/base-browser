@@ -1,23 +1,29 @@
+use crate::LoadedFont;
 use std::{collections::HashMap, sync::Arc};
+use url::Url;
 
-use crate::{FontSourceRef, LoadedFont};
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FontKey {
+    Web { url: Url },
+    Local { id: fontdb::ID },
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FontCache {
-    loaded: HashMap<FontSourceRef, Arc<LoadedFont>>,
+    loaded: HashMap<FontKey, Arc<LoadedFont>>,
 }
 
 impl FontCache {
-    pub fn get(&self, source: &FontSourceRef) -> Option<Arc<LoadedFont>> {
+    pub fn get(&self, source: &FontKey) -> Option<Arc<LoadedFont>> {
         self.loaded.get(source).cloned()
     }
 
-    pub fn insert(&mut self, source: FontSourceRef, font: Arc<LoadedFont>) -> Arc<LoadedFont> {
+    pub fn insert(&mut self, source: FontKey, font: Arc<LoadedFont>) -> Arc<LoadedFont> {
         self.loaded.insert(source.clone(), font.clone());
         font
     }
 
-    pub fn contains(&self, source: &FontSourceRef) -> bool {
+    pub fn contains(&self, source: &FontKey) -> bool {
         self.loaded.contains_key(source)
     }
 

@@ -5,8 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-woff2 = "0.3.0"
 woff = "0.6.3"
+ttf-parser = "0.25.1"
+fontdb = "0.24.0"
 url ={path = "../url"}
 css={ path = "../css"}
 network= {path = "../network"}

@@ -1,12 +1,19 @@
-use crate::{Cmap, glyph::GlyphTable, metrics::FontMetrics};
+use std::sync::Arc;
+
+use crate::FontError;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LoadedFont {
-    pub data: Vec<u8>,
+    data: Arc<[u8]>,
+}
 
-    pub metrics: FontMetrics,
+impl LoadedFont {
+    pub fn face(&self) -> Result<ttf_parser::Face<'_>, FontError> {
+        ttf_parser::Face::parse(&self.data, 0).map_err(|e| FontError::ParseError(e.to_string()))
+    }
 
-    pub cmap: Cmap,
-
-    pub glyphs: GlyphTable,
+    pub fn from_bytes(data: Vec<u8>) -> Self {
+        let data: Arc<[u8]> = data.into();
+        Self { data }
+    }
 }
