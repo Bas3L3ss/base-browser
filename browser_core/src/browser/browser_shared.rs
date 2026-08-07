@@ -29,7 +29,7 @@ impl BrowserShared {
 
         Ok(Self {
             ua_stylesheet: Self::load_ua_stylesheet()?,
-            font_manager: FontManager::default(),
+            font_manager: FontManager::new(),
             resource_loader: loader,
         })
     }

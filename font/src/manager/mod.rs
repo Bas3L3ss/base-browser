@@ -16,14 +16,23 @@ use css::FontFaceRule;
 use network::ResourceLoader;
 use url::Url;
 
-#[derive(Debug, Clone, Default)]
-
+#[derive(Debug, Clone)]
 pub struct FontManager {
     cache: FontCache,
     font_db: fontdb::Database,
 }
 
 impl FontManager {
+    pub fn new() -> Self {
+        let mut font_db = fontdb::Database::new();
+        font_db.load_system_fonts();
+
+        Self {
+            font_db,
+            cache: FontCache::new(),
+        }
+    }
+
     pub fn resolve_font(
         &mut self,
         font_faces: &HashMap<String, Vec<FontFaceRule>>,

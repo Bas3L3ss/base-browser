@@ -14,6 +14,11 @@ pub struct FontCache {
 }
 
 impl FontCache {
+    pub fn new() -> Self {
+        Self {
+            loaded: HashMap::new(),
+        }
+    }
     pub fn get(&self, source: &FontKey) -> Option<Arc<LoadedFont>> {
         self.loaded.get(source).cloned()
     }
