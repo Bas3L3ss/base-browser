@@ -13,6 +13,7 @@ pub struct TextEngine;
 
 impl TextEngine {
     pub(crate) fn layout_text_fragments(
+        fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         text: &str,
         face: &ttf_parser::Face,
@@ -27,8 +28,6 @@ impl TextEngine {
         descent: f32,
         line_height: f32,
     ) {
-        // This now splits at all whitespace runs; emits actual whitespace substrings,
-        // no longer emitting "".
         let mut word_start = 0;
         let text_len = text.len();
         let mut char_indices = text.char_indices();
@@ -38,6 +37,7 @@ impl TextEngine {
                 if word_start < idx {
                     let word = &text[word_start..idx];
                     Self::layout_text_fragment(
+                        fragments,
                         context,
                         word,
                         face,
@@ -55,6 +55,7 @@ impl TextEngine {
                 }
                 // Instead of emitting "" for whitespace, emit the (potentially multi-byte) whitespace char
                 Self::layout_text_fragment(
+                    fragments,
                     context,
                     &text[idx..idx + ch.len_utf8()],
                     face,
@@ -77,6 +78,7 @@ impl TextEngine {
         if word_start < text_len {
             let word = &text[word_start..];
             Self::layout_text_fragment(
+                fragments,
                 context,
                 word,
                 face,
@@ -95,6 +97,7 @@ impl TextEngine {
     }
 
     fn layout_text_fragment(
+        fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         word: &str,
         face: &ttf_parser::Face,
@@ -137,18 +140,18 @@ impl TextEngine {
             return;
         }
 
+        let baseline_offset = ascent + (line_height - ascent - descent) / 2.0; // TODO: handle inline algorithm more properly 
         let fragment = InlineFragment::text(
             glyph_run,
             *current_x,
             *current_y,
             advance_width,
-            ascent,
-            descent,
+            baseline_offset,
         );
-        cur_line.ascent = cur_line.ascent.max(fragment.ascent);
-        cur_line.descent = cur_line.descent.max(fragment.descent);
+        cur_line.ascent = cur_line.ascent.max(ascent);
+        cur_line.descent = cur_line.descent.max(descent);
         cur_line.width += fragment.width;
-        cur_line.fragments.push(InlineFragment::Text(fragment));
+        fragments.push(InlineFragment::Text(fragment));
         *current_x += advance_width;
         context.line_remaining_width -= advance_width;
     }

@@ -1,6 +1,6 @@
 use css::{BoxSizing, Length, LengthContext};
 
-use crate::{Dimensions, LayoutNode, StyleComponents};
+use crate::{Dimensions, StyleComponents};
 
 pub(crate) struct HorizontalEdges {
     pub(crate) padding_left: f32,
@@ -199,26 +199,26 @@ impl HorizontalLayout {
     }
 
     fn populate_edges(
-        node: &mut LayoutNode,
+        node: &mut Dimensions,
         edges: &HorizontalEdges,
         margin_left: f32,
         margin_right: f32,
     ) {
-        node.dimensions.padding_edges.left = edges.padding_left;
-        node.dimensions.padding_edges.right = edges.padding_right;
+        node.padding_edges.left = edges.padding_left;
+        node.padding_edges.right = edges.padding_right;
 
-        node.dimensions.border_edges.left = edges.border_left;
-        node.dimensions.border_edges.right = edges.border_right;
+        node.border_edges.left = edges.border_left;
+        node.border_edges.right = edges.border_right;
 
-        node.dimensions.margin_edges.left = margin_left;
-        node.dimensions.margin_edges.right = margin_right;
+        node.margin_edges.left = margin_left;
+        node.margin_edges.right = margin_right;
     }
 
-    pub(crate) fn apply(&self, node: &mut LayoutNode, edges: &HorizontalEdges) {
-        node.dimensions.content.width = self.content_width();
-        node.dimensions.padding.width = self.padding_width(edges);
-        node.dimensions.border.width = self.border_width(edges);
-        node.dimensions.margin.width = self.margin_width(edges);
+    pub(crate) fn apply(&self, node: &mut Dimensions, edges: &HorizontalEdges) {
+        node.content.width = self.content_width();
+        node.padding.width = self.padding_width(edges);
+        node.border.width = self.border_width(edges);
+        node.margin.width = self.margin_width(edges);
 
         Self::populate_edges(node, edges, self.margin_left, self.margin_right);
     }

@@ -1,19 +1,17 @@
 use font::GlyphRun;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TextFragment {
     pub glyph_run: GlyphRun,
 
     pub x: f32,
     pub y: f32,
 
+    pub baseline_offset: f32,
     pub width: f32,
-
-    pub ascent: f32,
-    pub descent: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum InlineFragment {
     Text(TextFragment),
     // Image(ImageFragment),
@@ -27,16 +25,14 @@ impl InlineFragment {
         x: f32,
         y: f32,
         width: f32,
-        ascent: f32,
-        descent: f32,
+        baseline_offset: f32,
     ) -> TextFragment {
         TextFragment {
             glyph_run,
             x,
             y,
             width,
-            ascent,
-            descent,
+            baseline_offset,
         }
     }
 }

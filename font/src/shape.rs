@@ -1,11 +1,11 @@
 use crate::FontMetrics;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GlyphRun {
     pub glyphs: Vec<GlyphPosition>,
     pub advance_width: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GlyphPosition {
     pub glyph_id: u16,
     pub x_offset: f32,

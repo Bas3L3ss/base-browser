@@ -1,3 +1,5 @@
+use std::todo;
+
 use css::{BoxSizing, Length, LengthContext, MaxLength, MinLength};
 
 use crate::{
@@ -10,28 +12,28 @@ pub mod horizontal;
 pub struct BlockEngine;
 
 impl BlockEngine {
-    pub(crate) fn calculate_y(node: &mut LayoutNode, cursor_y: f32) {
-        node.dimensions.margin.y = cursor_y;
+    pub(crate) fn calculate_y(node: &mut Dimensions, cursor_y: f32) {
+        node.margin.y = cursor_y;
 
-        node.dimensions.border.y = node.dimensions.margin.y + node.dimensions.margin_edges.top;
+        node.border.y = node.margin.y + node.margin_edges.top;
 
-        node.dimensions.padding.y = node.dimensions.border.y + node.dimensions.border_edges.top;
+        node.padding.y = node.border.y + node.border_edges.top;
 
-        node.dimensions.content.y = node.dimensions.padding.y + node.dimensions.padding_edges.top;
+        node.content.y = node.padding.y + node.padding_edges.top;
     }
 
     pub(crate) fn resolve_specified_height(
-        node: &mut LayoutNode,
+        node: &mut Dimensions,
         style: &StyleComponents,
         parent: &Dimensions,
         length_context: &LengthContext,
     ) {
         match &style.height {
             Length::Auto => {
-                node.dimensions.is_height_definite = false;
+                node.is_height_definite = false;
             }
             Length::Percent(_) if !parent.is_height_definite => {
-                node.dimensions.is_height_definite = false;
+                node.is_height_definite = false;
             }
             _ => {
                 let mut h = style
@@ -39,31 +41,31 @@ impl BlockEngine {
                     .to_f32(parent.content.height, None, length_context);
 
                 if style.box_sizing == BoxSizing::BorderBox {
-                    h -= node.dimensions.padding_edges.top + node.dimensions.padding_edges.bottom;
-                    h -= node.dimensions.border_edges.top + node.dimensions.border_edges.bottom;
+                    h -= node.padding_edges.top + node.padding_edges.bottom;
+                    h -= node.border_edges.top + node.border_edges.bottom;
                     h = h.max(0.0);
                 }
 
                 h = Self::clamp_height(h, style, parent, length_context);
 
-                node.dimensions.content.height = h;
-                node.dimensions.is_height_definite = true;
+                node.content.height = h;
+                node.is_height_definite = true;
             }
         }
     }
 
-    pub(crate) fn calculate_x(node: &mut LayoutNode, parent: &Dimensions) {
-        node.dimensions.margin.x = parent.content.x;
+    pub(crate) fn calculate_x(node: &mut Dimensions, parent: &Dimensions) {
+        node.margin.x = parent.content.x;
 
-        node.dimensions.border.x = node.dimensions.margin.x + node.dimensions.margin_edges.left;
+        node.border.x = node.margin.x + node.margin_edges.left;
 
-        node.dimensions.padding.x = node.dimensions.border.x + node.dimensions.border_edges.left;
+        node.padding.x = node.border.x + node.border_edges.left;
 
-        node.dimensions.content.x = node.dimensions.padding.x + node.dimensions.padding_edges.left;
+        node.content.x = node.padding.x + node.padding_edges.left;
     }
 
     pub(crate) fn calculate_width(
-        node: &mut LayoutNode,
+        node: &mut Dimensions,
         parent: &Dimensions,
         style: &StyleComponents,
         length_context: &LengthContext,
@@ -97,48 +99,45 @@ impl BlockEngine {
         layout.apply(node, &edges);
     }
 
-    pub(crate) fn finalize_box_height(node: &mut LayoutNode) {
-        node.dimensions.padding.height = node.dimensions.content.height
-            + node.dimensions.padding_edges.top
-            + node.dimensions.padding_edges.bottom;
+    pub(crate) fn finalize_box_height(node: &mut Dimensions) {
+        node.padding.height =
+            node.content.height + node.padding_edges.top + node.padding_edges.bottom;
 
-        node.dimensions.border.height = node.dimensions.padding.height
-            + node.dimensions.border_edges.top
-            + node.dimensions.border_edges.bottom;
+        node.border.height = node.padding.height + node.border_edges.top + node.border_edges.bottom;
 
-        node.dimensions.margin.height = node.dimensions.border.height
-            + node.dimensions.margin_edges.top
-            + node.dimensions.margin_edges.bottom;
+        node.margin.height = node.border.height + node.margin_edges.top + node.margin_edges.bottom;
     }
 
-    pub(crate) fn resolve_auto_height(node: &mut LayoutNode) {
-        node.dimensions.content.height = node
-            .children
-            .iter()
-            .map(|child| child.dimensions.margin.height)
-            .sum();
+    pub(crate) fn resolve_auto_height(children: &mut Vec<LayoutNode>, dimensions: &mut Dimensions) {
+        dimensions.content.height = children.iter().map(BlockEngine::margin_box_height).sum();
 
-        node.dimensions.is_height_definite = true;
+        dimensions.is_height_definite = true;
+    }
+
+    pub(crate) fn margin_box_height(node: &LayoutNode) -> f32 {
+        match node {
+            LayoutNode::Block { dimensions, .. }
+            | LayoutNode::InlineBlock { dimensions, .. }
+            | LayoutNode::AnonymousBlock { dimensions, .. } => dimensions.margin.height,
+            _ => todo!(),
+        }
     }
 
     pub(crate) fn finalize_height(
-        node: &mut LayoutNode,
+        children: &mut Vec<LayoutNode>,
+        dimensions: &mut Dimensions,
         style: &StyleComponents,
         parent: &Dimensions,
         length_context: &LengthContext,
     ) {
-        if !node.dimensions.is_height_definite {
-            Self::resolve_auto_height(node);
+        if !dimensions.is_height_definite {
+            Self::resolve_auto_height(children, dimensions);
 
-            node.dimensions.content.height = Self::clamp_height(
-                node.dimensions.content.height,
-                style,
-                parent,
-                length_context,
-            );
+            dimensions.content.height =
+                Self::clamp_height(dimensions.content.height, style, parent, length_context);
         }
 
-        Self::finalize_box_height(node);
+        Self::finalize_box_height(dimensions);
     }
 
     pub(crate) fn clamp_height(

@@ -8,6 +8,7 @@ pub enum Display {
     None,
     Flex,
     Grid,
+    Table,
     ListItem,
     Unknown(String),
 }
@@ -23,6 +24,7 @@ impl Display {
                 "none" => Display::None,
                 "flex" => Display::Flex,
                 "grid" => Display::Grid,
+                "table" => Display::Table,
                 "list-item" => Display::ListItem,
                 other => Display::Unknown(other.to_string()),
             }
