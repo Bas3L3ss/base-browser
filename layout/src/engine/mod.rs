@@ -145,7 +145,12 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        if let LayoutNode::Text { node_id, fragments } = node {
+        if let LayoutNode::Text {
+            node_id,
+            fragments,
+            height,
+        } = node
+        {
             let text = match &self.dom.nodes[*node_id].ntype {
                 NodeType::Text(text) => text,
                 _ => return,

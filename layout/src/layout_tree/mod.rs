@@ -1,8 +1,6 @@
 pub mod layout_node;
 pub use layout_node::*;
 
-use std::vec;
-
 use css::{ComputedStyle, display::Display};
 use html::{Dom, NodeType, html_tags::HtmlTag};
 
@@ -68,7 +66,7 @@ impl LayoutTree {
                 Some(layout_node)
             }
             // ALLOCATION: Always allocates an empty Vec for InlineFragment, even for whitespace or empty texts.
-            NodeType::Text(_) => Some(LayoutNode::text(node_id, vec![])),
+            NodeType::Text(_) => Some(LayoutNode::text(node_id)),
         }
     }
 

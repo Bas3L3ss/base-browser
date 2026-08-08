@@ -5,6 +5,7 @@ use css::{BoxSizing, Length, LengthContext, MaxLength, MinLength};
 use crate::{
     Dimensions, LayoutNode, StyleComponents,
     block::horizontal::{HorizontalEdges, HorizontalLayout, HorizontalSpecified},
+    text::inline_fragment::InlineFragment,
 };
 
 pub mod horizontal;
@@ -119,7 +120,9 @@ impl BlockEngine {
             LayoutNode::Block { dimensions, .. }
             | LayoutNode::InlineBlock { dimensions, .. }
             | LayoutNode::AnonymousBlock { dimensions, .. } => dimensions.margin.height,
-            _ => todo!(),
+            _ => {
+                todo!()
+            }
         }
     }
 

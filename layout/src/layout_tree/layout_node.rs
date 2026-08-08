@@ -1,4 +1,4 @@
-use std::matches;
+use std::{matches, vec};
 
 use crate::{Dimensions, text::inline_fragment::InlineFragment};
 use html::NodeID;
@@ -13,7 +13,7 @@ pub enum LayoutNode {
     Inline {
         node_id: NodeID,
         children: Vec<LayoutNode>,
-        // fragments: Vec<InlineBlock>,
+        boxes: Vec<Dimensions>,
     },
     InlineBlock {
         node_id: NodeID,
@@ -23,6 +23,7 @@ pub enum LayoutNode {
     Text {
         node_id: NodeID,
         fragments: Vec<InlineFragment>,
+        height: f32,
     },
     AnonymousBlock {
         dimensions: Dimensions,
@@ -40,7 +41,11 @@ impl LayoutNode {
     }
 
     pub fn inline(node_id: NodeID, children: Vec<LayoutNode>) -> Self {
-        LayoutNode::Inline { node_id, children }
+        LayoutNode::Inline {
+            node_id,
+            children,
+            boxes: vec![],
+        }
     }
 
     pub fn inline_block(
@@ -55,8 +60,12 @@ impl LayoutNode {
         }
     }
 
-    pub fn text(node_id: NodeID, fragments: Vec<InlineFragment>) -> Self {
-        LayoutNode::Text { node_id, fragments }
+    pub fn text(node_id: NodeID) -> Self {
+        LayoutNode::Text {
+            node_id,
+            fragments: vec![],
+            height: 0.0,
+        }
     }
 
     pub fn anonymous_block(dimensions: Dimensions, children: Vec<LayoutNode>) -> Self {
