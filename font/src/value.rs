@@ -1,10 +1,10 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub struct FontWeight(pub u16);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct FontStretch(pub f32);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum FontStyle {
     Normal,
     Italic,

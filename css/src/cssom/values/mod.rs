@@ -13,6 +13,12 @@ pub use clear::*;
 pub mod float;
 pub use float::*;
 
+pub mod whitespace;
+pub use whitespace::*;
+
+pub mod line_height;
+pub use line_height::*;
+
 pub mod aspect_ratio;
 pub use aspect_ratio::*;
 

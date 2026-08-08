@@ -1,5 +1,3 @@
-use std::println;
-
 use utils::profile_scope;
 
 use crate::tokenizer::css_token::{CssToken, CssTokenizerError};

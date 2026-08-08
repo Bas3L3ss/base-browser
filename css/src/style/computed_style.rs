@@ -2,8 +2,9 @@ use std::{collections::HashMap, vec};
 
 use crate::{
     AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, FontFamily, FontSize,
-    Length, MaxLength, MinLength, Overflow, Position, Property, Unit, Visibility, display::Display,
-    font_stretch::FontStretch, font_style::FontStyle, font_weight::FontWeight,
+    Length, LineHeight, MaxLength, MinLength, Overflow, Position, Property, Unit, Visibility,
+    WhiteSpaceBehavior, display::Display, font_stretch::FontStretch, font_style::FontStyle,
+    font_weight::FontWeight,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -266,6 +267,20 @@ impl ComputedStyle {
             .get(&Property::FontStyle)
             .map(FontStyle::from_css)
             .unwrap_or(FontStyle::Normal)
+    }
+
+    pub fn white_space(&self) -> WhiteSpaceBehavior {
+        self.properties
+            .get(&Property::WhiteSpace)
+            .map(WhiteSpaceBehavior::from_css)
+            .unwrap_or(WhiteSpaceBehavior::default())
+    }
+
+    pub fn line_height(&self, font_size: f32) -> LineHeight {
+        self.properties
+            .get(&Property::LineHeight)
+            .map(|value| LineHeight::from_css(value, font_size))
+            .unwrap_or(LineHeight::Normal)
     }
 
     fn get(&self, property: &Property) -> Option<&CssValue> {

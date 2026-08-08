@@ -1,4 +1,4 @@
-use std::{matches, println, unreachable, vec};
+use std::{matches, unreachable, vec};
 
 use crate::{Angle, AngleUnit, AtRule, AtRuleBlock, ComponentValue, Property};
 
@@ -347,7 +347,6 @@ impl FontFaceRule {
                                 let mut i = 0;
 
                                 while i <= comps.len() {
-                                    println!("{buffer:#?}");
                                     // Also handle the terminator (last segment)
                                     if i == comps.len()
                                         || matches!(comps.get(i), Some(ComponentValue::Delim(',')))
@@ -368,7 +367,6 @@ impl FontFaceRule {
                                     }
                                     // Otherwise buffer this component's string representation
                                     if let Some(comp) = comps.get(i) {
-                                        println!("{comp:#?}");
                                         buffer.push_str(&comp.to_string());
                                     }
                                     i += 1;

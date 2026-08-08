@@ -1,3 +1,155 @@
+pub mod inline_fragment;
+pub mod line;
+
+use font::{FontMetrics, GlyphRun};
+
+use crate::{
+    Dimensions, FontComponents,
+    engine::LayoutContext,
+    text::{inline_fragment::InlineFragment, line::Line},
+};
+
 pub struct TextEngine;
 
-impl TextEngine {}
+impl TextEngine {
+    pub(crate) fn layout_text_fragments(
+        context: &mut LayoutContext,
+        text: &str,
+        face: &ttf_parser::Face,
+        font_size: f32,
+        font_components: &FontComponents,
+        metrics: &FontMetrics,
+        parent: &Dimensions,
+        cur_line: &mut Line,
+        current_x: &mut f32,
+        current_y: &mut f32,
+        ascent: f32,
+        descent: f32,
+        line_height: f32,
+    ) {
+        // This now splits at all whitespace runs; emits actual whitespace substrings,
+        // no longer emitting "".
+        let mut word_start = 0;
+        let text_len = text.len();
+        let mut char_indices = text.char_indices();
+
+        while let Some((idx, ch)) = char_indices.next() {
+            if ch.is_whitespace() {
+                if word_start < idx {
+                    let word = &text[word_start..idx];
+                    Self::layout_text_fragment(
+                        context,
+                        word,
+                        face,
+                        font_size,
+                        font_components,
+                        metrics,
+                        parent,
+                        cur_line,
+                        current_x,
+                        current_y,
+                        ascent,
+                        descent,
+                        line_height,
+                    );
+                }
+                // Instead of emitting "" for whitespace, emit the (potentially multi-byte) whitespace char
+                Self::layout_text_fragment(
+                    context,
+                    &text[idx..idx + ch.len_utf8()],
+                    face,
+                    font_size,
+                    font_components,
+                    metrics,
+                    parent,
+                    cur_line,
+                    current_x,
+                    current_y,
+                    ascent,
+                    descent,
+                    line_height,
+                );
+                word_start = idx + ch.len_utf8();
+            }
+        }
+
+        // Handle any remaining non-whitespace at the end
+        if word_start < text_len {
+            let word = &text[word_start..];
+            Self::layout_text_fragment(
+                context,
+                word,
+                face,
+                font_size,
+                font_components,
+                metrics,
+                parent,
+                cur_line,
+                current_x,
+                current_y,
+                ascent,
+                descent,
+                line_height,
+            );
+        }
+    }
+
+    fn layout_text_fragment(
+        context: &mut LayoutContext,
+        word: &str,
+        face: &ttf_parser::Face,
+        font_size: f32,
+        font_components: &FontComponents,
+        metrics: &FontMetrics,
+        parent: &Dimensions,
+        cur_line: &mut Line,
+        current_x: &mut f32,
+        current_y: &mut f32,
+        ascent: f32,
+        descent: f32,
+        line_height: f32,
+    ) {
+        // Only classify as is_collapsible_space if non-empty string and all whitespace, and collapse_spaces is enabled
+        let is_collapsible_space = !word.is_empty()
+            && word.chars().all(char::is_whitespace)
+            && font_components.whitespace.collapse_spaces;
+
+        let glyph_run = GlyphRun::run(face, word, font_size, metrics);
+        let advance_width = glyph_run.advance_width;
+
+        let needs_newline = advance_width > context.line_remaining_width
+            && cur_line.width > 0.0
+            && font_components.whitespace.allow_wrap;
+
+        if needs_newline && is_collapsible_space {
+            return;
+        }
+
+        if needs_newline {
+            *current_y += line_height;
+            *current_x = parent.content.x;
+            context.line_remaining_width = parent.content.width;
+            *cur_line = Line::new(line_height, ascent, descent);
+        }
+
+        // Avoid emitting fragments for empty substrings
+        if word.is_empty() {
+            return;
+        }
+
+        let fragment = InlineFragment::text(
+            glyph_run,
+            *current_x,
+            *current_y,
+            advance_width,
+            ascent,
+            descent,
+        );
+        cur_line.ascent = cur_line.ascent.max(fragment.ascent);
+        cur_line.descent = cur_line.descent.max(fragment.descent);
+        cur_line.width += fragment.width;
+        cur_line.fragments.push(InlineFragment::Text(fragment));
+        *current_x += advance_width;
+        context.line_remaining_width -= advance_width;
+    }
+}

@@ -1,12 +1,12 @@
-use css::ComputedStyle;
+use css::{ComputedStyle, WhiteSpaceBehavior};
 use font::{FontStretch, FontStyle, FontWeight};
 
-#[derive(Debug, Clone, PartialEq)]
 pub struct FontComponents {
     pub families: Vec<String>,
     pub weight: FontWeight,
     pub stretch: FontStretch,
     pub style: FontStyle,
+    pub whitespace: WhiteSpaceBehavior,
 }
 
 impl FontComponents {
@@ -20,14 +20,17 @@ impl FontComponents {
         );
         let stretch = FontStretch(style.font_stretch().to_f32());
         let f_style = style.font_style();
-        let style =
+        let font_style =
             FontStyle::from_name_angle(f_style.as_str(), f_style.to_angle().unwrap_or(14.0));
+
+        let whitespace = style.white_space();
 
         Self {
             families,
             weight,
             stretch,
-            style,
+            style: font_style,
+            whitespace,
         }
     }
 }

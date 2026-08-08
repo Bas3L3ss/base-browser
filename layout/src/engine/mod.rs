@@ -6,16 +6,20 @@ pub mod block;
 pub mod inline;
 pub mod text;
 
-use css::{ComputedStyle, CssOm, LengthContext};
-use font::{FontManager, FontRequest};
+use css::{ComputedStyle, CssOm, LengthContext, LineHeight};
+use font::{FontManager, FontMetrics, FontRequest};
 use html::{Dom, NodeType};
 use network::ResourceLoader;
-use std::{todo, unreachable};
+use std::{eprintln, todo, unreachable};
 use url::Url;
 
-use crate::{BoxType, Dimensions, LayoutNode, LayoutSource, LayoutTree, block::BlockEngine};
+use crate::{
+    BoxType, Dimensions, LayoutNode, LayoutSource, LayoutTree,
+    block::BlockEngine,
+    text::{TextEngine, line::Line},
+};
 
-struct LayoutContext {
+pub(crate) struct LayoutContext {
     viewport_width: f32,
     viewport_height: f32,
 
@@ -23,19 +27,13 @@ struct LayoutContext {
     current_font_size: f32,
     current_font_weight: u16,
 
-    // ex_height and ch_width are generally determined by font metrics
-    // of the font in use, which could depend on the system or user agent default settings.
-    // However, if we need to store them anywhere for layout or initial context,
-    // LayoutContext is a reasonable place for now for use in LengthContext creation,
-    // unless you intend to receive them via API or environment.
-
-    // If these are not node-specific but global (browser/os level), it's better to
-    // keep them in a config struct or global settings obj.
-    //
-    // For now (unless a better place is defined in architecture), it's okay to
-    // store them here to allow LengthContext construction for the layout engine.
     ex_height: f32,
     ch_width: f32,
+
+    pending_space: bool,
+
+    line_remaining_width: f32,
+    current_line: Option<Line>,
 }
 
 pub struct LayoutEngine<'a> {
@@ -64,31 +62,44 @@ impl<'a> LayoutEngine<'a> {
             None => return,
         };
 
-        let (root_font_size, root_font_weight) = match &root.source {
+        let (root_font_size, root_font_weight, loaded) = match &root.source {
             LayoutSource::DomNode(node_id) => {
-                let maybe_computed = computed_style.get(*node_id).and_then(Option::as_ref);
+                let computed_style = computed_style
+                    .get(*node_id)
+                    .and_then(Option::as_ref)
+                    .expect("root must always have style");
 
-                let font_size = maybe_computed
-                    .and_then(|computed| {
-                        computed
-                            .font_size()
-                            .map(|fs| fs.to_f32(0.0, None, &LengthContext::default()))
-                    })
+                let font_size = computed_style
+                    .font_size()
+                    .map(|fs| fs.to_f32(0.0, None, &LengthContext::default()))
                     .unwrap_or(16.0);
 
-                let font_weight = maybe_computed
-                    .map(|computed| {
-                        computed
-                            .font_weight()
-                            .unwrap_or(css::FontWeight::Normal)
-                            .to_u16(400)
-                    })
-                    .unwrap_or(400);
+                let font_weight = computed_style
+                    .font_weight()
+                    .unwrap_or(css::FontWeight::Normal)
+                    .to_u16(400);
 
-                (font_size, font_weight)
+                let font_components = FontComponents::new(computed_style, font_weight);
+
+                let loaded_font = font_manager.resolve_font(
+                    &cssom.indexes.fonts,
+                    &FontRequest::new(
+                        &font_components.families,
+                        font_components.weight,
+                        font_components.style,
+                        font_components.stretch,
+                    ),
+                    base_url,
+                    loader,
+                );
+
+                (font_size, font_weight, loaded_font)
             }
             LayoutSource::Anonymous => return,
         };
+
+        let face = &loaded.face().expect("must always have a valid font");
+        let metrics = FontMetrics::from_face(face);
 
         let context = LayoutContext {
             viewport_height: viewport.content.height,
@@ -96,8 +107,11 @@ impl<'a> LayoutEngine<'a> {
             root_font_size,
             current_font_size: root_font_size,
             current_font_weight: root_font_weight,
-            ch_width: root_font_size * 0.5,
-            ex_height: root_font_size * 0.5,
+            pending_space: false,
+            line_remaining_width: viewport.content.width,
+            ch_width: metrics.ch(&face, root_font_size),
+            ex_height: metrics.x_height,
+            current_line: None,
         };
 
         let mut engine = LayoutEngine {
@@ -136,7 +150,6 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        // Get node id and check  type
         let node_id = match node.source {
             LayoutSource::DomNode(id) => id,
             _ => unreachable!(),
@@ -151,7 +164,8 @@ impl<'a> LayoutEngine<'a> {
             .as_ref()
             .expect("Computed style for node is missing");
 
-        // Prepare the length context using the current layout context
+        let font_components = FontComponents::new(style, self.context.current_font_weight);
+
         let length_context = LengthContext {
             font_size: self.context.current_font_size,
             root_font_size: self.context.root_font_size,
@@ -162,7 +176,7 @@ impl<'a> LayoutEngine<'a> {
         };
 
         let font_size = self.context.current_font_size;
-        let font_components = FontComponents::new(style, self.context.current_font_weight);
+
         let request = FontRequest::new(
             &font_components.families,
             font_components.weight,
@@ -176,9 +190,206 @@ impl<'a> LayoutEngine<'a> {
             self.base_url,
             self.loader,
         );
+
+        let face = match loaded_font.face() {
+            Ok(face) => face,
+            Err(e) => {
+                eprintln!("Font parse error: {:?}", e);
+                return;
+            }
+        };
+
+        let metrics = FontMetrics::from_face(&face);
+
+        let scale = metrics.scale(font_size);
+        let ascent = metrics.ascent * scale;
+        let descent = metrics.descent * scale;
+        let line_gap = metrics.line_gap * scale;
+
+        let line_height = match style.line_height(font_size) {
+            LineHeight::Normal => line_gap + ascent + descent,
+            LineHeight::Specified(length) => length.to_f32(font_size, None, &length_context),
+        };
+
+        let current_line_should_exist = self.context.current_line.is_some();
+
+        if !current_line_should_exist {
+            self.context.current_line = Some(Line::new(line_height, ascent, descent));
+            self.context.line_remaining_width = parent.content.width;
+        } else {
+            if let Some(line) = &self.context.current_line {
+                self.context.line_remaining_width = parent.content.width - line.width;
+            }
+        }
+
+        let mut cur_line = self.context.current_line.take().unwrap();
+
+        let initial_x = parent.content.x + cur_line.width;
+
+        let mut current_x = initial_x;
+        let mut current_y = cursor_y;
+
+        // For both collapsing and non-collapsing, always treat explicit "\n" with preserve_newlines
+        // as a hard line break, even when collapsing is disabled.
+        let mut slice_start = 0;
+        let mut space_pending = self.context.pending_space; // Only relevant for collapse_spaces
+
+        let mut chars = text.char_indices();
+
+        while let Some((idx, ch)) = chars.next() {
+            let is_newline = ch == '\n' && font_components.whitespace.preserve_newlines;
+            let is_whitespace = ch.is_whitespace();
+            // In collapse_spaces mode, whitespace is handled as before, but now with correct newline handling.
+            if is_newline {
+                // Emit any text fragment before the \n
+                if slice_start < idx {
+                    TextEngine::layout_text_fragments(
+                        &mut self.context,
+                        &text[slice_start..idx],
+                        &face,
+                        font_size,
+                        &font_components,
+                        &metrics,
+                        parent,
+                        &mut cur_line,
+                        &mut current_x,
+                        &mut current_y,
+                        ascent,
+                        descent,
+                        line_height,
+                    );
+                }
+                // Discard any pending space, and forcibly break the line.
+                space_pending = false;
+                // Actually break the line.
+                current_y += line_height;
+                current_x = parent.content.x;
+                self.context.line_remaining_width = parent.content.width;
+                cur_line = Line::new(line_height, ascent, descent);
+
+                slice_start = idx + ch.len_utf8();
+            } else if font_components.whitespace.collapse_spaces && is_whitespace {
+                // Emit any text fragment before the whitespace
+                if slice_start < idx {
+                    TextEngine::layout_text_fragments(
+                        &mut self.context,
+                        &text[slice_start..idx],
+                        &face,
+                        font_size,
+                        &font_components,
+                        &metrics,
+                        parent,
+                        &mut cur_line,
+                        &mut current_x,
+                        &mut current_y,
+                        ascent,
+                        descent,
+                        line_height,
+                    );
+                }
+                // Don't emit "" for whitespace; instead, set pending_space
+                space_pending = true;
+                slice_start = idx + ch.len_utf8();
+            } else if !font_components.whitespace.collapse_spaces && is_whitespace {
+                // Handle whitespace, including spaces and newlines (if preserve_newlines is false)
+                if slice_start < idx {
+                    TextEngine::layout_text_fragments(
+                        &mut self.context,
+                        &text[slice_start..idx],
+                        &face,
+                        font_size,
+                        &font_components,
+                        &metrics,
+                        parent,
+                        &mut cur_line,
+                        &mut current_x,
+                        &mut current_y,
+                        ascent,
+                        descent,
+                        line_height,
+                    );
+                }
+                // Emit the actual whitespace character, as a slice.
+                TextEngine::layout_text_fragments(
+                    &mut self.context,
+                    &text[idx..idx + ch.len_utf8()],
+                    &face,
+                    font_size,
+                    &font_components,
+                    &metrics,
+                    parent,
+                    &mut cur_line,
+                    &mut current_x,
+                    &mut current_y,
+                    ascent,
+                    descent,
+                    line_height,
+                );
+                slice_start = idx + ch.len_utf8();
+            } else {
+                // If a space is pending (collapse mode), emit a single space before the nonspace run
+                if font_components.whitespace.collapse_spaces && space_pending {
+                    TextEngine::layout_text_fragments(
+                        &mut self.context,
+                        " ",
+                        &face,
+                        font_size,
+                        &font_components,
+                        &metrics,
+                        parent,
+                        &mut cur_line,
+                        &mut current_x,
+                        &mut current_y,
+                        ascent,
+                        descent,
+                        line_height,
+                    );
+                    space_pending = false;
+                }
+            }
+        }
+
+        // At the end: if there is remaining non-whitespace, emit it as a final fragment
+        if slice_start < text.len() {
+            let substr = &text[slice_start..];
+            // If collapsing, ignore trailing all-whitespace
+            if !font_components.whitespace.collapse_spaces
+                || !substr.chars().all(char::is_whitespace)
+            {
+                TextEngine::layout_text_fragments(
+                    &mut self.context,
+                    substr,
+                    &face,
+                    font_size,
+                    &font_components,
+                    &metrics,
+                    parent,
+                    &mut cur_line,
+                    &mut current_x,
+                    &mut current_y,
+                    ascent,
+                    descent,
+                    line_height,
+                );
+            }
+        }
+
+        self.context.pending_space = if font_components.whitespace.collapse_spaces {
+            space_pending
+        } else {
+            false
+        };
+
+        node.dimensions.content.y = cursor_y;
+        node.dimensions.content.x = initial_x;
+
+        self.context.current_line = Some(cur_line);
     }
 
     fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+        self.context.current_line = None;
+        self.context.pending_space = false;
+
         match node.source {
             LayoutSource::Anonymous => {
                 node.dimensions.content.width = parent.content.width;
@@ -198,6 +409,10 @@ impl<'a> LayoutEngine<'a> {
 
                 let old_font_size = self.context.current_font_size;
                 let old_font_weight = self.context.current_font_weight;
+                let old_available_space = self.context.line_remaining_width;
+                let old_ch_width = self.context.ch_width;
+                let old_ex_height = self.context.ex_height;
+
                 let style_components = StyleComponents::new(&style);
 
                 let inherited_ctx: LengthContext = LengthContext {
@@ -218,6 +433,24 @@ impl<'a> LayoutEngine<'a> {
                     self.context.current_font_weight = new_font_weight.to_u16(old_font_weight);
                 }
 
+                let font_components = FontComponents::new(style, self.context.current_font_weight);
+                let loaded_font = self.font_manager.resolve_font(
+                    &self.cssom.indexes.fonts,
+                    &FontRequest::new(
+                        &font_components.families,
+                        font_components.weight,
+                        font_components.style,
+                        font_components.stretch,
+                    ),
+                    self.base_url,
+                    self.loader,
+                );
+                if let Ok(face) = &loaded_font.face() {
+                    let metrics = FontMetrics::from_face(face);
+                    self.context.ch_width = metrics.ch(face, self.context.current_font_size);
+                    self.context.ex_height = metrics.x_height;
+                }
+
                 let element_ctx = LengthContext {
                     font_size: self.context.current_font_size,
                     root_font_size: self.context.root_font_size,
@@ -228,6 +461,8 @@ impl<'a> LayoutEngine<'a> {
                 };
 
                 BlockEngine::calculate_width(node, parent, &style_components, &element_ctx);
+
+                self.context.line_remaining_width = node.dimensions.content.width;
 
                 BlockEngine::calculate_x(node, parent);
 
@@ -246,6 +481,9 @@ impl<'a> LayoutEngine<'a> {
 
                 self.context.current_font_weight = old_font_weight;
                 self.context.current_font_size = old_font_size;
+                self.context.line_remaining_width = old_available_space;
+                self.context.ch_width = old_ch_width;
+                self.context.ex_height = old_ex_height;
             }
         }
     }
