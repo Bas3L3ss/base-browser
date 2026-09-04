@@ -1,9 +1,6 @@
 use html::DomElement;
 
-use crate::cssom::{
-    css_indexes::{CssIndexes, RuleRef},
-    rule::CssRule,
-};
+use crate::{CssIndexes, CssRule, RuleRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Origin {
@@ -28,6 +25,10 @@ pub struct CssOm {
 impl CssOm {
     pub fn append_stylesheet(&mut self, rules: Vec<CssRule>) {
         self.rules.extend(rules);
+    }
+
+    pub fn append_rule(&mut self, rule: CssRule) {
+        self.rules.push(rule);
     }
 
     pub fn build_indexes(&mut self) {

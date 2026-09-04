@@ -3,6 +3,15 @@
  * Basic CSS to provide default styling for HTML elements
  */
 
+* {
+  box-sizing: border-box; /* Chrome and most modern browsers use border-box for UA sheet, not content-box */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  vertical-align: baseline;
+}
+
 html,
 body {
   display: block;
@@ -11,9 +20,109 @@ body {
   border: 0;
   font-family: sans-serif;
   font-size: 16px;
+  font-weight: normal;
   background: #fff;
   color: #000;
 }
+
+header {
+  display: block;
+}
+
+section {
+  display: block;
+}
+
+div {
+  display: block;
+}
+
+/* --- Inline Elements, expanded --- */
+span {
+  display: inline;
+}
+a {
+  color: #00f;
+  text-decoration: underline;
+  cursor: pointer;
+  display: inline;
+}
+b,
+strong {
+  font-weight: bold;
+  display: inline;
+}
+i,
+em {
+  font-style: italic;
+  display: inline;
+}
+u {
+  text-decoration: underline;
+  display: inline;
+}
+s,
+del {
+  text-decoration: line-through;
+  display: inline;
+}
+ins {
+  text-decoration: underline;
+  display: inline;
+}
+small {
+  font-size: smaller;
+  display: inline;
+}
+mark {
+  background: #ff0;
+  color: #000;
+  display: inline;
+}
+sub {
+  vertical-align: sub;
+  font-size: smaller;
+  display: inline;
+}
+sup {
+  vertical-align: super;
+  font-size: smaller;
+  display: inline;
+}
+code,
+kbd,
+samp,
+var {
+  font-family: monospace, monospace;
+  font-size: 1em;
+  display: inline;
+}
+abbr,
+acronym {
+  border-bottom: 1px dotted #000;
+  cursor: help;
+  display: inline;
+}
+q {
+  quotes: "“" "”" "‘" "’";
+  display: inline;
+}
+data,
+time {
+  display: inline;
+}
+ruby {
+  display: inline;
+}
+rt,
+rp {
+  display: inline;
+}
+wbr {
+  display: none; /* typically has no effect in most browsers, can be inline */
+}
+
+/* --- End Inline Elements --- */
 
 h1 {
   display: block;
@@ -45,21 +154,6 @@ h6 {
 p {
   display: block;
   margin: 1em 0;
-}
-
-b,
-strong {
-  font-weight: bold;
-}
-i,
-em {
-  font-style: italic;
-}
-
-a {
-  color: #00f;
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 ul,
@@ -145,5 +239,17 @@ blockquote {
   margin: 1em 40px;
   padding-left: 10px;
   border-left: 3px solid #eee;
+  color: #555;
+}
+
+figure {
+  display: block;
+  margin: 1em 40px;
+}
+
+figcaption {
+  display: block;
+  text-align: center;
+  font-size: 0.95em;
   color: #555;
 }

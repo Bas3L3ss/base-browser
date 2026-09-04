@@ -1,4 +1,4 @@
 [workspace]
-members = ["browser_app", "html", "input_parser", "network", "utils", "url","css", "browser_core"]
+members = ["browser_app", "html", "input_parser", "network", "utils", "url","css", "browser_core", "layout", "font"]
 
 resolver = "2"

@@ -1,0 +1,13 @@
+[package]
+name = "layout"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+html={ path = "../html"}
+css={path = "../css"}
+anyhow = "1.0.104"
+font= {path = "../font"}
+network = {path = "../network"}
+url = {path = "../url"}
+ttf-parser = "0.25.1"
