@@ -1,24 +1,34 @@
-use std::{eprintln, sync::Arc};
+use std::println;
+use std::{ eprintln, sync::Arc };
 
 use anyhow::Result;
-use url::url::Url;
+use url::Url;
+use window::State;
+use winit::application::ApplicationHandler;
+use winit::event_loop::ActiveEventLoop;
+use winit::window::{ Window, WindowId };
+use winit::{ event::{ WindowEvent }, event_loop::{ ControlFlow, EventLoop } };
 
-use crate::{browser::BrowserShared, tab::tab::Tab};
+use crate::{ browser::BrowserShared, tab::tab::Tab };
 
-pub struct Browser {
+#[derive(Default)]
+pub struct Browser<'a> {
+    state: Option<State<'a>>,
     pub shared: Arc<BrowserShared>,
     pub tabs: Vec<Tab>,
 }
 
-impl Browser {
+impl<'a> Browser<'_> {
     pub fn new() -> Self {
         Self {
-            shared: Arc::new(BrowserShared::new().unwrap_or_else(|e| {
-                eprintln!("Failed to initialize BrowserShared: {}", e);
-                std::process::exit(1);
-            })),
-
+            shared: Arc::new(
+                BrowserShared::new().unwrap_or_else(|e| {
+                    eprintln!("Failed to initialize BrowserShared: {}", e);
+                    std::process::exit(1);
+                })
+            ),
             tabs: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -28,11 +38,106 @@ impl Browser {
         Ok(())
     }
 
-    pub fn run(&self) -> Result<()> {
-        for tab in &self.tabs {
-            tab.render()?;
+    pub fn run(&mut self) {
+        let event_loop = EventLoop::new().unwrap_or_else(|e: winit::error::EventLoopError| {
+            eprintln!("Failed to initialize winit event loop: {}", e);
+            std::process::exit(1);
+        });
+        event_loop.set_control_flow(ControlFlow::Wait);
+        event_loop.run_app(self).unwrap();
+    }
+}
+
+impl<'a> ApplicationHandler for Browser<'a> {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window_attributes = Window::default_attributes().with_title("Broase");
+
+        let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+
+        let state = pollster::block_on(State::new(window));
+
+        self.state = Some(state);
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CursorMoved { device_id: _, position } => {
+                if let Some(state) = self.state.as_mut() {
+                    state.cursor_position = position;
+                }
+            }
+
+            // WindowEvent::KeyboardInput { event, .. } => {
+            //     if let Some(state) = self.state.as_mut() {
+            //         if let Some(ref mut world) = state.world {
+            //             if let PhysicalKey::Code(keycode) = event.physical_key {
+            //                 match keycode {
+            //                     KeyCode::KeyW => {
+            //                         match event.state {
+            //                             winit::event::ElementState::Pressed => {
+            //                                 world.keys.insert(glfw::Key::W, true);
+            //                             }
+            //                             winit::event::ElementState::Released => {
+            //                                 world.keys.insert(glfw::Key::W, false);
+            //                             }
+            //                         }
+            //                     }
+            //                     KeyCode::KeyA => {
+            //                         match event.state {
+            //                             winit::event::ElementState::Pressed => {
+            //                                 world.keys.insert(glfw::Key::A, true);
+            //                             }
+            //                             winit::event::ElementState::Released => {
+            //                                 world.keys.insert(glfw::Key::A, false);
+            //                             }
+            //                         }
+            //                     }
+            //                     KeyCode::KeyS => {
+            //                         match event.state {
+            //                             winit::event::ElementState::Pressed => {
+            //                                 world.keys.insert(glfw::Key::S, true);
+            //                             }
+            //                             winit::event::ElementState::Released => {
+            //                                 world.keys.insert(glfw::Key::S, false);
+            //                             }
+            //                         }
+            //                     }
+            //                     KeyCode::KeyD => {
+            //                         match event.state {
+            //                             winit::event::ElementState::Pressed => {
+            //                                 world.keys.insert(glfw::Key::D, true);
+            //                             }
+            //                             winit::event::ElementState::Released => {
+            //                                 world.keys.insert(glfw::Key::D, false);
+            //                             }
+            //                         }
+            //                     }
+
+            //                     _ => {}
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
+
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            }
+            WindowEvent::RedrawRequested => {
+                if let Some(state) = self.state.as_mut() {
+                    state.render();
+                    state.window.request_redraw();
+                }
+            }
+
+            WindowEvent::Resized(physical_size) => {
+                if let Some(state) = self.state.as_mut() {
+                    state.resize(physical_size);
+                }
+            }
+            _ => (),
         }
-        Ok(())
     }
 }
 
@@ -47,11 +152,11 @@ mod tests {
     #[test]
     fn browser_can_create_and_open_tabs() {
         let mut browser = Browser::new();
-        let url = Url::parse("https://example.com").unwrap().value;
+        let url = Url::parse("https://example.com").unwrap();
 
-        browser.open_tab(url.clone()).unwrap();
+        browser.open_tab(url.value.clone()).unwrap();
 
         assert_eq!(browser.tabs.len(), 1);
-        assert_eq!(browser.tabs[0].document.url, url);
+        assert_eq!(browser.tabs[0].document.url, url.value);
     }
 }

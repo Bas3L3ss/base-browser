@@ -39,8 +39,8 @@ fn main() -> anyhow::Result<()> {
         };
 
         let mut browser = Browser::new();
-        browser.open_tab(url)?;
-        browser.run()?;
+        // browser.open_tab(url)?;
+        browser.run();
 
         Ok(())
     } else {

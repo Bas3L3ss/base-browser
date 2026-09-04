@@ -1,6 +1,7 @@
 use anyhow::Result;
-use css::{CssOm, Origin, Parser, tokenizer::tokenizer::Tokenizer};
+use css::{ CssOm, Origin, Parser, tokenizer::tokenizer::Tokenizer };
 
+#[derive(Default)]
 pub struct BrowserShared {
     // CSS
     pub ua_stylesheet: CssOm,
