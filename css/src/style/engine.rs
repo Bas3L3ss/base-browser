@@ -1,12 +1,13 @@
-use anyhow::Result;
-use html::{Dom, NodeType};
+use anyhow::{Result, anyhow};
+use html::{Dom, NodeType, StyleSheetRef};
 use network::ResourceLoader;
-use std::vec;
+use std::{println, vec};
 use url::Url;
 use utils::profile_scope;
 
 use crate::{
-    Cascade, CascadeSource, ComputedStyle, CssOm, Inheritance, Matcher, Origin, Parser, Tokenizer,
+    Cascade, CascadeSource, ComputedStyle, CssOm, CssRule, ImportRule, Inheritance, Matcher,
+    Origin, Parser, Tokenizer,
 };
 
 pub struct StyleContext<'a> {
@@ -32,23 +33,81 @@ impl<'a> StyleEngine<'a> {
     pub fn new(context: StyleContext<'a>) -> Self {
         Self { context }
     }
+
+    fn parse_stylesheet(
+        &self,
+        cssom: &mut CssOm,
+        source: &str,
+        loader: &ResourceLoader,
+    ) -> Result<()> {
+        let tokens = Tokenizer::from_string(source);
+        let mut parser = Parser::new(&tokens);
+        let rules = parser.parse()?;
+
+        for rule in rules {
+            if let CssRule::At(at_rule) = &rule {
+                if at_rule.name == "import" {
+                    let import = ImportRule::from_rule(at_rule);
+                    if let Some(href) = import.url {
+                        let imported_source = loader.load_css(self.context.url, &href)?;
+                        self.parse_stylesheet(cssom, &imported_source, loader)?;
+                        continue;
+                    }
+                }
+            }
+            cssom.append_rule(rule);
+        }
+
+        Ok(())
+    }
+
+    pub fn load_stylesheet(
+        &self,
+        dom: &Dom,
+        loader: &ResourceLoader,
+        stylesheet: &StyleSheetRef,
+        base_url: &Url,
+    ) -> anyhow::Result<String> {
+        profile_scope!("Load StyleSheet");
+        match stylesheet {
+            StyleSheetRef::InlineStyle(node_id) => {
+                let child = dom.nodes[*node_id]
+                    .children
+                    .get(0)
+                    .ok_or_else(|| anyhow!("inline style node does not have a child"))?;
+
+                match &dom.nodes[*child].ntype {
+                    NodeType::Text(css) => Ok(css.clone()),
+                    _ => Ok(String::new()),
+                }
+            }
+            StyleSheetRef::StyleSheetLink(node_id) => {
+                let href = match &dom.nodes[*node_id].ntype {
+                    NodeType::Element(element) => element
+                        .attributes
+                        .href
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("missing href"))?,
+                    _ => return Err(anyhow!("expected element")),
+                };
+                loader.load_css(base_url, href)
+            }
+        }
+    }
+
     pub fn build_cssom(&self, dom: &Dom, loader: &ResourceLoader) -> Result<CssOm> {
         profile_scope!("Build CSSOM");
         let mut cssom = CssOm::default();
 
         for stylesheet in &dom.style_sheets {
-            let source = loader.load_stylesheet(dom, stylesheet, self.context.url)?;
-            let tokens = Tokenizer::from_string(&source);
-
-            let mut parser = Parser::new(&tokens);
-            let rules = parser.parse()?;
-            cssom.append_stylesheet(rules);
+            let source = self.load_stylesheet(dom, loader, stylesheet, self.context.url)?;
+            self.parse_stylesheet(&mut cssom, &source, loader)?;
         }
 
         cssom.build_indexes();
-
         Ok(cssom)
     }
+
     pub fn resolve_styles(&self, dom: &Dom, cssom: &CssOm) -> Vec<Option<ComputedStyle>> {
         profile_scope!("Resolve Styles");
 

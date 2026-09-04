@@ -1,5 +1,4 @@
-use anyhow::{Result, anyhow};
-use html::dom::{dom::Dom, node_type::NodeType, style_sheet_ref::StyleSheetRef};
+use anyhow::{Ok, Result};
 use url::url::Url;
 use utils::profile_scope;
 
@@ -8,6 +7,7 @@ use crate::http::client::HttpClient;
 pub struct ResourceLoader {
     http: HttpClient,
 }
+
 impl ResourceLoader {
     pub fn new(http: HttpClient) -> Self {
         ResourceLoader { http }
@@ -18,38 +18,17 @@ impl ResourceLoader {
         let response = self.http.get(url)?;
         Ok(response.body_as_string())
     }
-    pub fn load_stylesheet(
-        &self,
-        dom: &Dom,
-        stylesheet: &StyleSheetRef,
-        base_url: &Url,
-    ) -> anyhow::Result<String> {
-        profile_scope!("Load StyleSheet");
-        match stylesheet {
-            StyleSheetRef::InlineStyle(node_id) => {
-                let child = dom.nodes[*node_id].children[0];
 
-                match &dom.nodes[child].ntype {
-                    NodeType::Text(css) => Ok(css.clone()),
-                    _ => Ok(String::new()),
-                }
-            }
+    pub fn load_css(&self, base_url: &Url, href: &String) -> Result<String> {
+        profile_scope!("Load CSS");
+        let url = base_url.resolve(href)?;
+        let response = self.http.get(&url)?;
+        Ok(response.body_as_string())
+    }
 
-            StyleSheetRef::StyleSheetLink(node_id) => {
-                let href = match &dom.nodes[*node_id].ntype {
-                    NodeType::Element(element) => element
-                        .attributes
-                        .href
-                        .as_ref()
-                        .ok_or_else(|| anyhow!("missing href"))?,
-                    _ => return Err(anyhow!("expected element")),
-                };
-
-                let url = base_url.resolve(href)?;
-                let response = self.http.get(&url)?;
-
-                Ok(response.body_as_string())
-            }
-        }
+    pub fn load_bytes(&self, url: &Url) -> Result<Vec<u8>> {
+        profile_scope!("Load resource");
+        let response = self.http.get(url)?;
+        Ok(response.body)
     }
 }

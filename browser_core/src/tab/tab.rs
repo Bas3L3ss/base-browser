@@ -1,14 +1,11 @@
-use std::sync::Arc;
-
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use url::Url;
 
 use crate::{browser::BrowserShared, document::document::Document};
+use layout::{Dimensions, LayoutEngine, Rect};
 
-pub struct Tab {
-    pub shared: Arc<BrowserShared>,
-
-    pub document: Document,
+pub struct Tab<'a> {
+    pub document: Option<Document<'a>>,
     // session_history: SessionHistory,
 
     // loading_state: LoadingState,
@@ -16,10 +13,36 @@ pub struct Tab {
     // viewport: Viewport,
 }
 
-impl Tab {
-    pub fn new(shared: Arc<BrowserShared>, url: Url) -> Result<Self> {
-        let document = Document::new(&shared.ua_stylesheet, url)?;
-        Ok(Self { shared, document })
+impl<'a> Tab<'a> {
+    pub fn new() -> Self {
+        Self { document: None }
+    }
+
+    pub fn navigate(&mut self, url: &'a Url, shared: &mut BrowserShared) -> Result<()> {
+        let mut document = Document::new(&shared.ua_stylesheet, &url, &shared.resource_loader)?;
+
+        LayoutEngine::layout(
+            &mut document.layout_tree,
+            Dimensions {
+                content: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                ..Default::default()
+            },
+            &document.computed_styles,
+            &document.dom,
+            &document.cssom,
+            &mut shared.font_manager,
+            &shared.resource_loader,
+            &url,
+        );
+
+        self.document = Some(document);
+
+        Ok(())
     }
 
     pub fn render(&self) -> Result<()> {

@@ -1,9 +1,11 @@
+use std::write;
+
 use crate::host::Host;
 use crate::scheme::Scheme;
 use anyhow::Result;
 use input_parser::traits::Parse;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Url {
     pub scheme: Scheme,
     pub host: Host,
@@ -11,6 +13,38 @@ pub struct Url {
     pub path: String,
     pub query: Option<String>,
     pub fragment: Option<String>,
+}
+
+impl std::fmt::Display for Url {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Write scheme://host[:port]/path[?query][#fragment]
+        write!(f, "{}://{}", self.scheme.as_str(), self.host)?;
+
+        // If port is not the default (scheme), show it.
+        let is_default_port = match self.scheme.as_str() {
+            "http" => self.port == 80,
+            "https" => self.port == 443,
+            _ => false,
+        };
+        if !is_default_port {
+            write!(f, ":{}", self.port)?;
+        }
+
+        // Path (always starts with /)
+        write!(f, "{}", self.path)?;
+
+        // Query
+        if let Some(ref q) = self.query {
+            write!(f, "?{}", q)?;
+        }
+
+        // Fragment
+        if let Some(ref frag) = self.fragment {
+            write!(f, "#{}", frag)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

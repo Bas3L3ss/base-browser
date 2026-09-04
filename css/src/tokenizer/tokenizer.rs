@@ -234,9 +234,131 @@ impl<'a> Tokenizer<'a> {
 
                 '0'..='9' => self.consume_numeric_token(),
 
+                // Check for unicode-range: U+XXXX, U+XXXX-YYYY, U+XX??
+                'U' | 'u' => {
+                    let saved = self.position;
+                    if self.peek_next() == Some('+') {
+                        self.advance(); // consume 'U' or 'u'
+                        self.advance(); // consume '+'
+                        let mut range = String::from("U+");
+
+                        // State for enforcing wildcard placement ('?') and ranges
+                        let mut valid = true;
+
+                        // Part 1: before optional '-'
+                        let mut saw_hex_first = false;
+                        let mut saw_q_first = false;
+
+                        // Parse hex digits and wildcards until '-' or something not allowed
+                        while let Some(ch) = self.peek() {
+                            if ch.is_ascii_hexdigit() {
+                                if saw_q_first {
+                                    // No hex after seeing any '?' in first part
+                                    valid = false;
+                                    break;
+                                }
+                                saw_hex_first = true;
+                                range.push(ch);
+                                self.advance();
+                            } else if ch == '?' {
+                                if !saw_hex_first {
+                                    // Can't have '?' before any hex digits
+                                    valid = false;
+                                    break;
+                                }
+                                saw_q_first = true;
+                                range.push('?');
+                                self.advance();
+
+                                // After seeing the first '?', every char must be '?' or a token boundary (not a Unicode-range error), or a dash for range (spec disallows dash after '?')
+                                while let Some(next_ch) = self.peek() {
+                                    if next_ch == '?' {
+                                        range.push('?');
+                                        self.advance();
+                                    } else if next_ch == '-' {
+                                        // Spec prohibits dash after '?', but let validation below handle rejecting U+??- (for now: treat as token boundary)
+                                        break;
+                                    } else if matches!(
+                                        next_ch,
+                                        ',' | ';' | ')' | ' ' | '\n' | '\t' | '\r' | '\x0C'
+                                    ) {
+                                        // Valid unicode-range with wildcards, finished by CSS token boundary
+                                        break;
+                                    } else {
+                                        // Non-token-boundary, non-? char (e.g., letter), treat as boundary, not an error here; parsing ends
+                                        break;
+                                    }
+                                }
+                                // After wildcard sequence, normal unicode-range parsing must stop. (Even if next is letter, that's another token.)
+                                break;
+                            } else if ch == '-' {
+                                if !saw_hex_first || saw_q_first {
+                                    // "-" only valid if there was hex, and no '?'s in first part
+                                    valid = false;
+                                    break;
+                                }
+                                range.push('-');
+                                self.advance();
+
+                                // Part 2: (after '-'), must be hex digits only (at least one)
+                                let mut saw_hex_second = false;
+                                while let Some(second_ch) = self.peek() {
+                                    if second_ch.is_ascii_hexdigit() {
+                                        range.push(second_ch);
+                                        saw_hex_second = true;
+                                        self.advance();
+                                    } else {
+                                        // Anything else stops the range
+                                        break;
+                                    }
+                                }
+                                if !saw_hex_second {
+                                    valid = false;
+                                }
+                                break; // dash indicates end of range parsing (and all range is consumed)
+                            } else if matches!(
+                                ch,
+                                ',' | ';' | ')' | ' ' | '\n' | '\t' | '\r' | '\x0C'
+                            ) {
+                                // Stop parsing at any CSS token boundary (comma, semicolon, etc). Accept as end of unicode-range.
+                                break;
+                            } else {
+                                // Anything else (e.g., "U+4aBz") ends the unicode run
+                                break;
+                            }
+                        }
+
+                        // Valid Unicode ranges:
+                        //  * U+XXXX
+                        //  * U+XX??  (wildcards only in first half)
+                        //  * U+XXXX-YYYY  (no '?' allowed)
+                        if valid
+                            && !range[2..].is_empty()
+                            && (
+                                // U+XXXX
+                                (!range.contains('-') && !range.contains('?') && saw_hex_first)
+                                // U+XX??
+                                || (!range.contains('-') && saw_q_first && saw_hex_first)
+                                // U+XXXX-YYYY
+                                || (range.contains('-') && !saw_q_first)
+                            )
+                        {
+                            CssToken::UnicodeRange(range)
+                        } else {
+                            self.position = saved;
+                            // Try as normal ident (fallthrough)
+                            let ident = self.consume_ident();
+                            CssToken::Ident(ident)
+                        }
+                    } else {
+                        // Not unicode-range, treat as ident like "url"
+                        let ident = self.consume_ident();
+                        CssToken::Ident(ident)
+                    }
+                }
+
                 _ if Self::is_ident_start(ch) => {
                     let ident = self.consume_ident();
-
                     CssToken::Ident(ident)
                 }
 
@@ -1038,5 +1160,57 @@ mod tests {
         assert_eq!(tokens[2], CssToken::LeftParen);
         assert_eq!(tokens[3], CssToken::Number(3.0));
         assert_eq!(tokens[4], CssToken::RightParen);
+    }
+
+    #[test]
+    fn test_string_token_in_url_function() {
+        // Double-quoted string in url()
+        let tokens = Tokenizer::from_string("url(\"foo/bar.css\")");
+        assert_eq!(tokens[0], CssToken::Ident("url".into()));
+        assert_eq!(tokens[1], CssToken::LeftParen);
+        assert_eq!(tokens[2], CssToken::String("foo/bar.css".into()));
+        assert_eq!(tokens[3], CssToken::RightParen);
+
+        // Single-quoted string in url()
+        let tokens2 = Tokenizer::from_string("url('baz.css')");
+        assert_eq!(tokens2[0], CssToken::Ident("url".into()));
+        assert_eq!(tokens2[1], CssToken::LeftParen);
+        assert_eq!(tokens2[2], CssToken::String("baz.css".into()));
+        assert_eq!(tokens2[3], CssToken::RightParen);
+
+        // String in url( ... ) with whitespace
+        let tokens3 = Tokenizer::from_string("url(  \"theme.css\"  )");
+        assert_eq!(tokens3[0], CssToken::Ident("url".into()));
+        assert_eq!(tokens3[1], CssToken::LeftParen);
+        // there might be Whitespace tokens, but we just check string correctness
+        assert!(
+            tokens3
+                .iter()
+                .any(|t| t == &CssToken::String("theme.css".into()))
+        );
+        assert_eq!(tokens3.last().unwrap(), &CssToken::EOF);
+    }
+
+    #[test]
+    fn test_string_token_as_import_value() {
+        // Double-quoted string after @import
+        let tokens = Tokenizer::from_string("@import \"foo/bar.css\";");
+        assert_eq!(tokens[0], CssToken::AtKeyword("import".into()));
+        assert_eq!(tokens[2], CssToken::String("foo/bar.css".into()));
+        assert_eq!(tokens[3], CssToken::Semicolon);
+
+        // String passed as url() argument after @import
+        let tokens2 = Tokenizer::from_string("@import url(\"baz.css\");");
+
+        assert_eq!(tokens2[0], CssToken::AtKeyword("import".into()));
+        assert_eq!(tokens2[2], CssToken::Ident("url".into()));
+        assert_eq!(tokens2[3], CssToken::LeftParen);
+        assert_eq!(tokens2[4], CssToken::String("baz.css".into()));
+        assert_eq!(tokens2[5], CssToken::RightParen);
+        assert_eq!(tokens2[6], CssToken::Semicolon);
+
+        // Single-quoted string in url()
+        let tokens3 = Tokenizer::from_string("@import url('foo.css');");
+        assert_eq!(tokens3[4], CssToken::String("foo.css".into()));
     }
 }

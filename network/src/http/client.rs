@@ -1,6 +1,7 @@
-use std::{format, sync::Arc, unimplemented};
+use std::{eprintln, sync::Arc, unimplemented};
 
 use crate::{
+    HttpRequest,
     connection::{connection::Connection, connection_factory::ConnectionFactory},
     dns::{resolver::DnsResolver, response::LookupResult},
     http::response::HttpResponse,
@@ -44,18 +45,13 @@ impl HttpClient {
             .connection_factory
             .connect(url, lookup_result.addresses[0].ip)?;
 
-        let host = url.host.to_string();
-        let path = if url.path.is_empty() { "/" } else { &url.path };
-        let request = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-            path, host
-        ); // TODO: HttpRequest::get(url)
-
+        let req = HttpRequest::get(url);
         // Write request
-        conn.write(request.as_bytes())?;
+        conn.write(&req.to_bytes())?;
 
         // Read response
         let response_bytes = conn.read()?;
+
         let response = HttpResponse::from_bytes(&response_bytes)?;
 
         Ok(response)

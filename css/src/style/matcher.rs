@@ -219,7 +219,7 @@ impl Matcher {
             SimpleSelector::PseudoClass(name, pseudo_args) => {
                 self.match_pseudo_class(name, pseudo_args.as_ref(), element, node, dom)
             }
-            SimpleSelector::PseudoElement(_) => false,
+            SimpleSelector::PseudoElement(_) => false, //TODO
         }
     }
 
@@ -2672,6 +2672,7 @@ mod tests {
             rules,
             indexes: CssIndexes::default(),
         };
+
         cssom.build_indexes();
         println!("{:#?}", cssom.rules[1]);
 

@@ -121,7 +121,6 @@ pub enum HtmlTag {
     Meter,
 
     // Scripting
-    ScriptTag, // <script>
     Noscript,
     Template,
     Slot,
@@ -152,7 +151,7 @@ impl HtmlTag {
             "meta" => HtmlTag::Meta,
             "link" => HtmlTag::Link,
             "style" => HtmlTag::Style,
-            "script" => HtmlTag::ScriptTag,
+            "script" => HtmlTag::Script,
             "base" => HtmlTag::Base,
 
             // Sections
@@ -394,7 +393,6 @@ impl HtmlTag {
             HtmlTag::Progress => "progress".to_string(),
             HtmlTag::Meter => "meter".to_string(),
 
-            HtmlTag::ScriptTag => "script".to_string(),
             HtmlTag::Noscript => "noscript".to_string(),
             HtmlTag::Template => "template".to_string(),
             HtmlTag::Slot => "slot".to_string(),

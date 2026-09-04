@@ -121,7 +121,10 @@ impl Inheritance {
                 }
 
                 // Child explicitly requests inheritance.
-                Some(child_value) if child_value.is_inherit() => {
+                Some(child_value)
+                    if child_value.components.len() == 1
+                        && child_value.components[0].is_keyword("inherit") =>
+                {
                     style
                         .properties
                         .insert(property.clone(), parent_value.clone());

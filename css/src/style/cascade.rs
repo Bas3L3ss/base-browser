@@ -3,17 +3,17 @@ use std::collections::HashMap;
 use html::DomElement;
 
 use crate::{
-    CssOm, CssRule, Declaration, Origin, Parser, Property, RuleRef, Specificity, Tokenizer,
-    cssom::css_value::CssValue, style::computed_style::ComputedStyle,
+    CssOm, CssRule, Declaration, Normalizer, Origin, Parser, Property, RuleRef, Specificity,
+    Tokenizer, cssom::css_value::CssValue, style::computed_style::ComputedStyle,
 };
 
 /// Owns just the relevant info rather than borrowing an entire Declaration.
 /// This allows merging borrowed (stylesheet) and owned (inline) variants.
 #[derive(Debug, Clone)]
-struct DeclarationCandidate {
-    property: Property,
-    value: CssValue,
-    origin: Origin,
+pub(crate) struct DeclarationCandidate {
+    pub(crate) property: Property,
+    pub(crate) value: CssValue,
+    pub(crate) origin: Origin,
     specificity: Specificity,
     source_order: u32,
 }
@@ -84,7 +84,7 @@ impl Cascade {
         let mut properties = HashMap::new();
 
         for (_, candidate) in winners {
-            properties.insert(candidate.property, candidate.value);
+            Normalizer::insert(&mut properties, candidate);
         }
 
         ComputedStyle { properties }
