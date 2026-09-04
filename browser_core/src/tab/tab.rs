@@ -1,8 +1,8 @@
-use anyhow::{Ok, Result};
+use anyhow::{ Ok, Result };
 use url::Url;
 
-use crate::{browser::BrowserShared, document::document::Document};
-use layout::{Dimensions, LayoutEngine, Rect};
+use crate::{ browser::BrowserShared, document::document::Document };
+use layout::{ Dimensions, LayoutEngine, Rect };
 
 pub struct Tab<'a> {
     pub document: Option<Document<'a>>,
@@ -37,7 +37,7 @@ impl<'a> Tab<'a> {
             &document.cssom,
             &mut shared.font_manager,
             &shared.resource_loader,
-            &url,
+            &url
         );
 
         self.document = Some(document);

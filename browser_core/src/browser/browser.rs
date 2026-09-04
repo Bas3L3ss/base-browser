@@ -1,9 +1,5 @@
-<<<<<<< HEAD
 use std::println;
 use std::{ eprintln, sync::Arc };
-=======
-use std::{eprintln, println};
->>>>>>> origin/master
 
 use anyhow::Result;
 use url::Url;
@@ -15,25 +11,8 @@ use winit::{ event::{ WindowEvent }, event_loop::{ ControlFlow, EventLoop } };
 
 use crate::{ browser::BrowserShared, tab::tab::Tab };
 
-<<<<<<< HEAD
-#[derive(Default)]
 pub struct Browser<'a> {
     state: Option<State<'a>>,
-    pub shared: Arc<BrowserShared>,
-    pub tabs: Vec<Tab>,
-}
-
-impl<'a> Browser<'_> {
-    pub fn new() -> Self {
-        Self {
-            shared: Arc::new(
-                BrowserShared::new().unwrap_or_else(|e| {
-                    eprintln!("Failed to initialize BrowserShared: {}", e);
-                    std::process::exit(1);
-                })
-            ),
-=======
-pub struct Browser<'a> {
     pub shared: BrowserShared,
     pub tabs: Vec<Tab<'a>>,
 }
@@ -45,10 +24,8 @@ impl<'a> Browser<'a> {
                 eprintln!("Failed to initialize BrowserShared: {}", e);
                 std::process::exit(1);
             }),
-
->>>>>>> origin/master
             tabs: Vec::new(),
-            ..Default::default()
+            state: None,
         }
     }
 
@@ -174,54 +151,29 @@ mod tests {
     use url::Url;
 
     // Utility function to enforce a 3 second timeout on each test
-    fn run_with_timeout<F>(f: F)
-    where
-        F: FnOnce() + std::panic::UnwindSafe + Send + 'static,
-    {
+    fn run_with_timeout<F>(f: F) where F: FnOnce() + std::panic::UnwindSafe + Send + 'static {
         let (tx, rx) = channel();
         thread::spawn(move || {
             let _ = tx.send(std::panic::catch_unwind(f));
         });
 
         match rx.recv_timeout(std::time::Duration::from_secs(3)) {
-            Ok(Ok(_)) => (),                            // Test finished successfully
+            Ok(Ok(_)) => (), // Test finished successfully
             Ok(Err(e)) => std::panic::resume_unwind(e), // Test panicked, propagate
             Err(_) => panic!("Test timed out (took longer than 3 seconds)"),
         }
     }
 
     #[test]
-<<<<<<< HEAD
     fn browser_can_create_and_open_tabs() {
+        let url = Url::parse("https://example.com").unwrap().value;
         let mut browser = Browser::new();
-        let url = Url::parse("https://example.com").unwrap();
 
-        browser.open_tab(url.value.clone()).unwrap();
+        browser.open_tab(&url).unwrap();
 
         assert_eq!(browser.tabs.len(), 1);
-        assert_eq!(browser.tabs[0].document.url, url.value);
-=======
-    fn test_open_tab_example_url() {
-        run_with_timeout(|| {
-            let mut browser = Browser::new();
-            let test_url = Url::parse("https://www.example.com").unwrap().value;
-            let result = browser.open_tab(&test_url);
-            assert!(result.is_ok(), "Failed to open tab with example.com");
-            assert_eq!(browser.tabs.len(), 1);
-        });
-    }
-
-    #[test]
-    fn test_local_page() {
-        run_with_timeout(|| {
-            let mut browser = Browser::new();
-            let apple_url = Url::parse("http://127.0.0.1:5500/index.html")
-                .unwrap()
-                .value;
-            let result = browser.open_tab(&apple_url);
-            assert!(result.is_ok(), "Failed to open tab with index.html");
-            assert_eq!(browser.tabs.len(), 1);
-        });
->>>>>>> origin/master
+        let r = &browser.tabs[0];
+        let doc = r.document.as_ref().unwrap();
+        assert_eq!(*doc.url, url);
     }
 }

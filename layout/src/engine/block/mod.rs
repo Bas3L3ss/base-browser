@@ -1,11 +1,12 @@
 use std::todo;
 
-use css::{BoxSizing, Length, LengthContext, MaxLength, MinLength};
+use css::{ BoxSizing, Length, LengthContext, MaxLength, MinLength };
 
 use crate::{
-    Dimensions, LayoutNode, StyleComponents,
-    block::horizontal::{HorizontalEdges, HorizontalLayout, HorizontalSpecified},
-    text::inline_fragment::InlineFragment,
+    Dimensions,
+    LayoutNode,
+    StyleComponents,
+    block::horizontal::{ HorizontalEdges, HorizontalLayout, HorizontalSpecified },
 };
 
 pub mod horizontal;
@@ -27,7 +28,7 @@ impl BlockEngine {
         node: &mut Dimensions,
         style: &StyleComponents,
         parent: &Dimensions,
-        length_context: &LengthContext,
+        length_context: &LengthContext
     ) {
         match &style.height {
             Length::Auto => {
@@ -37,9 +38,7 @@ impl BlockEngine {
                 node.is_height_definite = false;
             }
             _ => {
-                let mut h = style
-                    .height
-                    .to_f32(parent.content.height, None, length_context);
+                let mut h = style.height.to_f32(parent.content.height, None, length_context);
 
                 if style.box_sizing == BoxSizing::BorderBox {
                     h -= node.padding_edges.top + node.padding_edges.bottom;
@@ -69,7 +68,7 @@ impl BlockEngine {
         node: &mut Dimensions,
         parent: &Dimensions,
         style: &StyleComponents,
-        length_context: &LengthContext,
+        length_context: &LengthContext
     ) {
         let edges = HorizontalEdges::resolve_horizontal_edges(parent, style, length_context);
 
@@ -77,25 +76,27 @@ impl BlockEngine {
             parent,
             style,
             length_context,
-            &edges,
+            &edges
         );
 
         let min_width = match &style.min_width {
             MinLength::Auto => 0.0,
             MinLength::Length(length) => length.to_f32(parent.content.width, None, length_context),
         };
-        let max_width = match &style.max_width {
-            MaxLength::None => f32::INFINITY,
-            MaxLength::Length(length) => length.to_f32(parent.content.width, None, length_context),
-        }
-        .max(min_width);
+        let max_width = (
+            match &style.max_width {
+                MaxLength::None => f32::INFINITY,
+                MaxLength::Length(length) =>
+                    length.to_f32(parent.content.width, None, length_context),
+            }
+        ).max(min_width);
 
         let layout = HorizontalLayout::solve_horizontal_constraints(
             parent.content.width,
             &edges,
             &specified,
             min_width,
-            max_width,
+            max_width
         );
         layout.apply(node, &edges);
     }
@@ -117,10 +118,11 @@ impl BlockEngine {
 
     pub(crate) fn margin_box_height(node: &LayoutNode) -> f32 {
         match node {
-            LayoutNode::Block { dimensions, .. }
+            | LayoutNode::Block { dimensions, .. }
             | LayoutNode::InlineBlock { dimensions, .. }
             | LayoutNode::AnonymousBlock { dimensions, .. } => dimensions.margin.height,
-            _ => {
+            d => {
+                dbg!(d);
                 todo!()
             }
         }
@@ -131,13 +133,17 @@ impl BlockEngine {
         dimensions: &mut Dimensions,
         style: &StyleComponents,
         parent: &Dimensions,
-        length_context: &LengthContext,
+        length_context: &LengthContext
     ) {
         if !dimensions.is_height_definite {
             Self::resolve_auto_height(children, dimensions);
 
-            dimensions.content.height =
-                Self::clamp_height(dimensions.content.height, style, parent, length_context);
+            dimensions.content.height = Self::clamp_height(
+                dimensions.content.height,
+                style,
+                parent,
+                length_context
+            );
         }
 
         Self::finalize_box_height(dimensions);
@@ -147,23 +153,26 @@ impl BlockEngine {
         h: f32,
         style: &StyleComponents,
         parent: &Dimensions,
-        length_context: &LengthContext,
+        length_context: &LengthContext
     ) -> f32 {
         let min_height = match &style.min_height {
             MinLength::Auto => 0.0,
-            MinLength::Length(length) => match length {
-                Length::Percent(_) if !parent.is_height_definite => 0.0,
-                _ => length.to_f32(parent.content.height, None, length_context),
-            },
+            MinLength::Length(length) =>
+                match length {
+                    Length::Percent(_) if !parent.is_height_definite => 0.0,
+                    _ => length.to_f32(parent.content.height, None, length_context),
+                }
         };
-        let max_height = match &style.max_height {
-            MaxLength::None => f32::INFINITY,
-            MaxLength::Length(length) => match length {
-                Length::Percent(_) if !parent.is_height_definite => f32::INFINITY,
-                _ => length.to_f32(parent.content.height, None, length_context),
-            },
-        }
-        .max(min_height);
+        let max_height = (
+            match &style.max_height {
+                MaxLength::None => f32::INFINITY,
+                MaxLength::Length(length) =>
+                    match length {
+                        Length::Percent(_) if !parent.is_height_definite => f32::INFINITY,
+                        _ => length.to_f32(parent.content.height, None, length_context),
+                    }
+            }
+        ).max(min_height);
 
         h.max(min_height).min(max_height)
     }
