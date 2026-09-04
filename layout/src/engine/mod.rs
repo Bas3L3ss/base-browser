@@ -7,15 +7,17 @@ pub mod inline;
 pub mod text;
 
 use crate::{
-    Dimensions, LayoutNode, LayoutTree,
+    Dimensions,
+    LayoutNode,
+    LayoutTree,
     block::BlockEngine,
-    text::{TextEngine, line::Line},
+    text::{ TextEngine, line::Line },
 };
-use css::{ComputedStyle, CssOm, LengthContext, LineHeight};
-use font::{FontManager, FontMetrics, FontRequest};
-use html::{Dom, NodeType};
+use css::{ ComputedStyle, CssOm, LengthContext, LineHeight };
+use font::{ FontManager, FontMetrics, FontRequest };
+use html::{ Dom, NodeType };
 use network::ResourceLoader;
-use std::{eprintln, todo};
+use std::{ eprintln, todo };
 use url::Url;
 
 pub(crate) struct LayoutContext {
@@ -54,19 +56,17 @@ impl<'a> LayoutEngine<'a> {
         cssom: &CssOm,
         font_manager: &mut FontManager,
         loader: &ResourceLoader,
-        base_url: &Url,
+        base_url: &Url
     ) {
         let root = match tree.root.as_mut() {
             Some(root) => root,
-            None => return,
+            None => {
+                return;
+            }
         };
 
         let (root_font_size, root_font_weight, loaded) = match &root {
-            LayoutNode::Block {
-                node_id,
-                dimensions: _,
-                children: _,
-            } => {
+            LayoutNode::Block { node_id, dimensions: _, children: _ } => {
                 let computed_style = computed_style
                     .get(*node_id)
                     .and_then(Option::as_ref)
@@ -79,7 +79,7 @@ impl<'a> LayoutEngine<'a> {
 
                 let font_weight = computed_style
                     .font_weight()
-                    .unwrap_or(css::FontWeight::Normal)
+                    .unwrap_or(css::values::FontWeight::Normal)
                     .to_u16(400);
 
                 let font_components = FontComponents::new(computed_style, font_weight);
@@ -90,15 +90,17 @@ impl<'a> LayoutEngine<'a> {
                         &font_components.families,
                         font_components.weight,
                         font_components.style,
-                        font_components.stretch,
+                        font_components.stretch
                     ),
                     base_url,
-                    loader,
+                    loader
                 );
 
                 (font_size, font_weight, loaded_font)
             }
-            _ => return,
+            _ => {
+                return;
+            }
         };
 
         let face = &loaded.face().expect("must always have a valid font");
@@ -145,15 +147,12 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        if let LayoutNode::Text {
-            node_id,
-            fragments,
-            height,
-        } = node
-        {
+        if let LayoutNode::Text { node_id, fragments, height } = node {
             let text = match &self.dom.nodes[*node_id].ntype {
                 NodeType::Text(text) => text,
-                _ => return,
+                _ => {
+                    return;
+                }
             };
 
             let style = self.computed_style[*node_id]
@@ -177,14 +176,14 @@ impl<'a> LayoutEngine<'a> {
                 &font_components.families,
                 font_components.weight,
                 font_components.style,
-                font_components.stretch,
+                font_components.stretch
             );
 
             let loaded_font = self.font_manager.resolve_font(
                 &self.cssom.indexes.fonts,
                 &request,
                 self.base_url,
-                self.loader,
+                self.loader
             );
 
             let face = match loaded_font.face() {
@@ -253,7 +252,7 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height,
+                            line_height
                         );
                     }
                     // Discard any pending space, and forcibly break the line.
@@ -282,7 +281,7 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height,
+                            line_height
                         );
                     }
                     // Don't emit "" for whitespace; instead, set pending_space
@@ -305,7 +304,7 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height,
+                            line_height
                         );
                     }
                     // Emit the actual whitespace character, as a slice.
@@ -323,7 +322,7 @@ impl<'a> LayoutEngine<'a> {
                         &mut current_y,
                         ascent,
                         descent,
-                        line_height,
+                        line_height
                     );
                     slice_start = idx + ch.len_utf8();
                 } else {
@@ -343,7 +342,7 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height,
+                            line_height
                         );
                         space_pending = false;
                     }
@@ -354,8 +353,9 @@ impl<'a> LayoutEngine<'a> {
             if slice_start < text.len() {
                 let substr = &text[slice_start..];
                 // If collapsing, ignore trailing all-whitespace
-                if !font_components.whitespace.collapse_spaces
-                    || !substr.chars().all(char::is_whitespace)
+                if
+                    !font_components.whitespace.collapse_spaces ||
+                    !substr.chars().all(char::is_whitespace)
                 {
                     TextEngine::layout_text_fragments(
                         fragments,
@@ -371,7 +371,7 @@ impl<'a> LayoutEngine<'a> {
                         &mut current_y,
                         ascent,
                         descent,
-                        line_height,
+                        line_height
                     );
                 }
             }
@@ -387,12 +387,7 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        if let LayoutNode::Block {
-            node_id,
-            dimensions,
-            children,
-        } = node
-        {
+        if let LayoutNode::Block { node_id, dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
 
@@ -418,8 +413,11 @@ impl<'a> LayoutEngine<'a> {
             };
 
             if let Some(new_font_size) = &style_components.font_size {
-                self.context.current_font_size =
-                    new_font_size.to_f32(parent.content.width, None, &inherited_ctx);
+                self.context.current_font_size = new_font_size.to_f32(
+                    parent.content.width,
+                    None,
+                    &inherited_ctx
+                );
             }
 
             if let Some(new_font_weight) = &style.font_weight() {
@@ -433,10 +431,10 @@ impl<'a> LayoutEngine<'a> {
                     &font_components.families,
                     font_components.weight,
                     font_components.style,
-                    font_components.stretch,
+                    font_components.stretch
                 ),
                 self.base_url,
-                self.loader,
+                self.loader
             );
             if let Ok(face) = &loaded_font.face() {
                 let metrics = FontMetrics::from_face(face);
@@ -463,7 +461,7 @@ impl<'a> LayoutEngine<'a> {
                 dimensions,
                 &style_components,
                 parent,
-                &element_ctx,
+                &element_ctx
             );
 
             BlockEngine::calculate_y(dimensions, cursor_y);
@@ -475,7 +473,7 @@ impl<'a> LayoutEngine<'a> {
                 dimensions,
                 &style_components,
                 parent,
-                &element_ctx,
+                &element_ctx
             );
 
             self.context.current_font_weight = old_font_weight;
@@ -486,12 +484,7 @@ impl<'a> LayoutEngine<'a> {
         }
     }
     fn layout_anonymous(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        if let LayoutNode::Block {
-            node_id: _,
-            dimensions,
-            children,
-        } = node
-        {
+        if let LayoutNode::Block { node_id: _, dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
 
