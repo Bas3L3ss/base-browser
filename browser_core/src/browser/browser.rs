@@ -1,39 +1,65 @@
 use std::println;
 use std::{ eprintln, sync::Arc };
 
-use anyhow::Result;
+use anyhow::{ Result, bail };
+use input_parser::Parse;
 use url::Url;
-use window::State;
+use window::{ State, Tab, TabId };
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{ Window, WindowId };
 use winit::{ event::{ WindowEvent }, event_loop::{ ControlFlow, EventLoop } };
 
-use crate::{ browser::BrowserShared, tab::tab::Tab };
+use crate::{ browser::BrowserShared };
 
 pub struct Browser<'a> {
-    state: Option<State<'a>>,
+    pub state: Option<State<'a>>,
     pub shared: BrowserShared,
-    pub tabs: Vec<Tab<'a>>,
+    pub tab_id: TabId,
 }
 
 impl<'a> Browser<'a> {
     pub fn new() -> Self {
         Self {
+            tab_id: 0,
             shared: BrowserShared::new().unwrap_or_else(|e| {
                 eprintln!("Failed to initialize BrowserShared: {}", e);
                 std::process::exit(1);
             }),
-            tabs: Vec::new(),
             state: None,
         }
     }
 
-    pub fn open_tab(&mut self, url: &'a Url) -> Result<()> {
-        let mut tab = Tab::new();
-        tab.navigate(&url, &mut self.shared)?;
-        self.tabs.push(tab);
-        Ok(())
+    pub fn open_tab(&mut self, url_str: &str) -> Result<()> {
+        let url = match Url::parse(&url_str) {
+            Ok(parsed_out) => {
+                for warning in &parsed_out.warnings {
+                    url::print_warning::print_warning(warning);
+                }
+                parsed_out.value
+            }
+            Err(err) => {
+                eprintln!("Error parsing URL: {err}");
+                return Err(err.into());
+            }
+        };
+
+        if let Some(state) = self.state.as_mut() {
+            let mut tab = Tab::new(self.tab_id);
+            self.tab_id += 1;
+            tab.navigate(
+                &url,
+                &self.shared.ua_stylesheet,
+                &self.shared.resource_loader,
+                &mut self.shared.font_manager,
+                &state.window
+            )?;
+            state.cur_tab = Some(tab.tab_id);
+            state.tabs.push(tab);
+            return Ok(());
+        } else {
+            bail!("No state found");
+        }
     }
 
     pub fn run(&mut self) {
@@ -55,6 +81,8 @@ impl<'a> ApplicationHandler for Browser<'a> {
         let state = pollster::block_on(State::new(window));
 
         self.state = Some(state);
+
+        self.open_tab(&"http://127.0.0.1:5500/simple.html").unwrap();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -125,55 +153,30 @@ impl<'a> ApplicationHandler for Browser<'a> {
             WindowEvent::RedrawRequested => {
                 if let Some(state) = self.state.as_mut() {
                     state.render();
-                    state.window.request_redraw();
                 }
             }
 
             WindowEvent::Resized(physical_size) => {
                 if let Some(state) = self.state.as_mut() {
-                    state.resize(physical_size);
+                    state.resize_physical(physical_size);
+                }
+
+                let size = if let Some(state) = self.state.as_ref() {
+                    state.window.inner_size()
+                } else {
+                    return;
+                };
+                if let Some(state) = self.state.as_mut() {
+                    if let Some(tab) = state.get_current_mut_tab() {
+                        let _ = tab.rerender(
+                            &self.shared.resource_loader,
+                            &mut self.shared.font_manager,
+                            size
+                        );
+                    }
                 }
             }
             _ => (),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use core::panic;
-    use std::assert_eq;
-
-    use super::*;
-    use input_parser::Parse;
-    use std::sync::mpsc::channel;
-    use std::thread;
-    use url::Url;
-
-    // Utility function to enforce a 3 second timeout on each test
-    fn run_with_timeout<F>(f: F) where F: FnOnce() + std::panic::UnwindSafe + Send + 'static {
-        let (tx, rx) = channel();
-        thread::spawn(move || {
-            let _ = tx.send(std::panic::catch_unwind(f));
-        });
-
-        match rx.recv_timeout(std::time::Duration::from_secs(3)) {
-            Ok(Ok(_)) => (), // Test finished successfully
-            Ok(Err(e)) => std::panic::resume_unwind(e), // Test panicked, propagate
-            Err(_) => panic!("Test timed out (took longer than 3 seconds)"),
-        }
-    }
-
-    #[test]
-    fn browser_can_create_and_open_tabs() {
-        let url = Url::parse("https://example.com").unwrap().value;
-        let mut browser = Browser::new();
-
-        browser.open_tab(&url).unwrap();
-
-        assert_eq!(browser.tabs.len(), 1);
-        let r = &browser.tabs[0];
-        let doc = r.document.as_ref().unwrap();
-        assert_eq!(*doc.url, url);
     }
 }

@@ -4,10 +4,11 @@ use wgpu::util::DeviceExt;
 pub struct TriangleMesh(pub Mesh);
 pub struct QuadMesh(pub Mesh);
 
-#[repr(C)] // C-style data layout
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vertex {
-    position: Vec3,
-    color: Vec3,
+    pub position: Vec3,
+    pub color: Vec3,
 }
 
 pub struct Mesh {
@@ -17,6 +18,7 @@ pub struct Mesh {
 
 impl Vertex {
     pub fn get_layout() -> wgpu::VertexBufferLayout<'static> {
+        // Each vertex contains position (location 0) and color (location 1), both as 3 floats.
         const ATTRIBUTES: [
             wgpu::VertexAttribute;
             2
@@ -29,62 +31,24 @@ impl Vertex {
         }
     }
 }
+pub fn make_rect_mesh(device: &wgpu::Device, rectangles: &[(f32, f32, f32, f32, Vec3)]) -> Mesh {
+    let (x, y, width, height, color) = rectangles[0];
 
-pub fn make_triangle(device: &wgpu::Device) -> Mesh {
-    // Vertices for a single triangle
-    let vertices: Vec<Vertex> = vec![
-        Vertex { position: Vec3::new(-0.75, -0.75, 0.0), color: Vec3::new(0.0, 1.0, 0.0) },
-        Vertex { position: Vec3::new(0.75, -0.75, 0.0), color: Vec3::new(0.0, 1.0, 0.0) },
-        Vertex { position: Vec3::new(0.0, 0.75, 0.0), color: Vec3::new(0.0, 1.0, 0.0) }
+    let vertices = vec![
+        Vertex { position: Vec3::new(x, y, 0.0), color },
+        Vertex { position: Vec3::new(x + width, y, 0.0), color },
+        Vertex { position: Vec3::new(x + width, y + height, 0.0), color },
+        Vertex { position: Vec3::new(x, y + height, 0.0), color }
     ];
+    println!("{vertices:?}");
 
+    let indices: Vec<u16> = vec![0, 2, 1, 2, 0, 3];
     let bytes1 = unsafe {
         std::slice::from_raw_parts(
             vertices.as_ptr() as *const u8,
             vertices.len() * std::mem::size_of::<Vertex>()
         )
     };
-
-    // Indices for the triangle (just one triangle)
-    let indices: Vec<u16> = vec![0, 1, 2];
-
-    let bytes2 = unsafe {
-        std::slice::from_raw_parts(
-            indices.as_ptr() as *const u8,
-            indices.len() * std::mem::size_of::<u16>()
-        )
-    };
-
-    let contents = &[bytes1, bytes2].concat();
-
-    let buffer_descriptor = wgpu::util::BufferInitDescriptor {
-        label: Some("Triangle buffer"),
-        contents,
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::INDEX,
-    };
-
-    let buffer = device.create_buffer_init(&buffer_descriptor);
-
-    Mesh { buffer, offset: bytes1.len() as u64 }
-}
-
-pub fn make_quad(device: &wgpu::Device) -> Mesh {
-    // Vertices for two triangles forming a square
-    let vertices: Vec<Vertex> = vec![
-        Vertex { position: Vec3::new(-0.75, -0.75, 0.0), color: Vec3::new(1.0, 0.0, 0.0) },
-        Vertex { position: Vec3::new(0.75, -0.75, 0.0), color: Vec3::new(1.0, 0.0, 0.0) },
-        Vertex { position: Vec3::new(0.75, 0.75, 0.0), color: Vec3::new(1.0, 0.0, 0.0) },
-        Vertex { position: Vec3::new(-0.75, 0.75, 0.0), color: Vec3::new(1.0, 0.0, 0.0) }
-    ];
-    // vertex_count = buffer.size() as usize / std::mem::size_of::<Vertex>();
-    let bytes1 = unsafe {
-        std::slice::from_raw_parts(
-            vertices.as_ptr() as *const u8,
-            vertices.len() * std::mem::size_of::<Vertex>()
-        )
-    };
-
-    let indices: Vec<u16> = vec![0, 1, 2, 2, 3, 0];
 
     let bytes2 = unsafe {
         std::slice::from_raw_parts(

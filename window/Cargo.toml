@@ -13,4 +13,13 @@ glm = "0.3.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 glfw = "0.62.0"
 utils = {path = "../utils"}
+anyhow = "1.0.104"
 render = {path = "../render"}
+url ={path = "../url"}
+input_parser = { path = "../input_parser" }
+network = {path = "../network"}
+layout = {path = "../layout"}
+html ={ path="../html" }
+css = {path="../css"}
+font = {path="../font"}
+rand ="0.10.2"

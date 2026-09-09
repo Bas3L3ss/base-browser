@@ -1,13 +1,22 @@
-use anyhow::{Result, anyhow};
-use html::{Dom, NodeType, StyleSheetRef};
+use anyhow::{ Result, anyhow };
+use html::{ Dom, NodeType, StyleSheetRef };
 use network::ResourceLoader;
-use std::{println, vec};
+use std::{ vec };
 use url::Url;
 use utils::profile_scope;
 
 use crate::{
-    Cascade, CascadeSource, ComputedStyle, CssOm, CssRule, ImportRule, Inheritance, Matcher,
-    Origin, Parser, Tokenizer,
+    Cascade,
+    CascadeSource,
+    ComputedStyle,
+    CssOm,
+    CssRule,
+    ImportRule,
+    Inheritance,
+    Matcher,
+    Origin,
+    Parser,
+    Tokenizer,
 };
 
 pub struct StyleContext<'a> {
@@ -38,7 +47,7 @@ impl<'a> StyleEngine<'a> {
         &self,
         cssom: &mut CssOm,
         source: &str,
-        loader: &ResourceLoader,
+        loader: &ResourceLoader
     ) -> Result<()> {
         let tokens = Tokenizer::from_string(source);
         let mut parser = Parser::new(&tokens);
@@ -66,13 +75,12 @@ impl<'a> StyleEngine<'a> {
         dom: &Dom,
         loader: &ResourceLoader,
         stylesheet: &StyleSheetRef,
-        base_url: &Url,
+        base_url: &Url
     ) -> anyhow::Result<String> {
         profile_scope!("Load StyleSheet");
         match stylesheet {
             StyleSheetRef::InlineStyle(node_id) => {
-                let child = dom.nodes[*node_id]
-                    .children
+                let child = dom.nodes[*node_id].children
                     .get(0)
                     .ok_or_else(|| anyhow!("inline style node does not have a child"))?;
 
@@ -83,12 +91,11 @@ impl<'a> StyleEngine<'a> {
             }
             StyleSheetRef::StyleSheetLink(node_id) => {
                 let href = match &dom.nodes[*node_id].ntype {
-                    NodeType::Element(element) => element
-                        .attributes
-                        .href
-                        .as_ref()
-                        .ok_or_else(|| anyhow!("missing href"))?,
-                    _ => return Err(anyhow!("expected element")),
+                    NodeType::Element(element) =>
+                        element.attributes.href.as_ref().ok_or_else(|| anyhow!("missing href"))?,
+                    _ => {
+                        return Err(anyhow!("expected element"));
+                    }
                 };
                 loader.load_css(base_url, href)
             }
@@ -125,7 +132,7 @@ impl<'a> StyleEngine<'a> {
         dom: &Dom,
         node_id: usize,
         styled_nodes: &mut [Option<ComputedStyle>],
-        cssom: &CssOm,
+        cssom: &CssOm
     ) {
         let node = &dom.nodes[node_id];
 
@@ -149,8 +156,12 @@ impl<'a> StyleEngine<'a> {
                 let author_candidates = cssom.lookup_candidates(element);
                 let ua_candidates = self.context.ua_cssom.lookup_candidates(element);
 
-                let ua_matches =
-                    Matcher::match_rules(node, dom, &ua_candidates, &self.context.ua_cssom);
+                let ua_matches = Matcher::match_rules(
+                    node,
+                    dom,
+                    &ua_candidates,
+                    &self.context.ua_cssom
+                );
 
                 let author_matches = Matcher::match_rules(node, dom, &author_candidates, &cssom);
 
@@ -167,7 +178,7 @@ impl<'a> StyleEngine<'a> {
                             matches: author_matches,
                             cssom: &cssom,
                         },
-                    ],
+                    ]
                 );
 
                 if let Some(_parent_style) = parent_style_opt {

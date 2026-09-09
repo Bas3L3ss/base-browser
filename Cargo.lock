@@ -1359,6 +1359,7 @@ dependencies = [
  "network",
  "ttf-parser",
  "url",
+ "winit",
 ]
 
 [[package]]
@@ -2509,6 +2510,7 @@ dependencies = [
  "glfw",
  "glm",
  "image",
+ "layout",
  "log",
  "pollster",
  "wgpu",
@@ -3545,13 +3547,22 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 name = "window"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "css",
  "env_logger",
+ "font",
  "glfw",
  "glm",
+ "html",
  "image",
+ "input_parser",
+ "layout",
  "log",
+ "network",
  "pollster",
+ "rand 0.10.2",
  "render",
+ "url",
  "utils",
  "wgpu",
  "winit",

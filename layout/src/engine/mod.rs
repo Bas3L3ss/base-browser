@@ -2,6 +2,7 @@ pub(crate) use style_components::*;
 pub mod font_components;
 pub mod style_components;
 pub use font_components::*;
+use winit::{ dpi::PhysicalSize };
 pub mod block;
 pub mod inline;
 pub mod text;
@@ -10,6 +11,7 @@ use crate::{
     Dimensions,
     LayoutNode,
     LayoutTree,
+    Rect,
     block::BlockEngine,
     text::{ TextEngine, line::Line },
 };
@@ -50,14 +52,16 @@ pub struct LayoutEngine<'a> {
 impl<'a> LayoutEngine<'a> {
     pub fn layout(
         tree: &mut LayoutTree,
-        viewport: Dimensions,
         computed_style: &[Option<ComputedStyle>],
         dom: &Dom,
         cssom: &CssOm,
         font_manager: &mut FontManager,
         loader: &ResourceLoader,
-        base_url: &Url
+        base_url: &Url,
+        size: PhysicalSize<u32>
     ) {
+        let width = size.width as f32;
+        let height = size.height as f32;
         let root = match tree.root.as_mut() {
             Some(root) => root,
             None => {
@@ -107,13 +111,13 @@ impl<'a> LayoutEngine<'a> {
         let metrics = FontMetrics::from_face(face);
 
         let context = LayoutContext {
-            viewport_height: viewport.content.height,
-            viewport_width: viewport.content.width,
+            viewport_height: height,
+            viewport_width: width,
             root_font_size,
             current_font_size: root_font_size,
             current_font_weight: root_font_weight,
             pending_space: false,
-            line_remaining_width: viewport.content.width,
+            line_remaining_width: width,
             ch_width: metrics.ch(&face, root_font_size),
             ex_height: metrics.x_height,
             current_line: None,
@@ -129,7 +133,15 @@ impl<'a> LayoutEngine<'a> {
             base_url,
         };
 
-        engine.layout_node(root, &viewport, viewport.content.y);
+        engine.layout_node(
+            root,
+            &(Dimensions {
+                content: Rect { width, height, ..Default::default() },
+                is_height_definite: true,
+                ..Default::default()
+            }),
+            0.0
+        );
     }
 
     fn layout_node(&mut self, node: &mut LayoutNode, containing_block: &Dimensions, cursor_y: f32) {
@@ -376,6 +388,7 @@ impl<'a> LayoutEngine<'a> {
                 }
             }
 
+            *height = current_y + line_height - cursor_y;
             self.context.pending_space = if font_components.whitespace.collapse_spaces {
                 space_pending
             } else {
@@ -483,8 +496,9 @@ impl<'a> LayoutEngine<'a> {
             self.context.ex_height = old_ex_height;
         }
     }
+
     fn layout_anonymous(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        if let LayoutNode::Block { node_id: _, dimensions, children } = node {
+        if let LayoutNode::AnonymousBlock { dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
 

@@ -12,6 +12,3 @@ pub use bind_group::*;
 
 pub mod material;
 pub use material::*;
-
-pub mod uniform_buffer_object;
-pub use uniform_buffer_object::*;

@@ -1,5 +1,3 @@
-use std::todo;
-
 use css::{ BoxSizing, Length, LengthContext, MaxLength, MinLength };
 
 use crate::{
@@ -121,10 +119,8 @@ impl BlockEngine {
             | LayoutNode::Block { dimensions, .. }
             | LayoutNode::InlineBlock { dimensions, .. }
             | LayoutNode::AnonymousBlock { dimensions, .. } => dimensions.margin.height,
-            d => {
-                dbg!(d);
-                todo!()
-            }
+            LayoutNode::Text { height, .. } => *height,
+            LayoutNode::Inline { .. } => 0.0,
         }
     }
 
@@ -157,11 +153,12 @@ impl BlockEngine {
     ) -> f32 {
         let min_height = match &style.min_height {
             MinLength::Auto => 0.0,
-            MinLength::Length(length) =>
+            MinLength::Length(length) => {
                 match length {
-                    Length::Percent(_) if !parent.is_height_definite => 0.0,
-                    _ => length.to_f32(parent.content.height, None, length_context),
+                    Length::Percent(_) if !parent.is_height_definite => { 0.0 }
+                    _ => { length.to_f32(parent.content.height, None, length_context) }
                 }
+            }
         };
         let max_height = (
             match &style.max_height {
