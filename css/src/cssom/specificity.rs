@@ -1,7 +1,11 @@
 use std::ops::AddAssign;
 
 use crate::cssom::selector::{
-    Combinator, ComplexSelector, CompoundSelector, PseudoArg, SimpleSelector,
+    Combinator,
+    ComplexSelector,
+    CompoundSelector,
+    PseudoArg,
+    SimpleSelector,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -55,7 +59,7 @@ impl Specificity {
     /// Entry point: compute specificity for a ComplexSelector.
     pub fn compute_complex_selector(
         first: &CompoundSelector,
-        rest: &[(Combinator, CompoundSelector)],
+        rest: &[(Combinator, CompoundSelector)]
     ) -> Self {
         let mut spec = Self::compute_compound_selector(first);
 
@@ -95,7 +99,7 @@ impl Specificity {
             // :where() specificity is always zero, regardless of children
             ("where", Some(PseudoArg::SelectorList(_))) => Self::ZERO,
             // :is/:not/:has: max specificity of their selector list arg
-            ("is", Some(PseudoArg::SelectorList(list)))
+            | ("is", Some(PseudoArg::SelectorList(list)))
             | ("not", Some(PseudoArg::SelectorList(list)))
             | ("has", Some(PseudoArg::SelectorList(list))) => Self::compute_selector_list(list),
             // Non-functional (no arg), or functional but not in list above: (0,1,0)
@@ -115,12 +119,12 @@ impl Specificity {
 
 #[cfg(test)]
 mod tests {
-    use std::{assert_eq, vec};
+    use std::{ assert_eq, vec };
 
     use super::*;
     use crate::cssom::{
         component_value::ComponentValue,
-        selector::{Combinator, ComplexSelector, CompoundSelector, PseudoArg, SimpleSelector},
+        selector::{ Combinator, ComplexSelector, CompoundSelector, PseudoArg, SimpleSelector },
     };
 
     // --- Helper functions for constructing selectors ---
@@ -134,7 +138,7 @@ mod tests {
 
     fn complex(
         first: CompoundSelector,
-        rest: Vec<(Combinator, CompoundSelector)>,
+        rest: Vec<(Combinator, CompoundSelector)>
     ) -> ComplexSelector {
         ComplexSelector::new(first, rest)
     }
@@ -184,14 +188,11 @@ mod tests {
     #[test]
     fn test_simple_selectors_specificity() {
         // Type selector: "div"
-        assert_eq!(
-            Specificity::compute_compound_selector(&simple(type_selector())),
-            Specificity {
-                ids: 0,
-                classes: 0,
-                types: 1
-            }
-        );
+        assert_eq!(Specificity::compute_compound_selector(&simple(type_selector())), Specificity {
+            ids: 0,
+            classes: 0,
+            types: 1,
+        });
 
         // Universal selector: "*"
         assert_eq!(
@@ -199,39 +200,30 @@ mod tests {
             Specificity {
                 ids: 0,
                 classes: 0,
-                types: 0
+                types: 0,
             }
         );
 
         // ID selector: "#foo"
-        assert_eq!(
-            Specificity::compute_compound_selector(&simple(id_selector())),
-            Specificity {
-                ids: 1,
-                classes: 0,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_compound_selector(&simple(id_selector())), Specificity {
+            ids: 1,
+            classes: 0,
+            types: 0,
+        });
 
         // Class selector: ".foo"
-        assert_eq!(
-            Specificity::compute_compound_selector(&simple(class_selector())),
-            Specificity {
-                ids: 0,
-                classes: 1,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_compound_selector(&simple(class_selector())), Specificity {
+            ids: 0,
+            classes: 1,
+            types: 0,
+        });
 
         // Attribute selector: [a]
-        assert_eq!(
-            Specificity::compute_compound_selector(&simple(attr_selector())),
-            Specificity {
-                ids: 0,
-                classes: 1,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_compound_selector(&simple(attr_selector())), Specificity {
+            ids: 0,
+            classes: 1,
+            types: 0,
+        });
 
         // Pseudo-element selector: ::before
         assert_eq!(
@@ -239,7 +231,7 @@ mod tests {
             Specificity {
                 ids: 0,
                 classes: 0,
-                types: 1
+                types: 1,
             }
         );
 
@@ -249,7 +241,7 @@ mod tests {
             Specificity {
                 ids: 0,
                 classes: 1,
-                types: 0
+                types: 0,
             }
         );
     }
@@ -257,22 +249,21 @@ mod tests {
     #[test]
     fn test_compound_selectors_specificity() {
         // "div.foo#id[attr]:hover::before" = type (1) + class (1) + id (1) + attr (1) + pseudo-class (1) + pseudo-element (1 type)
-        let s = compound(vec![
-            type_selector(),           // 1 type
-            class_selector(),          // 1 class
-            id_selector(),             // 1 id
-            attr_selector(),           // 1 class
-            pseudo_class_selector(),   // 1 class
-            pseudo_element_selector(), // 1 type
-        ]);
-        assert_eq!(
-            Specificity::compute_compound_selector(&s),
-            Specificity {
-                ids: 1,
-                classes: 3,
-                types: 2
-            }
+        let s = compound(
+            vec![
+                type_selector(), // 1 type
+                class_selector(), // 1 class
+                id_selector(), // 1 id
+                attr_selector(), // 1 class
+                pseudo_class_selector(), // 1 class
+                pseudo_element_selector() // 1 type
+            ]
         );
+        assert_eq!(Specificity::compute_compound_selector(&s), Specificity {
+            ids: 1,
+            classes: 3,
+            types: 2,
+        });
     }
 
     #[test]
@@ -284,38 +275,34 @@ mod tests {
                 (Combinator::Child, simple(class_selector())), // > .foo
                 (
                     Combinator::Descendant,
-                    compound(vec![
-                        class_selector(),
-                        id_selector(), // .bar#id
-                    ]),
-                ),
-            ],
+                    compound(
+                        vec![
+                            class_selector(),
+                            id_selector() // .bar#id
+                        ]
+                    ),
+                )
+            ]
         );
-        assert_eq!(
-            s.specificity,
-            Specificity {
-                ids: 1,
-                classes: 2,
-                types: 1
-            }
-        );
+        assert_eq!(s.specificity, Specificity {
+            ids: 1,
+            classes: 2,
+            types: 1,
+        });
 
         // Check all combinators: they should NOT change specificity
         let s2 = complex(
             simple(type_selector()), // div
             vec![
                 (Combinator::AdjacentSibling, simple(attr_selector())), // + [a]
-                (Combinator::GeneralSibling, simple(pseudo_class_selector())), // ~ :hover
-            ],
+                (Combinator::GeneralSibling, simple(pseudo_class_selector())) // ~ :hover
+            ]
         );
-        assert_eq!(
-            s2.specificity,
-            Specificity {
-                ids: 0,
-                classes: 2,
-                types: 1
-            }
-        );
+        assert_eq!(s2.specificity, Specificity {
+            ids: 0,
+            classes: 2,
+            types: 1,
+        });
     }
 
     #[test]
@@ -323,70 +310,69 @@ mod tests {
         // :is(.foo, #id, div[attr])
         let pseudo = SimpleSelector::PseudoClass(
             "is".into(),
-            Some(pseudo_list(vec![
-                complex(simple(class_selector()), vec![]), // .foo: class (0,1,0)
-                complex(simple(id_selector()), vec![]),    // #id:   id (1,0,0)
-                complex(compound(vec![type_selector(), attr_selector()]), vec![]), // div[attr]: type+class (0,1,1)
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(simple(class_selector()), vec![]), // .foo: class (0,1,0)
+                        complex(simple(id_selector()), vec![]), // #id:   id (1,0,0)
+                        complex(compound(vec![type_selector(), attr_selector()]), vec![]) // div[attr]: type+class (0,1,1)
+                    ]
+                )
+            )
         );
         // For :is(), specificity is max of arg selectors. Here: #id is (1,0,0)
-        assert_eq!(
-            Specificity::compute_simple_selector(&pseudo),
-            Specificity {
-                ids: 1,
-                classes: 0,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&pseudo), Specificity {
+            ids: 1,
+            classes: 0,
+            types: 0,
+        });
 
         // :not(div, .foo[attr])
         let pseudo = SimpleSelector::PseudoClass(
             "not".into(),
-            Some(pseudo_list(vec![
-                complex(simple(type_selector()), vec![]), // div: (0,0,1)
-                complex(compound(vec![class_selector(), attr_selector()]), vec![]), // .foo[attr]: (0,2,0)
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(simple(type_selector()), vec![]), // div: (0,0,1)
+                        complex(compound(vec![class_selector(), attr_selector()]), vec![]) // .foo[attr]: (0,2,0)
+                    ]
+                )
+            )
         );
         // max is (0,2,1)
-        assert_eq!(
-            Specificity::compute_simple_selector(&pseudo),
-            Specificity {
-                ids: 0,
-                classes: 2,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&pseudo), Specificity {
+            ids: 0,
+            classes: 2,
+            types: 0,
+        });
 
         // :has(#a.b)
         let pseudo = SimpleSelector::PseudoClass(
             "has".into(),
-            Some(pseudo_list(vec![complex(
-                compound(vec![id_selector(), class_selector()]),
-                vec![],
-            )])),
+            Some(
+                pseudo_list(vec![complex(compound(vec![id_selector(), class_selector()]), vec![])])
+            )
         );
-        assert_eq!(
-            Specificity::compute_simple_selector(&pseudo),
-            Specificity {
-                ids: 1,
-                classes: 1,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&pseudo), Specificity {
+            ids: 1,
+            classes: 1,
+            types: 0,
+        });
 
         // :where(#id, .foo, div[attr]) -- always zero
         let pseudo = SimpleSelector::PseudoClass(
             "where".into(),
-            Some(pseudo_list(vec![
-                complex(simple(class_selector()), vec![]),
-                complex(simple(id_selector()), vec![]),
-                complex(compound(vec![type_selector(), attr_selector()]), vec![]),
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(simple(class_selector()), vec![]),
+                        complex(simple(id_selector()), vec![]),
+                        complex(compound(vec![type_selector(), attr_selector()]), vec![])
+                    ]
+                )
+            )
         );
-        assert_eq!(
-            Specificity::compute_simple_selector(&pseudo),
-            Specificity::ZERO
-        )
+        assert_eq!(Specificity::compute_simple_selector(&pseudo), Specificity::ZERO)
     }
 
     #[test]
@@ -394,98 +380,131 @@ mod tests {
         // :is(:not(#a, .foo), .bar)
         let nested = SimpleSelector::PseudoClass(
             "is".into(),
-            Some(pseudo_list(vec![
-                complex(
-                    compound(vec![SimpleSelector::PseudoClass(
-                        "not".into(),
-                        Some(pseudo_list(vec![
-                            complex(simple(id_selector()), vec![]),    // #a: (1,0,0)
-                            complex(simple(class_selector()), vec![]), // .foo: (0,1,0)
-                        ])),
-                    )]),
-                    vec![],
-                ),
-                complex(simple(class_selector()), vec![]), // .bar
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(
+                            compound(
+                                vec![
+                                    SimpleSelector::PseudoClass(
+                                        "not".into(),
+                                        Some(
+                                            pseudo_list(
+                                                vec![
+                                                    complex(simple(id_selector()), vec![]), // #a: (1,0,0)
+                                                    complex(simple(class_selector()), vec![]) // .foo: (0,1,0)
+                                                ]
+                                            )
+                                        )
+                                    )
+                                ]
+                            ),
+                            vec![]
+                        ),
+                        complex(simple(class_selector()), vec![]) // .bar
+                    ]
+                )
+            )
         );
         // :not() max is (1,0,0), .bar is (0,1,0) - so :is() returns (1,0,0)
-        assert_eq!(
-            Specificity::compute_simple_selector(&nested),
-            Specificity {
-                ids: 1,
-                classes: 0,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&nested), Specificity {
+            ids: 1,
+            classes: 0,
+            types: 0,
+        });
 
         // Deeply nested: :is(:not(:has(div)), :where(#id))
         let deep = SimpleSelector::PseudoClass(
             "is".into(),
-            Some(pseudo_list(vec![
-                complex(
-                    compound(vec![SimpleSelector::PseudoClass(
-                        "not".into(),
-                        Some(pseudo_list(vec![complex(
-                            compound(vec![SimpleSelector::PseudoClass(
-                                "has".into(),
-                                Some(pseudo_list(vec![
-                                    complex(simple(type_selector()), vec![]), // div: (0,0,1)
-                                ])),
-                            )]),
-                            vec![],
-                        )])),
-                    )]),
-                    vec![],
-                ),
-                complex(
-                    compound(vec![SimpleSelector::PseudoClass(
-                        "where".into(),
-                        Some(pseudo_list(vec![complex(simple(id_selector()), vec![])])),
-                    )]),
-                    vec![],
-                ),
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(
+                            compound(
+                                vec![
+                                    SimpleSelector::PseudoClass(
+                                        "not".into(),
+                                        Some(
+                                            pseudo_list(
+                                                vec![
+                                                    complex(
+                                                        compound(
+                                                            vec![
+                                                                SimpleSelector::PseudoClass(
+                                                                    "has".into(),
+                                                                    Some(
+                                                                        pseudo_list(
+                                                                            vec![
+                                                                                complex(
+                                                                                    simple(
+                                                                                        type_selector()
+                                                                                    ),
+                                                                                    vec![]
+                                                                                ) // div: (0,0,1)
+                                                                            ]
+                                                                        )
+                                                                    )
+                                                                )
+                                                            ]
+                                                        ),
+                                                        vec![]
+                                                    )
+                                                ]
+                                            )
+                                        )
+                                    )
+                                ]
+                            ),
+                            vec![]
+                        ),
+                        complex(
+                            compound(
+                                vec![
+                                    SimpleSelector::PseudoClass(
+                                        "where".into(),
+                                        Some(
+                                            pseudo_list(
+                                                vec![complex(simple(id_selector()), vec![])]
+                                            )
+                                        )
+                                    )
+                                ]
+                            ),
+                            vec![]
+                        )
+                    ]
+                )
+            )
         );
         // :has(div) = (0,0,1), :not(:has(...)) = (0,0,1), :where(#id)=0, so max is (0,0,1)
-        assert_eq!(
-            Specificity::compute_simple_selector(&deep),
-            Specificity {
-                ids: 0,
-                classes: 0,
-                types: 1
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&deep), Specificity {
+            ids: 0,
+            classes: 0,
+            types: 1,
+        });
     }
 
     #[test]
     fn test_unknown_pseudo_classes() {
         // Non-functional unknown pseudo-class: :foobar
         let sel = SimpleSelector::PseudoClass("foobar".into(), None);
-        assert_eq!(
-            Specificity::compute_simple_selector(&sel),
-            Specificity {
-                ids: 0,
-                classes: 1,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&sel), Specificity {
+            ids: 0,
+            classes: 1,
+            types: 0,
+        });
 
         // Functional but unknown pseudo-class: :foobar(...)
         let sel = SimpleSelector::PseudoClass(
             "foobar".into(),
-            Some(PseudoArg::Values(vec![ComponentValue::Ident(
-                "somearg".to_string(),
-            )])),
+            Some(PseudoArg::Values(vec![ComponentValue::Ident("somearg".to_string())]))
         );
         // Should count as a class selector (0,1,0)
-        assert_eq!(
-            Specificity::compute_simple_selector(&sel),
-            Specificity {
-                ids: 0,
-                classes: 1,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_simple_selector(&sel), Specificity {
+            ids: 0,
+            classes: 1,
+            types: 0,
+        });
     }
 
     #[test]
@@ -495,29 +514,23 @@ mod tests {
 
         // Single selector
         let one = vec![complex(simple(type_selector()), vec![])]; // div: (0,0,1)
-        assert_eq!(
-            Specificity::compute_selector_list(&one),
-            Specificity {
-                ids: 0,
-                classes: 0,
-                types: 1
-            }
-        );
+        assert_eq!(Specificity::compute_selector_list(&one), Specificity {
+            ids: 0,
+            classes: 0,
+            types: 1,
+        });
 
         // Multiple, use max
         let many = vec![
-            complex(simple(type_selector()), vec![]),  // (0,0,1)
-            complex(simple(id_selector()), vec![]),    // (1,0,0)
-            complex(simple(class_selector()), vec![]), // (0,1,0)
+            complex(simple(type_selector()), vec![]), // (0,0,1)
+            complex(simple(id_selector()), vec![]), // (1,0,0)
+            complex(simple(class_selector()), vec![]) // (0,1,0)
         ];
-        assert_eq!(
-            Specificity::compute_selector_list(&many),
-            Specificity {
-                ids: 1,
-                classes: 0,
-                types: 0
-            }
-        );
+        assert_eq!(Specificity::compute_selector_list(&many), Specificity {
+            ids: 1,
+            classes: 0,
+            types: 0,
+        });
     }
 
     #[test]
@@ -554,14 +567,11 @@ mod tests {
         assert!(id2 > id);
         assert!(c2t1 > class);
         assert!(c2t1 > typ);
-        assert_eq!(
-            id,
-            Specificity {
-                ids: 1,
-                classes: 0,
-                types: 0
-            }
-        );
+        assert_eq!(id, Specificity {
+            ids: 1,
+            classes: 0,
+            types: 0,
+        });
         assert_eq!(typ, typ);
     }
 
@@ -578,14 +588,11 @@ mod tests {
             classes: 2,
             types: 0,
         };
-        assert_eq!(
-            s,
-            Specificity {
-                ids: 1,
-                classes: 2,
-                types: 1
-            }
-        );
+        assert_eq!(s, Specificity {
+            ids: 1,
+            classes: 2,
+            types: 1,
+        });
     }
 
     #[test]
@@ -604,39 +611,36 @@ mod tests {
         // :active     (0,1,0)
         let pseudo_is = SimpleSelector::PseudoClass(
             "is".into(),
-            Some(pseudo_list(vec![
-                complex(simple(class_selector()), vec![]), // .a
-                complex(simple(id_selector()), vec![]),    // #b
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(simple(class_selector()), vec![]), // .a
+                        complex(simple(id_selector()), vec![]) // #b
+                    ]
+                )
+            )
         );
-        let part1 = compound(vec![
-            id_selector(),
-            class_selector(),
-            attr_selector(),
-            pseudo_class_selector(),
-        ]);
+        let part1 = compound(
+            vec![id_selector(), class_selector(), attr_selector(), pseudo_class_selector()]
+        );
         let part2 = compound(vec![type_selector(), pseudo_element_selector(), pseudo_is]);
-        let part3 = compound(vec![
-            class_selector(),
-            attr_selector(),
-            SimpleSelector::PseudoClass("active".into(), None),
-        ]);
-        // Main complex chain: part1 > part2 . part3
-        let cx = complex(
-            part1,
-            vec![(Combinator::Child, part2), (Combinator::Descendant, part3)],
+        let part3 = compound(
+            vec![
+                class_selector(),
+                attr_selector(),
+                SimpleSelector::PseudoClass("active".into(), None)
+            ]
         );
+        // Main complex chain: part1 > part2 . part3
+        let cx = complex(part1, vec![(Combinator::Child, part2), (Combinator::Descendant, part3)]);
         // Calc: ids=1 (from #foo) + 1 (from :is) = 2
         // classes=1(.bar)+1([attr])+1(:hover)+1(.c)+1([attr2])+1(:active)=6
         // types=1(div)+1(::before)=2
-        assert_eq!(
-            cx.specificity,
-            Specificity {
-                ids: 2,
-                classes: 6,
-                types: 2
-            }
-        );
+        assert_eq!(cx.specificity, Specificity {
+            ids: 2,
+            classes: 6,
+            types: 2,
+        });
     }
 
     #[test]
@@ -652,44 +656,51 @@ mod tests {
         // :has(.c) as a selector list pseudo argument
         let has_selector = SimpleSelector::PseudoClass(
             "has".into(),
-            Some(pseudo_list(vec![
-                complex(simple(class_selector()), vec![]), // .c
-            ])),
+            Some(
+                pseudo_list(
+                    vec![
+                        complex(simple(class_selector()), vec![]) // .c
+                    ]
+                )
+            )
         );
         // #b:has(.c) as a ComplexSelector
         let not_complex = complex(
-            compound(vec![
-                SimpleSelector::Id("b".into()), // #b
-                has_selector,                   // :has(.c)
-            ]),
-            vec![],
+            compound(
+                vec![
+                    SimpleSelector::Id("b".into()), // #b
+                    has_selector // :has(.c)
+                ]
+            ),
+            vec![]
         );
         // :not(#b:has(.c)) with correct pseudo arg (SelectorList)
-        let not_selector =
-            SimpleSelector::PseudoClass("not".into(), Some(pseudo_list(vec![not_complex])));
+        let not_selector = SimpleSelector::PseudoClass(
+            "not".into(),
+            Some(pseudo_list(vec![not_complex]))
+        );
 
         // .a:not(#b:has(.c)) as a CompoundSelector
-        let is_compound = compound(vec![
-            class_selector(), // .a
-            not_selector,     // :not(...)
-        ]);
+        let is_compound = compound(
+            vec![
+                class_selector(), // .a
+                not_selector // :not(...)
+            ]
+        );
 
         // :is(.a:not(#b:has(.c))) with correct pseudo arg (SelectorList)
         let is_selector = SimpleSelector::PseudoClass(
             "is".into(),
-            Some(pseudo_list(vec![complex(is_compound.clone(), vec![])])),
+            Some(pseudo_list(vec![complex(is_compound.clone(), vec![])]))
         );
 
         // div:is(.a:not(#b:has(.c)))
         let outer = compound(vec![type_selector(), is_selector]);
 
-        assert_eq!(
-            Specificity::compute_compound_selector(&outer),
-            Specificity {
-                ids: 1,
-                classes: 2,
-                types: 1
-            }
-        );
+        assert_eq!(Specificity::compute_compound_selector(&outer), Specificity {
+            ids: 1,
+            classes: 2,
+            types: 1,
+        });
     }
 }

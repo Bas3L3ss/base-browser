@@ -449,6 +449,7 @@ impl<'a> LayoutEngine<'a> {
                 self.base_url,
                 self.loader
             );
+
             if let Ok(face) = &loaded_font.face() {
                 let metrics = FontMetrics::from_face(face);
                 self.context.ch_width = metrics.ch(face, self.context.current_font_size);
