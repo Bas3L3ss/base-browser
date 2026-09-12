@@ -10,13 +10,12 @@ use crate::Rect;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Dimensions {
     pub content: Rect,
-    pub padding: Rect,
-    pub border: Rect,
-    pub margin: Rect,
-
-    pub padding_edges: Edges<f32>,
-    pub border_edges: Edges<f32>,
-    pub margin_edges: Edges<f32>,
+    pub padding: Edges<f32>,
+    pub border: Edges<f32>,
+    pub margin: Edges<f32>,
 
     pub is_height_definite: bool,
+    pub is_border_box: bool,
+    pub reserved_border_left: f32,
+    pub reserved_padding_left: f32,
 }

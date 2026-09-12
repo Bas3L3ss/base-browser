@@ -1,3 +1,4 @@
+use glm::Vec4;
 use render::{ Material, Mesh, bind_group_layout, make_rect_mesh, mesh_builder, pipeline };
 
 pub mod tab;
@@ -76,35 +77,10 @@ impl<'a> State<'a> {
 
         let supported_color_spaces = surface_capabilities.color_spaces(surface_format);
 
-        // Reordered based on HDR/wide gamut priority, then SDR, then fallback.
-        let chosen_color_space = match () {
-            // Prioritize HDR color spaces if available
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::BT2100_PQ) => {
-                wgpu::SurfaceColorSpace::Bt2100Pq
-            }
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::BT2100_HLG) => {
-                wgpu::SurfaceColorSpace::Bt2100Hlg
-            }
-            // Wide-gamut SDR
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::EXTENDED_DISPLAY_P3) => {
-                wgpu::SurfaceColorSpace::ExtendedDisplayP3
-            }
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::DISPLAY_P3) => {
-                wgpu::SurfaceColorSpace::DisplayP3
-            }
-            // Extended range
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::EXTENDED_SRGB) => {
-                wgpu::SurfaceColorSpace::ExtendedSrgb
-            }
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::EXTENDED_SRGB_LINEAR) => {
-                wgpu::SurfaceColorSpace::ExtendedSrgbLinear
-            }
-            // Default/fallback to standard sRGB if still not matched
-            _ if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::SRGB) => {
-                wgpu::SurfaceColorSpace::Srgb
-            }
-            // Fallback to Auto
-            _ => { wgpu::SurfaceColorSpace::Auto }
+        let chosen_color_space = if supported_color_spaces.contains(wgpu::SurfaceColorSpaces::SRGB) {
+            wgpu::SurfaceColorSpace::Srgb
+        } else {
+            wgpu::SurfaceColorSpace::Auto
         };
 
         let config = wgpu::SurfaceConfiguration {
@@ -134,7 +110,7 @@ impl<'a> State<'a> {
             &queue,
             "Default Material",
             &material_bind_group_layout,
-            [232, 222, 90, 3]
+            [255, 255, 255, 255]
         );
 
         let render_pipeline: wgpu::RenderPipeline;
@@ -250,7 +226,8 @@ impl<'a> State<'a> {
                 let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
                 render_pass.set_pipeline(&self.render_pipeline);
                 let size = self.window.inner_size();
-                self.render_layout_tree(&root, &mut render_pass, 0, size);
+                dbg!(&document.computed_styles[8]);
+                self.render_layout_tree(&root, &mut render_pass, 0, size, &document);
             }
 
             let event: wgpu::SubmissionIndex = self.queue.submit(
@@ -285,25 +262,52 @@ impl<'a> State<'a> {
         node: &LayoutNode,
         render_pass: &mut wgpu::RenderPass,
         depth: usize,
-        size: PhysicalSize<u32>
+        size: PhysicalSize<u32>,
+        document: &Document
     ) {
         println!("---------------------------------------------------------------------------");
         println!("{node:?}");
-
+        let node_id = node.node_id();
+        match node_id {
+            Some(id) => {
+                let color = match document.computed_styles.get(id) {
+                    Some(Some(style)) => {
+                        let bg_color = style.bg_color();
+                        Some(glm::Vector4 {
+                            x: bg_color[0],
+                            y: bg_color[1],
+                            z: bg_color[2],
+                            w: bg_color[3],
+                        })
+                    }
+                    _ => { None }
+                };
+                self.render_node(node, render_pass, depth, size, document, color);
+            }
+            None => {
+                self.render_node(node, render_pass, depth, size, document, None);
+            }
+        }
+    }
+    fn render_node(
+        &self,
+        node: &LayoutNode,
+        render_pass: &mut wgpu::RenderPass,
+        depth: usize,
+        size: PhysicalSize<u32>,
+        document: &Document,
+        color: Option<Vec4>
+    ) {
         if let Some(dim) = node.dimensions() {
-            // Generate a random pastel color
-            let color = glm::vec3(
-                rand::random::<f32>() * 0.6 + 0.2,
-                rand::random::<f32>() * 0.6 + 0.2,
-                rand::random::<f32>() * 0.6 + 0.2
-            );
+            let color = color.unwrap_or(glm::vec4(1.0, 0.0, 0.0, 1.0));
+
+            dbg!(&color);
 
             let x_ndc = (2.0 * dim.content.x) / (size.width as f32) - 1.0;
             let y_ndc = 1.0 - (2.0 * dim.content.y) / (size.height as f32);
 
             let width_ndc = (2.0 * dim.content.width) / (size.width as f32);
             let height_ndc = (-2.0 * dim.content.height) / (size.height as f32);
-            println!("{x_ndc}, {y_ndc}, {width_ndc}, {height_ndc}");
 
             let rects = [(x_ndc, y_ndc, width_ndc, height_ndc, color)];
 
@@ -311,7 +315,7 @@ impl<'a> State<'a> {
             self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
 
             for child in node.children() {
-                self.render_layout_tree(child, render_pass, depth + 1, size);
+                self.render_layout_tree(child, render_pass, depth + 1, size, document);
             }
         }
     }

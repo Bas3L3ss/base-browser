@@ -28,10 +28,10 @@ impl Material {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             label: Some(label),
-            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+            view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
         };
         let texture = device.create_texture(&texture_descriptor);
 
@@ -106,10 +106,10 @@ impl Material {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             label: Some(label),
-            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+            view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
         };
         let texture = device.create_texture(&texture_descriptor);
 

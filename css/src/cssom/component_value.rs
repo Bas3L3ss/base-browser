@@ -1,9 +1,6 @@
-use std::{format, matches};
+use std::{ format, matches };
 
-use crate::{
-    Color, Length,
-    cssom::{function::Function, unit::Unit},
-};
+use crate::{ Color, Length, cssom::{ function::Function, unit::Unit } };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComponentValue {
@@ -20,7 +17,10 @@ pub enum ComponentValue {
     Number(f32),
 
     // 10px, 1fr, 2em, 3rem...
-    Dimension { value: f32, unit: Unit },
+    Dimension {
+        value: f32,
+        unit: Unit,
+    },
 
     // 50%
     Percentage(f32),
@@ -71,37 +71,33 @@ impl ComponentValue {
 
     pub fn as_length(&self) -> Option<Length> {
         match self {
-            ComponentValue::Dimension { value, unit } => Some(Length::Dimension {
-                value: *value,
-                unit: unit.clone(),
-            }),
+            ComponentValue::Dimension { value, unit } =>
+                Some(Length::Dimension {
+                    value: *value,
+                    unit: unit.clone(),
+                }),
             ComponentValue::Percentage(v) => Some(Length::Percent(*v)),
-            ComponentValue::Ident(s) => match s.as_str() {
-                "auto" => Some(Length::Auto),
-                "thin" => Some(Length::Dimension {
-                    value: 1.0,
-                    unit: Unit::Px,
-                }),
-                "medium" => Some(Length::Dimension {
-                    value: 3.0,
-                    unit: Unit::Px,
-                }),
-                "thick" => Some(Length::Dimension {
-                    value: 5.0,
-                    unit: Unit::Px,
-                }),
-                _ => None,
-            },
+            ComponentValue::Ident(s) =>
+                match s.as_str() {
+                    "auto" => Some(Length::Auto),
+                    "thin" =>
+                        Some(Length::Dimension {
+                            value: 1.0,
+                            unit: Unit::Px,
+                        }),
+                    "medium" =>
+                        Some(Length::Dimension {
+                            value: 3.0,
+                            unit: Unit::Px,
+                        }),
+                    "thick" =>
+                        Some(Length::Dimension {
+                            value: 5.0,
+                            unit: Unit::Px,
+                        }),
+                    _ => None,
+                }
 
-            _ => None,
-        }
-    }
-
-    pub fn as_color(&self) -> Option<Color> {
-        match self {
-            ComponentValue::Ident(name) => Some(Color::Named(name.clone())),
-            ComponentValue::Hash(hex) => Some(Color::Hex(hex.clone())),
-            ComponentValue::Function(func) => Color::parse_function(func),
             _ => None,
         }
     }

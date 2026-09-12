@@ -15,7 +15,7 @@ use crate::{
     block::BlockEngine,
     text::{ TextEngine, line::Line },
 };
-use css::{ ComputedStyle, CssOm, LengthContext, LineHeight };
+use css::{ BoxSizing, ComputedStyle, CssOm, LengthContext, LineHeight };
 use font::{ FontManager, FontMetrics, FontRequest };
 use html::{ Dom, NodeType };
 use network::ResourceLoader;
@@ -140,11 +140,16 @@ impl<'a> LayoutEngine<'a> {
                 is_height_definite: true,
                 ..Default::default()
             }),
-            0.0
+            &mut 0.0
         );
     }
 
-    fn layout_node(&mut self, node: &mut LayoutNode, containing_block: &Dimensions, cursor_y: f32) {
+    fn layout_node(
+        &mut self,
+        node: &mut LayoutNode,
+        containing_block: &Dimensions,
+        cursor_y: &mut f32
+    ) {
         match node {
             LayoutNode::Block { .. } => self.layout_block(node, containing_block, cursor_y),
 
@@ -158,7 +163,7 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+    fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: &mut f32) {
         if let LayoutNode::Text { node_id, fragments, height } = node {
             let text = match &self.dom.nodes[*node_id].ntype {
                 NodeType::Text(text) => text,
@@ -234,7 +239,7 @@ impl<'a> LayoutEngine<'a> {
             let initial_x = parent.content.x + cur_line.width;
 
             let mut current_x = initial_x;
-            let mut current_y = cursor_y;
+            let mut current_y = *cursor_y;
 
             // For both collapsing and non-collapsing, always treat explicit "\n" with preserve_newlines
             // as a hard line break, even when collapsing is disabled.
@@ -388,7 +393,7 @@ impl<'a> LayoutEngine<'a> {
                 }
             }
 
-            *height = current_y + line_height - cursor_y;
+            *height = current_y + line_height - *cursor_y;
             self.context.pending_space = if font_components.whitespace.collapse_spaces {
                 space_pending
             } else {
@@ -399,7 +404,7 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+    fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: &mut f32) {
         if let LayoutNode::Block { node_id, dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
@@ -465,20 +470,21 @@ impl<'a> LayoutEngine<'a> {
                 viewport_height: self.context.viewport_height,
             };
 
-            BlockEngine::calculate_width(dimensions, parent, &style_components, &element_ctx);
+            match style_components.box_sizing {
+                BoxSizing::BorderBox => {
+                    dimensions.is_border_box = true;
+                }
+                _ => {}
+            }
+            BlockEngine::calculate_horizontal(dimensions, parent, &style_components, &element_ctx);
 
             self.context.line_remaining_width = dimensions.content.width;
 
             BlockEngine::calculate_x(dimensions, parent);
 
-            BlockEngine::resolve_specified_height(
-                dimensions,
-                &style_components,
-                parent,
-                &element_ctx
-            );
+            BlockEngine::calculate_vertical(dimensions, &style_components, parent, &element_ctx);
 
-            BlockEngine::calculate_y(dimensions, cursor_y);
+            BlockEngine::calculate_y(dimensions, *cursor_y);
 
             self.layout_descendants(dimensions, children);
 
@@ -487,7 +493,8 @@ impl<'a> LayoutEngine<'a> {
                 dimensions,
                 &style_components,
                 parent,
-                &element_ctx
+                &element_ctx,
+                cursor_y
             );
 
             self.context.current_font_weight = old_font_weight;
@@ -498,7 +505,7 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn layout_anonymous(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+    fn layout_anonymous(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: &mut f32) {
         if let LayoutNode::AnonymousBlock { dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
@@ -506,12 +513,12 @@ impl<'a> LayoutEngine<'a> {
             dimensions.content.width = parent.content.width;
 
             BlockEngine::calculate_x(dimensions, parent);
-            BlockEngine::calculate_y(dimensions, cursor_y);
+            BlockEngine::calculate_y(dimensions, *cursor_y);
 
             self.layout_descendants(dimensions, children);
 
             BlockEngine::resolve_auto_height(children, dimensions);
-            BlockEngine::finalize_box_height(dimensions);
+            BlockEngine::finalize_cursor_y(dimensions, cursor_y);
         }
     }
 
@@ -519,9 +526,7 @@ impl<'a> LayoutEngine<'a> {
         let mut cursor_y = dimensions.content.y;
 
         for child in children {
-            self.layout_node(child, &dimensions, cursor_y);
-
-            cursor_y += BlockEngine::margin_box_height(child);
+            self.layout_node(child, &dimensions, &mut cursor_y);
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::{
     AspectRatio,
     BoxSizing,
     Clear,
+    Color,
     ComponentValue,
     CssValue,
     Edges,
@@ -32,6 +33,15 @@ pub struct ComputedStyle {
 }
 
 impl ComputedStyle {
+    pub fn bg_color(&self) -> [f32; 4] {
+        let bg_color = self
+            .get(&Property::Background)
+            .map(Color::from_css)
+            .unwrap_or([0.0; 4]);
+
+        bg_color
+    }
+
     pub fn display(&self) -> Display {
         self.get(&Property::Display).map(Display::from_css).unwrap_or(Display::Inline)
     }

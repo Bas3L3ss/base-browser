@@ -1,4 +1,4 @@
-use glm::Vec3;
+use glm::{ Vec3, Vec4 };
 use wgpu::util::DeviceExt;
 
 pub struct TriangleMesh(pub Mesh);
@@ -8,7 +8,7 @@ pub struct QuadMesh(pub Mesh);
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub position: Vec3,
-    pub color: Vec3,
+    pub color: Vec4,
 }
 
 pub struct Mesh {
@@ -31,7 +31,7 @@ impl Vertex {
         }
     }
 }
-pub fn make_rect_mesh(device: &wgpu::Device, rectangles: &[(f32, f32, f32, f32, Vec3)]) -> Mesh {
+pub fn make_rect_mesh(device: &wgpu::Device, rectangles: &[(f32, f32, f32, f32, Vec4)]) -> Mesh {
     let (x, y, width, height, color) = rectangles[0];
 
     let vertices = vec![

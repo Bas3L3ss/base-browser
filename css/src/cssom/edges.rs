@@ -1,4 +1,6 @@
-use crate::{Length, LengthContext};
+use std::ops::Add;
+
+use crate::{ Length, LengthContext };
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Edges<T> {
@@ -27,5 +29,11 @@ impl Edges<Length> {
             bottom: self.bottom.to_f32(of, auto, ctx),
             left: self.left.to_f32(of, auto, ctx),
         }
+    }
+}
+
+impl<T: Add<Output = T> + Copy> Edges<T> {
+    pub fn horizontal_sum(&self) -> T {
+        self.left + self.right
     }
 }

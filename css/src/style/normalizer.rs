@@ -10,9 +10,10 @@ impl Normalizer {
         candidate: DeclarationCandidate
     ) {
         match candidate.property {
-            Property::Background => {
-                Self::insert_background_shorthand(&candidate, properties);
-            }
+            // TODO: expand background shorthands
+            // Property::Background => {
+            //     Self::insert_background_shorthand(&candidate, properties);
+            // }
             Property::Inset => {
                 // Handles the shorthand "inset" by expanding into top/right/bottom/left with default `auto`
                 Self::expand_and_insert_box_edges(

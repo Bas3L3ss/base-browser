@@ -14,7 +14,7 @@ impl<'a> Builder<'a> {
         Builder {
             vertex_entry: "dummy".to_string(),
             fragment_entry: "dummy".to_string(),
-            pixel_format: wgpu::TextureFormat::Rgba8Unorm,
+            pixel_format: wgpu::TextureFormat::Bgra8UnormSrgb,
             vertex_buffer_layouts: Vec::new(),
             device,
             bind_group_layouts: Vec::new(),

@@ -9,4 +9,5 @@ input_parser ={ path = "../input_parser"}
 utils = {path = "../utils"}
 html = {path = "../html"}
 network = {path = "../network"}
+csscolorparser= "0.8.4"
 url = {path = "../url"}
