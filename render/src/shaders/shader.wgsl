@@ -10,14 +10,13 @@ struct VertexPayload {
 
 @vertex
 fn vs_main(vertex: Vertex) -> VertexPayload {
-
     var out: VertexPayload;
-    out.position =  vec4<f32>(vertex.position, 1.0);
+    out.position = vec4<f32>(vertex.position, 1.0);
     out.color = vertex.color;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color);
+    return in.color;
 }

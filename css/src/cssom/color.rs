@@ -13,7 +13,6 @@ pub enum Color {
 impl Color {
     pub fn from_css(value: &CssValue) -> [f32; 4] {
         let s = value.components.first().map(|comp| { comp.to_string() }); // TODO: AVOID THIS
-        dbg!(&s);
         if let Some(css_string) = s {
             if let Ok(color) = ::csscolorparser::parse(&css_string) {
                 let [r, g, b, a] = color.to_rgba8();

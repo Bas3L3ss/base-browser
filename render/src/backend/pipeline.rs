@@ -12,8 +12,8 @@ pub struct Builder<'a> {
 impl<'a> Builder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
         Builder {
-            vertex_entry: "dummy".to_string(),
-            fragment_entry: "dummy".to_string(),
+            vertex_entry: String::new(),
+            fragment_entry: String::new(),
             pixel_format: wgpu::TextureFormat::Bgra8UnormSrgb,
             vertex_buffer_layouts: Vec::new(),
             device,
@@ -61,7 +61,7 @@ impl<'a> Builder<'a> {
         let render_targets = [
             Some(wgpu::ColorTargetState {
                 format: self.pixel_format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             }),
         ];
@@ -90,7 +90,6 @@ impl<'a> Builder<'a> {
             fragment: Some(wgpu::FragmentState {
                 module: &shader_module,
                 entry_point: Some(&self.fragment_entry),
-
                 targets: &render_targets,
                 compilation_options: PipelineCompilationOptions::default(),
             }),

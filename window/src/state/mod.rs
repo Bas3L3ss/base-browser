@@ -210,7 +210,6 @@ impl<'a> State<'a> {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }),
-
                     store: wgpu::StoreOp::Store,
                 },
                 depth_slice: None,
@@ -226,7 +225,6 @@ impl<'a> State<'a> {
                 let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
                 render_pass.set_pipeline(&self.render_pipeline);
                 let size = self.window.inner_size();
-                dbg!(&document.computed_styles[8]);
                 self.render_layout_tree(&root, &mut render_pass, 0, size, &document);
             }
 
@@ -299,9 +297,7 @@ impl<'a> State<'a> {
         color: Option<Vec4>
     ) {
         if let Some(dim) = node.dimensions() {
-            let color = color.unwrap_or(glm::vec4(1.0, 0.0, 0.0, 1.0));
-
-            dbg!(&color);
+            let color = color.unwrap_or(glm::vec4(0.0, 0.0, 0.0, 0.0));
 
             let x_ndc = (2.0 * dim.content.x) / (size.width as f32) - 1.0;
             let y_ndc = 1.0 - (2.0 * dim.content.y) / (size.height as f32);
@@ -309,9 +305,9 @@ impl<'a> State<'a> {
             let width_ndc = (2.0 * dim.content.width) / (size.width as f32);
             let height_ndc = (-2.0 * dim.content.height) / (size.height as f32);
 
-            let rects = [(x_ndc, y_ndc, width_ndc, height_ndc, color)];
+            let rect = (x_ndc, y_ndc, width_ndc, height_ndc, color);
 
-            let mesh = make_rect_mesh(&self.device, &rects);
+            let mesh = make_rect_mesh(&self.device, &rect);
             self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
 
             for child in node.children() {
