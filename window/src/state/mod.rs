@@ -1,5 +1,5 @@
 use glm::Vec4;
-use render::{ Material, Mesh, bind_group_layout, make_rect_mesh, mesh_builder, pipeline };
+use render::{ Material, Mesh, bind_group_layout, make_rect_mesh_from_physical_rect, mesh_builder, pipeline };
 
 pub mod tab;
 use layout::{ LayoutNode };
@@ -254,7 +254,7 @@ impl<'a> State<'a> {
         );
     }
 
-    /// `make_rect_mesh` expects the coordinates and sizes to be normalized to NDC (-1.0 to 1.0).
+    /// Paints each element's background over its border box (padding + border, not margin).
     pub fn render_layout_tree(
         &self,
         node: &LayoutNode,
@@ -296,23 +296,14 @@ impl<'a> State<'a> {
         document: &Document,
         color: Option<Vec4>
     ) {
-        if let Some(dim) = node.dimensions() {
+        if let Some(background) = node.background_rect() {
             let color = color.unwrap_or(glm::vec4(0.0, 0.0, 0.0, 0.0));
-
-            let x_ndc = (2.0 * dim.content.x) / (size.width as f32) - 1.0;
-            let y_ndc = 1.0 - (2.0 * dim.content.y) / (size.height as f32);
-
-            let width_ndc = (2.0 * dim.content.width) / (size.width as f32);
-            let height_ndc = (-2.0 * dim.content.height) / (size.height as f32);
-
-            let rect = (x_ndc, y_ndc, width_ndc, height_ndc, color);
-
-            let mesh = make_rect_mesh(&self.device, &rect);
+            let mesh = make_rect_mesh_from_physical_rect(&self.device, &background, color, size);
             self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
+        }
 
-            for child in node.children() {
-                self.render_layout_tree(child, render_pass, depth + 1, size, document);
-            }
+        for child in node.children() {
+            self.render_layout_tree(child, render_pass, depth + 1, size, document);
         }
     }
 }

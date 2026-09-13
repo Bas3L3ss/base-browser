@@ -471,9 +471,7 @@ impl<'a> LayoutEngine<'a> {
             };
 
             match style_components.box_sizing {
-                BoxSizing::BorderBox => {
-                    dimensions.is_border_box = true;
-                }
+                BoxSizing::BorderBox => {}
                 _ => {}
             }
             BlockEngine::calculate_horizontal(dimensions, parent, &style_components, &element_ctx);
@@ -484,7 +482,7 @@ impl<'a> LayoutEngine<'a> {
 
             BlockEngine::calculate_vertical(dimensions, &style_components, parent, &element_ctx);
 
-            BlockEngine::calculate_y(dimensions, *cursor_y);
+            BlockEngine::calculate_y(dimensions, cursor_y);
 
             self.layout_descendants(dimensions, children);
 
@@ -513,7 +511,7 @@ impl<'a> LayoutEngine<'a> {
             dimensions.content.width = parent.content.width;
 
             BlockEngine::calculate_x(dimensions, parent);
-            BlockEngine::calculate_y(dimensions, *cursor_y);
+            BlockEngine::calculate_y(dimensions, cursor_y);
 
             self.layout_descendants(dimensions, children);
 
@@ -522,11 +520,12 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn layout_descendants(&mut self, dimensions: &Dimensions, children: &mut Vec<LayoutNode>) {
-        let mut cursor_y = dimensions.content.y;
+    fn layout_descendants(&mut self, parent: &Dimensions, children: &mut Vec<LayoutNode>) {
+        // In-flow children stack by margin box within the parent's content box.
+        let mut cursor_y = parent.content.y;
 
         for child in children {
-            self.layout_node(child, &dimensions, &mut cursor_y);
+            self.layout_node(child, parent, &mut cursor_y);
         }
     }
 }

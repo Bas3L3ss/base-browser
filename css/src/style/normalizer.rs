@@ -174,7 +174,7 @@ impl Normalizer {
         }
     }
 
-    fn insert_background_shorthand(
+    fn parse_background_shorthand(
         candidate: &DeclarationCandidate,
         properties: &mut HashMap<Property, CssValue>
     ) {}

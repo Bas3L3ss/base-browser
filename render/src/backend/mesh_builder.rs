@@ -1,5 +1,7 @@
 use glm::{ Vec3, Vec4 };
+use layout::Rect;
 use wgpu::util::DeviceExt;
+use winit::dpi::PhysicalSize;
 
 pub struct TriangleMesh(pub Mesh);
 pub struct QuadMesh(pub Mesh);
@@ -30,6 +32,29 @@ impl Vertex {
         }
     }
 }
+
+/// Convert a layout-space rectangle (viewport pixels) to NDC for the render pipeline.
+pub fn physical_rect_to_ndc(rect: &Rect, viewport: PhysicalSize<u32>) -> (f32, f32, f32, f32) {
+    let w = viewport.width as f32;
+    let h = viewport.height as f32;
+    let x_ndc = (2.0 * rect.x) / w - 1.0;
+    let y_ndc = 1.0 - (2.0 * rect.y) / h;
+    let width_ndc = (2.0 * rect.width) / w;
+    let height_ndc = (-2.0 * rect.height) / h;
+    (x_ndc, y_ndc, width_ndc, height_ndc)
+}
+
+pub fn make_rect_mesh_from_physical_rect(
+    device: &wgpu::Device,
+    rect: &Rect,
+    color: Vec4,
+    viewport: PhysicalSize<u32>
+) -> Mesh {
+    let (x, y, width, height) = physical_rect_to_ndc(rect, viewport);
+    make_rect_mesh(device, &(x, y, width, height, color))
+}
+
+/// Expects coordinates and sizes normalized to NDC (-1.0 to 1.0).
 pub fn make_rect_mesh(device: &wgpu::Device, rectangle: &(f32, f32, f32, f32, Vec4)) -> Mesh {
     let (x, y, width, height, color) = *rectangle;
 
@@ -39,7 +64,6 @@ pub fn make_rect_mesh(device: &wgpu::Device, rectangle: &(f32, f32, f32, f32, Ve
         Vertex { position: Vec3::new(x + width, y + height, 0.0), color },
         Vertex { position: Vec3::new(x, y + height, 0.0), color }
     ];
-    println!("{vertices:?}");
 
     let indices: Vec<u16> = vec![0, 2, 1, 2, 0, 3];
     let bytes1 = unsafe {

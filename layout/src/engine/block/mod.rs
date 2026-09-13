@@ -43,11 +43,13 @@ impl BlockEngine {
     }
 
     pub(crate) fn calculate_x(node: &mut Dimensions, parent: &Dimensions) {
-        node.content.x = parent.content.x + node.padding.left;
+        let inset = node.content_inset_from_parent();
+        node.content.x = parent.content.x + inset.left;
     }
 
-    pub(crate) fn calculate_y(node: &mut Dimensions, cursor_y: f32) {
-        node.content.y = cursor_y + node.padding.top;
+    pub(crate) fn calculate_y(node: &mut Dimensions, cursor_y: &mut f32) {
+        let inset = node.content_inset_from_parent();
+        node.content.y = *cursor_y + inset.top;
     }
 
     pub(crate) fn calculate_horizontal(
@@ -152,9 +154,8 @@ impl BlockEngine {
         // layout.apply(node, &edges);
     }
 
-    pub(crate) fn finalize_cursor_y(node: &mut Dimensions, cursor_y: &mut f32) {
-        *cursor_y +=
-            node.margin.bottom + node.padding.bottom + node.content.height + node.border.bottom;
+    pub(crate) fn finalize_cursor_y(node: &Dimensions, cursor_y: &mut f32) {
+        *cursor_y += node.margin_box().height;
     }
 
     pub(crate) fn resolve_auto_height(children: &mut Vec<LayoutNode>, dimensions: &mut Dimensions) {
@@ -167,10 +168,9 @@ impl BlockEngine {
         match node {
             | LayoutNode::Block { dimensions, .. }
             | LayoutNode::InlineBlock { dimensions, .. }
-            | LayoutNode::AnonymousBlock { dimensions, .. } =>
-                dimensions.margin.top + dimensions.margin.bottom + dimensions.content.height,
+            | LayoutNode::AnonymousBlock { dimensions, .. } => dimensions.margin_box().height,
             LayoutNode::Text { height, .. } => *height,
-            LayoutNode::Inline { .. } => 0.0,
+            LayoutNode::Inline { .. } => 0.0, // TODO: handle text and inline
         }
     }
 

@@ -1,6 +1,6 @@
 use std::{ matches, vec };
 
-use crate::{ Dimensions, text::inline_fragment::InlineFragment };
+use crate::{ Dimensions, Rect, text::inline_fragment::InlineFragment };
 use html::NodeID;
 
 #[derive(Clone)]
@@ -148,6 +148,21 @@ impl LayoutNode {
             | LayoutNode::AnonymousBlock { dimensions, .. } => Some(dimensions),
             _ => None,
         }
+    }
+
+    /// Content box — text and in-flow children are laid out here.
+    pub fn content_rect(&self) -> Option<Rect> {
+        self.dimensions().map(|d| d.content)
+    }
+
+    /// Background painting area (padding + border box; margin is layout-only).
+    pub fn background_rect(&self) -> Option<Rect> {
+        self.dimensions().map(Dimensions::border_box)
+    }
+
+    /// Full layout footprint including margins.
+    pub fn margin_rect(&self) -> Option<Rect> {
+        self.dimensions().map(Dimensions::margin_box)
     }
 
     pub fn text_fragments(&self) -> Option<&[crate::text::inline_fragment::InlineFragment]> {

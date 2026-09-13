@@ -4,7 +4,7 @@
  */
 
 * {
-  box-sizing: border-box; /* Chrome and most modern browsers use border-box for UA sheet, not content-box */
+  box-sizing: content-box;
   margin: 0;
   padding: 0;
   border: 0;
