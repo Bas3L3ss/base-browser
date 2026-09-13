@@ -36,7 +36,7 @@ impl Tab {
         window: &Window
     ) -> Result<()> {
         let mut document = Document::new(&ua_stylesheet, &url, &resource_loader)?;
-
+        dbg!(&document.cssom.rules[4]);
         LayoutEngine::layout(
             &mut document.layout_tree,
             &document.computed_styles,
