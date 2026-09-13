@@ -1,4 +1,4 @@
-use css::{BoxSizing, ComputedStyle, Edges, Length, MaxLength, MinLength};
+use css::{ BoxSizing, ComputedStyle, Edges, Length, MaxLength, MinLength };
 
 pub(crate) struct StyleComponents {
     pub(crate) box_sizing: BoxSizing,
@@ -22,11 +22,12 @@ impl StyleComponents {
 
         let (left, top, right, bottom) = style.offset();
         let font_size = style.font_size();
+        let border = style.border_width();
         Self {
             box_sizing: style.box_sizing(),
             margin: style.margin(),
             padding: style.padding(),
-            border: style.border_width(),
+            border: border,
             width: style.width(),
             height: style.height(),
             min_width: min_width,

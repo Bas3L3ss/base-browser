@@ -16,7 +16,7 @@ impl Normalizer {
             // }
             Property::Inset => {
                 // Handles the shorthand "inset" by expanding into top/right/bottom/left with default `auto`
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::Top,
@@ -28,7 +28,7 @@ impl Normalizer {
             }
 
             Property::Margin => {
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::MarginTop,
@@ -40,7 +40,7 @@ impl Normalizer {
             }
 
             Property::Padding => {
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::PaddingTop,
@@ -51,7 +51,7 @@ impl Normalizer {
                 );
             }
             Property::BorderWidth => {
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::BorderTopWidth,
@@ -61,11 +61,23 @@ impl Normalizer {
                     ComponentValue::Ident(String::from("medium"))
                 );
             }
+
+            Property::BorderColor => {
+                Self::distribute_box_edge_shorthand(
+                    properties,
+                    &candidate,
+                    Property::BorderTopColor,
+                    Property::BorderRightColor,
+                    Property::BorderBottomColor,
+                    Property::BorderLeftColor,
+                    ComponentValue::Ident(String::from("black"))
+                );
+            }
             Property::Border => {
                 let border_defaults = (
                     ComponentValue::Ident(String::from("medium")),
                     ComponentValue::Ident(String::from("none")),
-                    ComponentValue::Ident(String::from("currentcolor")),
+                    ComponentValue::Ident(String::from("black")),
                 );
 
                 let (width, style, color) = Self::parse_border_shorthand_components(
@@ -112,6 +124,7 @@ impl Normalizer {
                     });
                 }
             }
+
             | Property::BorderTop
             | Property::BorderRight
             | Property::BorderBottom
@@ -119,9 +132,9 @@ impl Normalizer {
                 let border_defaults = (
                     ComponentValue::Ident(String::from("medium")),
                     ComponentValue::Ident(String::from("none")),
-                    ComponentValue::Ident(String::from("currentcolor")),
+                    ComponentValue::Ident(String::from("black")),
                 );
-                let border_components = Self::parse_border_logical_components(
+                let border_components = Self::border_side_components(
                     &candidate.value.components,
                     border_defaults.0.clone(),
                     border_defaults.1.clone(),
@@ -174,10 +187,10 @@ impl Normalizer {
         }
     }
 
-    fn parse_background_shorthand(
-        candidate: &DeclarationCandidate,
-        properties: &mut HashMap<Property, CssValue>
-    ) {}
+    // fn parse_background_shorthand(
+    //     candidate: &DeclarationCandidate,
+    //     properties: &mut HashMap<Property, CssValue>
+    // ) {}
 
     fn parse_border_shorthand_components(
         components: &[ComponentValue],
@@ -239,7 +252,7 @@ impl Normalizer {
         )
     }
 
-    fn parse_border_logical_components(
+    fn border_side_components(
         components: &[ComponentValue],
         default_width: ComponentValue,
         default_style: ComponentValue,
@@ -254,7 +267,7 @@ impl Normalizer {
         vec![width, style, color]
     }
 
-    fn expand_and_insert_box_edges(
+    fn distribute_box_edge_shorthand(
         properties: &mut HashMap<Property, CssValue>,
         candidate: &DeclarationCandidate,
         top_prop: Property,
@@ -263,7 +276,7 @@ impl Normalizer {
         left_prop: Property,
         initial: ComponentValue
     ) {
-        let (top, right, bottom, left) = Self::expand_shorthand_four_values(
+        let (top, right, bottom, left) = Self::explode_four_value_shorthand(
             &candidate.value.components,
             initial.clone()
         );
@@ -285,7 +298,7 @@ impl Normalizer {
         insert_edge(properties, left_prop, left);
     }
 
-    pub fn expand_shorthand_four_values(
+    pub fn explode_four_value_shorthand(
         values: &[ComponentValue],
         initial: ComponentValue
     ) -> (ComponentValue, ComponentValue, ComponentValue, ComponentValue) {

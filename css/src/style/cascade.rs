@@ -3,8 +3,18 @@ use std::collections::HashMap;
 use html::DomElement;
 
 use crate::{
-    CssOm, CssRule, Declaration, Normalizer, Origin, Parser, Property, RuleRef, Specificity,
-    Tokenizer, cssom::css_value::CssValue, style::computed_style::ComputedStyle,
+    CssOm,
+    CssRule,
+    Declaration,
+    Normalizer,
+    Origin,
+    Parser,
+    Property,
+    RuleRef,
+    Specificity,
+    Tokenizer,
+    cssom::css_value::CssValue,
+    style::computed_style::ComputedStyle,
 };
 
 /// Owns just the relevant info rather than borrowing an entire Declaration.
@@ -24,7 +34,7 @@ impl DeclarationCandidate {
         value: CssValue,
         origin: Origin,
         specificity: Specificity,
-        source_order: u32,
+        source_order: u32
     ) -> Self {
         Self {
             property,
@@ -92,7 +102,7 @@ impl Cascade {
 
     fn consider_candidate(
         winners: &mut HashMap<Property, DeclarationCandidate>,
-        candidate: DeclarationCandidate,
+        candidate: DeclarationCandidate
     ) {
         match winners.get(&candidate.property) {
             Some(existing) => {
@@ -110,13 +120,15 @@ impl Cascade {
         winners: &mut HashMap<Property, DeclarationCandidate>,
         matches: &[RuleRef],
         cssom: &CssOm,
-        origin: Origin,
+        origin: Origin
     ) {
         for matched in matches {
             if let Some(rule) = cssom.rules.get(matched.rule_index as usize) {
                 if let CssRule::Style(style_rule) = rule {
-                    if let Some(complex_selector) =
-                        style_rule.selectors.get(matched.selector_index as usize)
+                    if
+                        let Some(complex_selector) = style_rule.selectors.get(
+                            matched.selector_index as usize
+                        )
                     {
                         for declaration in &style_rule.declarations {
                             let candidate = DeclarationCandidate::new(
@@ -124,7 +136,7 @@ impl Cascade {
                                 declaration.value.clone(),
                                 origin,
                                 complex_selector.specificity,
-                                matched.rule_index,
+                                matched.rule_index
                             );
                             Self::consider_candidate(winners, candidate);
                         }
@@ -136,7 +148,7 @@ impl Cascade {
 
     fn apply_inline(
         winners: &mut HashMap<Property, DeclarationCandidate>,
-        declarations: &[Declaration],
+        declarations: &[Declaration]
     ) {
         for declaration in declarations {
             let candidate = DeclarationCandidate::new(
@@ -144,7 +156,7 @@ impl Cascade {
                 declaration.value.clone(),
                 Origin::Inline,
                 Specificity::INLINE,
-                0,
+                0
             );
             Self::consider_candidate(winners, candidate);
         }

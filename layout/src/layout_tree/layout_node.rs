@@ -160,11 +160,6 @@ impl LayoutNode {
         self.dimensions().map(Dimensions::border_box)
     }
 
-    /// Full layout footprint including margins.
-    pub fn margin_rect(&self) -> Option<Rect> {
-        self.dimensions().map(Dimensions::margin_box)
-    }
-
     pub fn text_fragments(&self) -> Option<&[crate::text::inline_fragment::InlineFragment]> {
         match self {
             LayoutNode::Text { fragments, .. } => Some(fragments),

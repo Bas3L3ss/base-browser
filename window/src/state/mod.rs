@@ -1,8 +1,17 @@
+use css::{ ComputedStyle, Edges };
 use glm::Vec4;
-use render::{ Material, Mesh, bind_group_layout, make_rect_mesh_from_physical_rect, mesh_builder, pipeline };
+use render::{
+    Material,
+    Mesh,
+    bind_group_layout,
+    make_rect_mesh_from_physical_rect,
+    make_triangle_mesh_from_physical_points,
+    mesh_builder,
+    pipeline,
+};
 
 pub mod tab;
-use layout::{ LayoutNode };
+use layout::{ LayoutNode, Rect };
 pub use tab::*;
 pub mod document;
 pub use document::*;
@@ -268,19 +277,9 @@ impl<'a> State<'a> {
         let node_id = node.node_id();
         match node_id {
             Some(id) => {
-                let color = match document.computed_styles.get(id) {
-                    Some(Some(style)) => {
-                        let bg_color = style.bg_color();
-                        Some(glm::Vector4 {
-                            x: bg_color[0],
-                            y: bg_color[1],
-                            z: bg_color[2],
-                            w: bg_color[3],
-                        })
-                    }
-                    _ => { None }
-                };
-                self.render_node(node, render_pass, depth, size, document, color);
+                let computed_style = document.computed_styles[id].as_ref();
+
+                self.render_node(node, render_pass, depth, size, document, computed_style);
             }
             None => {
                 self.render_node(node, render_pass, depth, size, document, None);
@@ -294,12 +293,258 @@ impl<'a> State<'a> {
         depth: usize,
         size: PhysicalSize<u32>,
         document: &Document,
-        color: Option<Vec4>
+        computed_style: Option<&ComputedStyle>
     ) {
         if let Some(background) = node.background_rect() {
-            let color = color.unwrap_or(glm::vec4(0.0, 0.0, 0.0, 0.0));
+            let color = match computed_style {
+                Some(style) => {
+                    let bg_color = style.bg_color();
+                    glm::Vector4 {
+                        x: bg_color[0],
+                        y: bg_color[1],
+                        z: bg_color[2],
+                        w: bg_color[3],
+                    }
+                }
+                _ => { glm::vec4(0.0, 0.0, 0.0, 0.0) }
+            };
             let mesh = make_rect_mesh_from_physical_rect(&self.device, &background, color, size);
             self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
+        }
+
+        if let Some(dimensions) = node.dimensions() {
+            if let Some(border) = node.background_rect() {
+                if let Some(style) = computed_style {
+                    let border_color: Edges<[f32; 4]> = style.border_color();
+
+                    let top_rect = Rect {
+                        x: border.x + dimensions.border.left,
+                        y: border.y,
+                        width: border.width - dimensions.border.left - dimensions.border.right,
+                        height: dimensions.border.top,
+                    };
+                    let right_rect = Rect {
+                        x: border.x + border.width - dimensions.border.right,
+                        y: border.y + dimensions.border.top,
+                        width: dimensions.border.right,
+                        height: border.height - dimensions.border.top - dimensions.border.bottom,
+                    };
+                    let bottom_rect = Rect {
+                        x: border.x + dimensions.border.left,
+                        y: border.y + border.height - dimensions.border.bottom,
+                        width: border.width - dimensions.border.left - dimensions.border.right,
+                        height: dimensions.border.bottom,
+                    };
+                    let left_rect = Rect {
+                        x: border.x,
+                        y: border.y + dimensions.border.top,
+                        width: dimensions.border.left,
+                        height: border.height - dimensions.border.top - dimensions.border.bottom,
+                    };
+
+                    let rects_colors: [(Rect, Vec4); 4] = [
+                        (
+                            top_rect,
+                            glm::vec4(
+                                border_color.top[0],
+                                border_color.top[1],
+                                border_color.top[2],
+                                border_color.top[3]
+                            ),
+                        ),
+                        (
+                            right_rect,
+                            glm::vec4(
+                                border_color.right[0],
+                                border_color.right[1],
+                                border_color.right[2],
+                                border_color.right[3]
+                            ),
+                        ),
+                        (
+                            bottom_rect,
+                            glm::vec4(
+                                border_color.bottom[0],
+                                border_color.bottom[1],
+                                border_color.bottom[2],
+                                border_color.bottom[3]
+                            ),
+                        ),
+                        (
+                            left_rect,
+                            glm::vec4(
+                                border_color.left[0],
+                                border_color.left[1],
+                                border_color.left[2],
+                                border_color.left[3]
+                            ),
+                        ),
+                    ];
+
+                    for (rect, color) in rects_colors {
+                        let mesh = make_rect_mesh_from_physical_rect(
+                            &self.device,
+                            &rect,
+                            color,
+                            size
+                        );
+                        self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
+                    }
+
+                    let triangle_corners_and_colors: [([(f32, f32); 3], Vec4); 8] = [
+                        (
+                            [
+                                (border.x, border.y),
+                                (border.x + dimensions.border.left, border.y),
+                                (
+                                    border.x + dimensions.border.left,
+                                    border.y + dimensions.border.top,
+                                ),
+                            ],
+                            glm::vec4(
+                                border_color.top[0],
+                                border_color.top[1],
+                                border_color.top[2],
+                                border_color.top[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (border.x + border.width - dimensions.border.right, border.y),
+                                (border.x + border.width, border.y),
+                                (
+                                    border.x + border.width - dimensions.border.right,
+                                    border.y + dimensions.border.top,
+                                ),
+                            ],
+                            glm::vec4(
+                                border_color.top[0],
+                                border_color.top[1],
+                                border_color.top[2],
+                                border_color.top[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (border.x, border.y),
+                                (
+                                    border.x + dimensions.border.left,
+                                    border.y + dimensions.border.top,
+                                ),
+                                (border.x, border.y + dimensions.border.top),
+                            ],
+                            glm::vec4(
+                                border_color.left[0],
+                                border_color.left[1],
+                                border_color.left[2],
+                                border_color.left[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (border.x, border.y + border.height - dimensions.border.bottom),
+                                (
+                                    border.x + dimensions.border.left,
+                                    border.y + border.height - dimensions.border.bottom,
+                                ),
+                                (border.x, border.y + border.height),
+                            ],
+                            glm::vec4(
+                                border_color.left[0],
+                                border_color.left[1],
+                                border_color.left[2],
+                                border_color.left[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (
+                                    border.x + dimensions.border.left,
+                                    border.y + border.height - dimensions.border.bottom,
+                                ),
+                                (border.x + dimensions.border.left, border.y + border.height),
+                                (border.x, border.y + border.height),
+                            ],
+                            glm::vec4(
+                                border_color.bottom[0],
+                                border_color.bottom[1],
+                                border_color.bottom[2],
+                                border_color.bottom[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (border.x + border.width, border.y + border.height),
+
+                                (
+                                    border.x + border.width - dimensions.border.right,
+                                    border.y + border.height,
+                                ),
+
+                                (
+                                    border.x + border.width - dimensions.border.right,
+                                    border.y + border.height - dimensions.border.bottom,
+                                ),
+                            ],
+                            glm::vec4(
+                                border_color.bottom[0],
+                                border_color.bottom[1],
+                                border_color.bottom[2],
+                                border_color.bottom[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (
+                                    border.x + border.width - dimensions.border.right,
+                                    border.y + border.height - dimensions.border.bottom,
+                                ),
+
+                                (
+                                    border.x + border.width,
+                                    border.y + border.height - dimensions.border.bottom,
+                                ),
+
+                                (border.x + border.width, border.y + border.height),
+                            ],
+                            glm::vec4(
+                                border_color.right[0],
+                                border_color.right[1],
+                                border_color.right[2],
+                                border_color.right[3]
+                            ),
+                        ),
+                        (
+                            [
+                                (border.x + border.width, border.y),
+
+                                (border.x + border.width, border.y + dimensions.border.top),
+
+                                (
+                                    border.x + border.width - dimensions.border.left,
+                                    border.y + dimensions.border.top,
+                                ),
+                            ],
+                            glm::vec4(
+                                border_color.right[0],
+                                border_color.right[1],
+                                border_color.right[2],
+                                border_color.right[3]
+                            ),
+                        ),
+                    ];
+
+                    for (corners, color) in triangle_corners_and_colors.iter() {
+                        let tmesh = make_triangle_mesh_from_physical_points(
+                            &self.device,
+                            corners,
+                            *color,
+                            size
+                        );
+                        self.draw_mesh_indexed(render_pass, &tmesh, &self.default_material);
+                    }
+                }
+            }
         }
 
         for child in node.children() {

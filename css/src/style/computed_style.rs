@@ -42,6 +42,22 @@ impl ComputedStyle {
         bg_color
     }
 
+    pub fn border_color(&self) -> Edges<[f32; 4]> {
+        let prop_order = [
+            Property::BorderTopColor,
+            Property::BorderRightColor,
+            Property::BorderBottomColor,
+            Property::BorderLeftColor,
+        ];
+        let [bg_top, bg_right, bg_bottom, bg_left] = prop_order.map(|prop| {
+            self.get(&prop)
+                .map(Color::from_css)
+                .unwrap_or([1.0; 4])
+        });
+
+        Edges { top: bg_top, right: bg_right, bottom: bg_bottom, left: bg_left }
+    }
+
     pub fn display(&self) -> Display {
         self.get(&Property::Display).map(Display::from_css).unwrap_or(Display::Inline)
     }
