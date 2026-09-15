@@ -241,19 +241,15 @@ impl<'a> LayoutEngine<'a> {
             let mut current_x = initial_x;
             let mut current_y = *cursor_y;
 
-            // For both collapsing and non-collapsing, always treat explicit "\n" with preserve_newlines
-            // as a hard line break, even when collapsing is disabled.
             let mut slice_start = 0;
-            let mut space_pending = self.context.pending_space; // Only relevant for collapse_spaces
+            let mut space_pending = self.context.pending_space;
 
             let mut chars = text.char_indices();
 
             while let Some((idx, ch)) = chars.next() {
                 let is_newline = ch == '\n' && font_components.whitespace.preserve_newlines;
                 let is_whitespace = ch.is_whitespace();
-                // In collapse_spaces mode, whitespace is handled as before, but now with correct newline handling.
                 if is_newline {
-                    // Emit any text fragment before the \n
                     if slice_start < idx {
                         TextEngine::layout_text_fragments(
                             fragments,

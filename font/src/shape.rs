@@ -7,10 +7,14 @@ pub struct GlyphRun {
 
 #[derive(Clone, Debug)]
 pub struct GlyphPosition {
+    // WHAT glyph should I draw?
     pub glyph_id: u16,
+
+    // WHERE should I draw this glyph relative to the cursor?
     pub x_offset: f32,
     pub y_offset: f32,
 
+    // WHERE should the cursor move for the NEXT glyph?
     pub x_advance: f32,
     pub y_advance: f32,
 }
@@ -34,11 +38,11 @@ impl GlyphRun {
         let mut advance_width = 0.0;
 
         for (info, position) in infos.iter().zip(positions.iter()) {
-            let x_advance = position.x_advance as f32 * scale;
-            let y_advance = position.y_advance as f32 * scale;
+            let x_advance = (position.x_advance as f32) * scale;
+            let y_advance = (position.y_advance as f32) * scale;
 
-            let x_offset = position.x_offset as f32 * scale;
-            let y_offset = position.y_offset as f32 * scale;
+            let x_offset = (position.x_offset as f32) * scale;
+            let y_offset = (position.y_offset as f32) * scale;
 
             glyphs.push(GlyphPosition {
                 glyph_id: info.glyph_id as u16,

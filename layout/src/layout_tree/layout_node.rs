@@ -31,38 +31,6 @@ pub enum LayoutNode {
     },
 }
 
-impl std::fmt::Debug for LayoutNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LayoutNode::Block { node_id, dimensions, .. } => {
-                f.debug_struct("Block")
-                    .field("node_id", node_id)
-                    .field("dimensions", dimensions)
-                    .finish()
-            }
-            LayoutNode::Inline { node_id, boxes, .. } => {
-                f.debug_struct("Inline").field("node_id", node_id).field("boxes", boxes).finish()
-            }
-            LayoutNode::InlineBlock { node_id, dimensions, .. } => {
-                f.debug_struct("InlineBlock")
-                    .field("node_id", node_id)
-                    .field("dimensions", dimensions)
-                    .finish()
-            }
-            LayoutNode::Text { node_id, fragments, height } => {
-                f.debug_struct("Text")
-                    .field("node_id", node_id)
-                    .field("fragments", fragments)
-                    .field("height", height)
-                    .finish()
-            }
-            LayoutNode::AnonymousBlock { dimensions, .. } => {
-                f.debug_struct("AnonymousBlock").field("dimensions", dimensions).finish()
-            }
-        }
-    }
-}
-
 impl LayoutNode {
     pub fn block(node_id: NodeID, dimensions: Dimensions, children: Vec<LayoutNode>) -> Self {
         LayoutNode::Block {
@@ -149,6 +117,12 @@ impl LayoutNode {
             _ => None,
         }
     }
+    pub fn fragments(&self) -> Option<&Vec<InlineFragment>> {
+        match self {
+            LayoutNode::Text { fragments, .. } => Some(fragments),
+            _ => None,
+        }
+    }
 
     /// Content box — text and in-flow children are laid out here.
     pub fn content_rect(&self) -> Option<Rect> {
@@ -164,6 +138,38 @@ impl LayoutNode {
         match self {
             LayoutNode::Text { fragments, .. } => Some(fragments),
             _ => None,
+        }
+    }
+}
+
+impl std::fmt::Debug for LayoutNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LayoutNode::Block { node_id, dimensions, .. } => {
+                f.debug_struct("Block")
+                    .field("node_id", node_id)
+                    .field("dimensions", dimensions)
+                    .finish()
+            }
+            LayoutNode::Inline { node_id, boxes, .. } => {
+                f.debug_struct("Inline").field("node_id", node_id).field("boxes", boxes).finish()
+            }
+            LayoutNode::InlineBlock { node_id, dimensions, .. } => {
+                f.debug_struct("InlineBlock")
+                    .field("node_id", node_id)
+                    .field("dimensions", dimensions)
+                    .finish()
+            }
+            LayoutNode::Text { node_id, fragments, height } => {
+                f.debug_struct("Text")
+                    .field("node_id", node_id)
+                    .field("fragments", fragments)
+                    .field("height", height)
+                    .finish()
+            }
+            LayoutNode::AnonymousBlock { dimensions, .. } => {
+                f.debug_struct("AnonymousBlock").field("dimensions", dimensions).finish()
+            }
         }
     }
 }

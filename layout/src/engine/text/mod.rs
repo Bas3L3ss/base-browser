@@ -1,12 +1,13 @@
 pub mod inline_fragment;
 pub mod line;
 
-use font::{FontMetrics, GlyphRun};
+use font::{ FontMetrics, GlyphRun };
 
 use crate::{
-    Dimensions, FontComponents,
+    Dimensions,
+    FontComponents,
     engine::LayoutContext,
-    text::{inline_fragment::InlineFragment, line::Line},
+    text::{ inline_fragment::InlineFragment, line::Line },
 };
 
 pub struct TextEngine;
@@ -26,7 +27,7 @@ impl TextEngine {
         current_y: &mut f32,
         ascent: f32,
         descent: f32,
-        line_height: f32,
+        line_height: f32
     ) {
         let mut word_start = 0;
         let text_len = text.len();
@@ -50,7 +51,7 @@ impl TextEngine {
                         current_y,
                         ascent,
                         descent,
-                        line_height,
+                        line_height
                     );
                 }
                 // Instead of emitting "" for whitespace, emit the (potentially multi-byte) whitespace char
@@ -68,7 +69,7 @@ impl TextEngine {
                     current_y,
                     ascent,
                     descent,
-                    line_height,
+                    line_height
                 );
                 word_start = idx + ch.len_utf8();
             }
@@ -91,7 +92,7 @@ impl TextEngine {
                 current_y,
                 ascent,
                 descent,
-                line_height,
+                line_height
             );
         }
     }
@@ -110,19 +111,22 @@ impl TextEngine {
         current_y: &mut f32,
         ascent: f32,
         descent: f32,
-        line_height: f32,
+        line_height: f32
     ) {
         // Only classify as is_collapsible_space if non-empty string and all whitespace, and collapse_spaces is enabled
-        let is_collapsible_space = !word.is_empty()
-            && word.chars().all(char::is_whitespace)
-            && font_components.whitespace.collapse_spaces;
+        let is_collapsible_space =
+            !word.is_empty() &&
+            font_components.whitespace.collapse_spaces &&
+            word.chars().all(char::is_whitespace);
 
         let glyph_run = GlyphRun::run(face, word, font_size, metrics);
+
         let advance_width = glyph_run.advance_width;
 
-        let needs_newline = advance_width > context.line_remaining_width
-            && cur_line.width > 0.0
-            && font_components.whitespace.allow_wrap;
+        let needs_newline =
+            advance_width > context.line_remaining_width &&
+            cur_line.width > 0.0 &&
+            font_components.whitespace.allow_wrap;
 
         if needs_newline && is_collapsible_space {
             return;
@@ -140,13 +144,13 @@ impl TextEngine {
             return;
         }
 
-        let baseline_offset = ascent + (line_height - ascent - descent) / 2.0; // TODO: handle inline algorithm more properly 
+        let baseline_offset = ascent + (line_height - ascent - descent) / 2.0; // TODO: handle inline algorithm more properly
         let fragment = InlineFragment::text(
             glyph_run,
             *current_x,
             *current_y,
             advance_width,
-            baseline_offset,
+            baseline_offset
         );
         cur_line.ascent = cur_line.ascent.max(ascent);
         cur_line.descent = cur_line.descent.max(descent);

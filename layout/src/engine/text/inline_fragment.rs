@@ -25,7 +25,7 @@ impl InlineFragment {
         x: f32,
         y: f32,
         width: f32,
-        baseline_offset: f32,
+        baseline_offset: f32
     ) -> TextFragment {
         TextFragment {
             glyph_run,

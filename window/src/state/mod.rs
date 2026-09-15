@@ -1,5 +1,6 @@
 use css::{ ComputedStyle, Edges };
 use glm::Vec4;
+use layout::text::inline_fragment::InlineFragment;
 use render::{
     Material,
     Mesh,
@@ -310,8 +311,29 @@ impl<'a> State<'a> {
             };
             let mesh = make_rect_mesh_from_physical_rect(&self.device, &background, color, size);
             self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
+            self.apply_border(node, computed_style, render_pass, size);
+        } else if let Some(fragments) = node.text_fragments() {
+            for fragment in fragments {
+                match fragment {
+                    InlineFragment::Text(text_frag) => {
+                        dbg!(text_frag);
+                    }
+                }
+            }
         }
 
+        for child in node.children() {
+            self.render_layout_tree(child, render_pass, depth + 1, size, document);
+        }
+    }
+
+    fn apply_border(
+        &self,
+        node: &LayoutNode,
+        computed_style: Option<&ComputedStyle>,
+        render_pass: &mut wgpu::RenderPass,
+        size: PhysicalSize<u32>
+    ) {
         if let Some(dimensions) = node.dimensions() {
             if let Some(border) = node.background_rect() {
                 if let Some(style) = computed_style {
@@ -545,10 +567,6 @@ impl<'a> State<'a> {
                     }
                 }
             }
-        }
-
-        for child in node.children() {
-            self.render_layout_tree(child, render_pass, depth + 1, size, document);
         }
     }
 }

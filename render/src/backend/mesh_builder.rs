@@ -3,9 +3,6 @@ use layout::Rect;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
-pub struct TriangleMesh(pub Mesh);
-pub struct QuadMesh(pub Mesh);
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
@@ -33,12 +30,20 @@ impl Vertex {
     }
 }
 
-/// Convert a layout-space rectangle (viewport pixels) to NDC for the render pipeline.
-pub fn physical_rect_to_ndc(rect: &Rect, viewport: PhysicalSize<u32>) -> (f32, f32, f32, f32) {
+/// Helper to convert pixel-space (layout-space) coordinates to NDC (-1..1)
+pub fn pixel_to_ndc(x: f32, y: f32, viewport: PhysicalSize<u32>) -> (f32, f32) {
     let w = viewport.width as f32;
     let h = viewport.height as f32;
-    let x_ndc = (2.0 * rect.x) / w - 1.0;
-    let y_ndc = 1.0 - (2.0 * rect.y) / h;
+    let x_ndc = (2.0 * x) / w - 1.0;
+    let y_ndc = 1.0 - (2.0 * y) / h;
+    (x_ndc, y_ndc)
+}
+
+/// Convert a layout-space rectangle (viewport pixels) to NDC for the render pipeline.
+pub fn physical_rect_to_ndc(rect: &Rect, viewport: PhysicalSize<u32>) -> (f32, f32, f32, f32) {
+    let (x_ndc, y_ndc) = pixel_to_ndc(rect.x, rect.y, viewport);
+    let w = viewport.width as f32;
+    let h = viewport.height as f32;
     let width_ndc = (2.0 * rect.width) / w;
     let height_ndc = (-2.0 * rect.height) / h;
     (x_ndc, y_ndc, width_ndc, height_ndc)
@@ -50,12 +55,10 @@ pub fn physical_triangle_to_ndc(
     points: &[(f32, f32); 3],
     viewport: PhysicalSize<u32>
 ) -> [(f32, f32); 3] {
-    let w = viewport.width as f32;
-    let h = viewport.height as f32;
     [
-        ((2.0 * points[0].0) / w - 1.0, 1.0 - (2.0 * points[0].1) / h),
-        ((2.0 * points[1].0) / w - 1.0, 1.0 - (2.0 * points[1].1) / h),
-        ((2.0 * points[2].0) / w - 1.0, 1.0 - (2.0 * points[2].1) / h),
+        pixel_to_ndc(points[0].0, points[0].1, viewport),
+        pixel_to_ndc(points[1].0, points[1].1, viewport),
+        pixel_to_ndc(points[2].0, points[2].1, viewport),
     ]
 }
 

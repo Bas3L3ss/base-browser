@@ -1,6 +1,6 @@
 use std::{ format, matches };
 
-use crate::{ Color, Length, cssom::{ function::Function, unit::Unit } };
+use crate::{ Length, cssom::{ function::Function, unit::Unit } };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComponentValue {
