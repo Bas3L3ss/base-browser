@@ -1,4 +1,10 @@
-use crate::FontMetrics;
+pub mod cache;
+
+use std::sync::Arc;
+
+use rustybuzz::GlyphBuffer;
+
+use crate::{ FontMetrics, LoadedFont, shape::cache::{ ShapeCache, ShapeKey } };
 #[derive(Clone, Debug)]
 pub struct GlyphRun {
     pub glyphs: Vec<GlyphPosition>,
@@ -7,30 +13,35 @@ pub struct GlyphRun {
 
 #[derive(Clone, Debug)]
 pub struct GlyphPosition {
-    // WHAT glyph should I draw?
     pub glyph_id: u16,
 
-    // WHERE should I draw this glyph relative to the cursor?
     pub x_offset: f32,
     pub y_offset: f32,
 
-    // WHERE should the cursor move for the NEXT glyph?
     pub x_advance: f32,
     pub y_advance: f32,
 }
 
 impl GlyphRun {
     pub fn run(
-        rb_face: &rustybuzz::Face,
+        loaded_font: Arc<LoadedFont>,
         text: &str,
         font_size: f32,
-        metrics: &FontMetrics
+        metrics: &FontMetrics,
+        shape_cache: &mut ShapeCache
     ) -> Self {
-        let mut buffer = rustybuzz::UnicodeBuffer::new();
-        buffer.push_str(text);
-        buffer.guess_segment_properties();
+        let key = ShapeKey::new(text, loaded_font.id, font_size);
 
-        let output = rustybuzz::shape(&rb_face, &[], buffer); // CACHE THIS
+        let output: &GlyphBuffer = if let Some(cached) = shape_cache.cache.get(&key) {
+            cached
+        } else {
+            let mut buffer = rustybuzz::UnicodeBuffer::new();
+            buffer.push_str(text);
+            buffer.guess_segment_properties();
+            let shaped = rustybuzz::shape(&loaded_font.rb_face, &[], buffer);
+            shape_cache.cache.insert(key.clone(), shaped);
+            shape_cache.cache.get(&key).expect("Value just inserted should exist")
+        };
 
         let scale = metrics.scale(font_size);
 

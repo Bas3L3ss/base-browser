@@ -19,10 +19,11 @@ use css::FontFaceRule;
 use network::ResourceLoader;
 use url::Url;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FontManager {
     pub cache: FontCache,
     pub font_db: fontdb::Database,
+    pub cur_id: u16,
 }
 
 impl FontManager {
@@ -33,6 +34,7 @@ impl FontManager {
         Self {
             font_db,
             cache: FontCache::new(),
+            cur_id: 0,
         }
     }
 
@@ -72,13 +74,15 @@ impl FontManager {
     fn load_cached(
         &mut self,
         key: FontKey,
-        load: impl FnOnce() -> Option<LoadedFont>
+        mut load: impl FnMut(u16) -> Option<LoadedFont>
     ) -> Option<(Arc<LoadedFont>, FontKey)> {
         if let Some(font) = self.cache.get(&key) {
             return Some((font, key.clone()));
         }
 
-        let font = Arc::new(load()?);
+        let id = self.cur_id;
+        let font = Arc::new(load(id)?);
+        self.cur_id = self.cur_id.wrapping_add(1);
 
         self.cache.insert(key.clone(), font.clone());
 
@@ -100,10 +104,10 @@ impl FontManager {
             })
         };
 
-        self.load_cached(key, || {
+        self.load_cached(key, |font_id| {
             let source = face_info.as_ref()?;
             let bytes = std::fs::read(source).ok()?;
-            Some(LoadedFont::from_bytes(bytes).ok()?)
+            Some(LoadedFont::from_bytes(bytes, font_id).ok()?)
         })
     }
 
@@ -118,7 +122,7 @@ impl FontManager {
         let url = base_url.resolve(href).ok()?;
         let key = FontKey::Web { url: url.clone() };
 
-        self.load_cached(key, || {
+        self.load_cached(key, |font_id| {
             if !FontSupport::supports_tech(techs) {
                 return None;
             }
@@ -146,7 +150,7 @@ impl FontManager {
                 }
             };
 
-            Some(LoadedFont::from_bytes(bytes).ok()?)
+            Some(LoadedFont::from_bytes(bytes, font_id).ok()?)
         })
     }
 
@@ -250,10 +254,12 @@ impl FontManager {
         if let Some(face) = face_opt {
             if let fontdb::Source::File(path) = &face.source {
                 if let Ok(bytes) = std::fs::read(path) {
-                    if let Ok(loaded_font) = LoadedFont::from_bytes(bytes) {
+                    let font_id = self.cur_id;
+                    if let Ok(loaded_font) = LoadedFont::from_bytes(bytes, font_id) {
                         let font = Arc::new(loaded_font);
                         let key = FontKey::Local { id: face.id };
                         found = Some((font, key));
+                        self.cur_id = self.cur_id.wrapping_add(1);
                     }
                 }
             }
@@ -270,9 +276,11 @@ impl FontManager {
             .find_map(|face| {
                 if let fontdb::Source::File(path) = &face.source {
                     if let Ok(bytes) = std::fs::read(path) {
-                        if let Ok(loaded_font) = LoadedFont::from_bytes(bytes) {
+                        let font_id = self.cur_id;
+                        if let Ok(loaded_font) = LoadedFont::from_bytes(bytes, font_id) {
                             let font = Arc::new(loaded_font);
                             let key = FontKey::Local { id: face.id };
+                            self.cur_id = self.cur_id.wrapping_add(1);
                             return Some((font, key));
                         }
                     }

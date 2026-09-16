@@ -1,17 +1,18 @@
 use anyhow::Result;
 use css::{ ComputedStyle, CssOm, StyleContext, StyleEngine };
+use font::shape::cache::ShapeCache;
 use html::{ Dom, Parser };
 use layout::LayoutTree;
 use network::ResourceLoader;
 use url::url::Url;
 
-#[derive(Debug, Clone)]
 pub struct Document {
     pub url: Url,
     pub dom: Dom,
     pub cssom: CssOm,
     pub computed_styles: Vec<Option<ComputedStyle>>,
     pub layout_tree: LayoutTree,
+    pub shape_cache: ShapeCache,
 }
 
 impl Document {
@@ -31,6 +32,7 @@ impl Document {
             cssom,
             computed_styles,
             layout_tree,
+            shape_cache: ShapeCache::new(),
         })
     }
 }

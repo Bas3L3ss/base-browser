@@ -1,7 +1,9 @@
 pub mod inline_fragment;
 pub mod line;
 
-use font::{ FontKey, FontMetrics, GlyphRun };
+use std::sync::Arc;
+
+use font::{ FontKey, FontMetrics, GlyphRun, LoadedFont };
 
 use crate::{
     Dimensions,
@@ -17,7 +19,7 @@ impl TextEngine {
         fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         text: &str,
-        rb_face: &rustybuzz::Face,
+        loaded_font: Arc<LoadedFont>,
         font_size: f32,
         font_components: &FontComponents,
         metrics: &FontMetrics,
@@ -42,7 +44,7 @@ impl TextEngine {
                         fragments,
                         context,
                         word,
-                        rb_face,
+                        loaded_font.clone(),
                         font_size,
                         font_components,
                         metrics,
@@ -61,7 +63,7 @@ impl TextEngine {
                     fragments,
                     context,
                     &text[idx..idx + ch.len_utf8()],
-                    rb_face,
+                    loaded_font.clone(),
                     font_size,
                     font_components,
                     metrics,
@@ -85,7 +87,7 @@ impl TextEngine {
                 fragments,
                 context,
                 word,
-                rb_face,
+                loaded_font,
                 font_size,
                 font_components,
                 metrics,
@@ -105,7 +107,7 @@ impl TextEngine {
         fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         word: &str,
-        rb_face: &rustybuzz::Face,
+        loaded_font: Arc<LoadedFont>,
         font_size: f32,
         font_components: &FontComponents,
         metrics: &FontMetrics,
@@ -124,7 +126,7 @@ impl TextEngine {
             font_components.whitespace.collapse_spaces &&
             word.chars().all(char::is_whitespace);
 
-        let glyph_run = GlyphRun::run(rb_face, word, font_size, metrics);
+        let glyph_run = GlyphRun::run(loaded_font, word, font_size, metrics, context.shape_cache);
 
         let advance_width = glyph_run.advance_width;
 

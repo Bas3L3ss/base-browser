@@ -11,7 +11,6 @@ use winit::{ dpi::PhysicalSize, window::Window };
 use crate::Document;
 
 pub type TabId = usize;
-#[derive(Debug, Clone)]
 pub struct Tab {
     pub tab_id: TabId,
     pub document: Option<Document>,
@@ -44,7 +43,8 @@ impl Tab {
             font_manager,
             &resource_loader,
             &url,
-            window.inner_size()
+            window.inner_size(),
+            &mut document.shape_cache
         );
 
         self.document = Some(document);
@@ -66,7 +66,8 @@ impl Tab {
                 font_manager,
                 &resource_loader,
                 &document.url,
-                size
+                size,
+                &mut document.shape_cache
             );
         }
 

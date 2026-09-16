@@ -1,54 +1,46 @@
 use std::sync::Arc;
-use swash::{ CacheKey, FontRef };
+use swash::{ FontRef };
 
 use crate::FontError;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone)]
 pub struct LoadedFont {
-    data: Arc<[u8]>,
-
-    swash_offset: u32,
-    swash_key: CacheKey,
+    pub id: u16,
+    /// The parsed TTF face using ttf_parser for font metrics, glyph outlines etc.
+    pub face: ttf_parser::Face<'static>,
+    /// Parsed face for shaping
+    pub rb_face: rustybuzz::Face<'static>,
+    /// Used by swash rasterizer
+    pub font_ref: FontRef<'static>,
 }
 
 impl LoadedFont {
-    pub fn face(&self) -> Result<ttf_parser::Face<'_>, FontError> {
-        ttf_parser::Face::parse(&self.data, 0).map_err(|e| FontError::ParseError(e.to_string()))
-    }
-
-    pub fn from_bytes(data: Vec<u8>) -> Result<Self, FontError> {
+    pub fn from_bytes(data: Vec<u8>, id: u16) -> Result<Self, FontError> {
         let data: Arc<[u8]> = data.into();
+        let leaked: &[u8] = {
+            let slice_ref: &[u8] = &*data;
+            Box::leak(slice_ref.to_owned().into_boxed_slice())
+        };
 
-        // Ask Swash to parse the font ONCE.
-        let font_ref = FontRef::from_index(&data, 0).ok_or_else(||
+        let face = ttf_parser::Face
+            ::parse(leaked, 0)
+            .map_err(|e| FontError::ParseError(e.to_string()))?;
+
+        let rb_face = rustybuzz::Face
+            ::from_slice(leaked, 0)
+            .ok_or_else(||
+                FontError::ParseError("failed to parse font for rustybuzz::Face".into())
+            )?;
+
+        let font_ref = FontRef::from_index(leaked, 0).ok_or_else(||
             FontError::ParseError("Swash failed to parse font".into())
         )?;
 
-        let swash_offset = font_ref.offset;
-        let swash_key = font_ref.key;
-
         Ok(Self {
-            data,
-            swash_offset,
-            swash_key,
+            id,
+            face,
+            rb_face,
+            font_ref,
         })
-    }
-
-    /// Creates a rustybuzz::Face whose underlying font data is *not* tied to the lifetime of
-    /// LoadedFont and may be dropped, so use with caution: don't drop self while Face is alive.
-    pub fn to_rb_face(self: &Arc<Self>) -> rustybuzz::Face<'static> {
-        let data_arc = Arc::clone(self);
-        let leaked: &'static LoadedFont = Box::leak(Box::new(data_arc));
-        rustybuzz::Face
-            ::from_slice(&leaked.data, 0)
-            .expect("failed to parse font for rustybuzz::Face")
-    }
-
-    pub fn as_swash_ref(&self) -> FontRef<'_> {
-        FontRef {
-            data: &self.data,
-            offset: self.swash_offset,
-            key: self.swash_key,
-        }
     }
 }

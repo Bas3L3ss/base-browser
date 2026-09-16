@@ -1,22 +1,7 @@
-use css::{ ComputedStyle, Edges };
-use font::{ FontManager, GlyphPosition };
-use glm::Vec4;
-use layout::text::inline_fragment::{ InlineFragment, TextFragment };
-use render::{
-    GlyphAtlas,
-    Material,
-    Mesh,
-    Vertex,
-    bind_group_layout,
-    make_rect_mesh_from_physical_rect,
-    make_triangle_mesh_from_physical_points,
-    mesh_builder,
-    pipeline,
-};
-
-use layout::{ LayoutNode, Rect };
+use font::{ FontManager };
+use render::render::render_layout_tree;
+use render::{ GlyphAtlas, Material, Vertex, bind_group_layout, pipeline };
 pub mod tab;
-use swash::scale::image::Image;
 pub use tab::*;
 pub mod document;
 pub use document::*;
@@ -165,16 +150,6 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn get_current_tab(&self) -> Option<&Tab> {
-        if let Some(id) = self.cur_tab {
-            if let Some(tab) = self.tabs.iter().find(|tab| tab.tab_id == id) {
-                if tab.document.is_some() {
-                    return Some(tab);
-                }
-            }
-        }
-        None
-    }
     pub fn get_current_mut_tab(&mut self) -> Option<&mut Tab> {
         if let Some(id) = self.cur_tab {
             if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.tab_id == id) {
@@ -187,11 +162,10 @@ impl<'a> State<'a> {
     }
 
     pub fn render(&mut self, font_manager: &FontManager) {
-        // Get the current tab and its document
-        let (_, document) = match self.get_current_tab() {
-            Some(tab) =>
-                match &tab.document {
-                    Some(document) => (tab, document.clone()), // TODO: FIX CLONE - OWNERSHIP PROBLEM
+        let tab = match self.cur_tab {
+            Some(id) =>
+                match self.tabs.iter().find(|tab| tab.tab_id == id && tab.document.is_some()) {
+                    Some(tab) => tab,
                     None => {
                         return;
                     }
@@ -201,456 +175,78 @@ impl<'a> State<'a> {
             }
         };
 
-        if let Some(root) = &document.layout_tree.root {
-            let drawable = match self.surface.get_current_texture() {
-                CurrentSurfaceTexture::Suboptimal(t) | CurrentSurfaceTexture::Success(t) => t,
-
-                e => {
-                    dbg!(e);
-                    panic!()
-                }
-            };
-
-            let image_view_descriptor = wgpu::TextureViewDescriptor::default();
-            let image_view = drawable.texture.create_view(&image_view_descriptor);
-
-            let command_encoder_descriptor = wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            };
-
-            let mut command_encoder = self.device.create_command_encoder(
-                &command_encoder_descriptor
-            );
-
-            let color_attachment = wgpu::RenderPassColorAttachment {
-                view: &image_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }),
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            };
-
-            let render_pass_descriptor = wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(color_attachment)],
-                ..Default::default()
-            };
-
-            {
-                let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
-                render_pass.set_pipeline(&self.render_pipeline);
-                let size = self.window.inner_size();
-                self.render_layout_tree(&root, &mut render_pass, 0, size, &document, font_manager);
-            }
-
-            let event: wgpu::SubmissionIndex = self.queue.submit(
-                std::iter::once(command_encoder.finish())
-            );
-            let maintain = wgpu::PollType::Wait { submission_index: Some(event), timeout: None };
-            self.device.poll(maintain).unwrap();
-            self.queue.present(drawable);
-        }
-    }
-
-    pub fn draw_mesh_indexed(
-        &self,
-        render_pass: &mut wgpu::RenderPass,
-        mesh: &Mesh,
-        material: &Material
-    ) {
-        render_pass.set_bind_group(0, &material.bind_group, &[]);
-        render_pass.set_vertex_buffer(0, mesh.buffer.slice(0..mesh.offset));
-        render_pass.set_index_buffer(mesh.buffer.slice(mesh.offset..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(
-            0..(mesh.buffer.slice(mesh.offset..).size() as u32) /
-                (std::mem::size_of::<u16>() as u32),
-            0,
-            0..1
-        );
-    }
-
-    /// Paints each element's background over its border box (padding + border, not margin).
-    pub fn render_layout_tree(
-        &mut self,
-        node: &LayoutNode,
-        render_pass: &mut wgpu::RenderPass,
-        depth: usize,
-        size: PhysicalSize<u32>,
-        document: &Document,
-        font_manager: &FontManager
-    ) {
-        println!("---------------------------------------------------------------------------");
-        // println!("{node:?}");
-        let node_id = node.node_id();
-        match node_id {
-            Some(id) => {
-                let computed_style = document.computed_styles[id].as_ref();
-
-                self.render_node(
-                    node,
-                    render_pass,
-                    depth,
-                    size,
-                    document,
-                    computed_style,
-                    font_manager
-                );
-            }
+        let document = match &tab.document {
+            Some(document) => document,
             None => {
-                self.render_node(node, render_pass, depth, size, document, None, font_manager);
+                return;
             }
-        }
-    }
-    fn render_node(
-        &mut self,
-        node: &LayoutNode,
-        render_pass: &mut wgpu::RenderPass,
-        depth: usize,
-        size: PhysicalSize<u32>,
-        document: &Document,
-        computed_style: Option<&ComputedStyle>,
-        font_manager: &FontManager
-    ) {
-        if let Some(background) = node.background_rect() {
-            let color = match computed_style {
-                Some(style) => {
-                    let bg_color = style.bg_color();
-                    glm::Vector4 {
-                        x: bg_color[0],
-                        y: bg_color[1],
-                        z: bg_color[2],
-                        w: bg_color[3],
-                    }
-                }
-                _ => { glm::vec4(0.0, 0.0, 0.0, 0.0) }
-            };
-            let mesh = make_rect_mesh_from_physical_rect(&self.device, &background, color, size);
-            self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
-            self.apply_border(node, computed_style, render_pass, size);
-        } else if let Some(fragments) = node.text_fragments() {
-            for fragment in fragments {
-                match fragment {
-                    InlineFragment::Text(text_frag) => {
-                        let mut pen_x = text_frag.x;
-                        let baseline_y = text_frag.y + text_frag.baseline_offset;
-                        if let Some(font) = font_manager.cache.get(&text_frag.font_key) {
-                            for glyph_pos in &text_frag.glyph_run.glyphs {
-                                if
-                                    let Some(image) = self.glyph_atlas.get_glpyh_image(
-                                        text_frag.font_size,
-                                        &font,
-                                        glyph_pos.x_offset,
-                                        glyph_pos.y_offset,
-                                        glyph_pos.glyph_id
-                                    )
-                                {
-                                    self.render_glyph_rect(
-                                        glyph_pos,
-                                        size,
-                                        render_pass,
-                                        pen_x,
-                                        baseline_y,
-                                        &image
-                                    );
-                                    pen_x += glyph_pos.x_advance;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for child in node.children() {
-            self.render_layout_tree(child, render_pass, depth + 1, size, document, font_manager);
-        }
-    }
-
-    /// Render a mesh rectangle for a single glyph image, given the glyph and a prepared image.
-    fn render_glyph_rect(
-        &self,
-        glyph_pos: &GlyphPosition,
-        size: winit::dpi::PhysicalSize<u32>,
-        render_pass: &mut wgpu::RenderPass,
-        pen_x: f32,
-        baseline_y: f32,
-        image: &Image
-    ) {
-        if image.placement.width == 0 || image.placement.height == 0 {
-            return;
-        }
-        // Calculate glyph position
-        let glyph_x = pen_x + glyph_pos.x_offset + (image.placement.left as f32);
-        let glyph_y = baseline_y - glyph_pos.y_offset - (image.placement.top as f32);
-
-        let rect = Rect {
-            x: glyph_x,
-            y: glyph_y,
-            width: image.placement.width as f32,
-            height: image.placement.height as f32,
         };
 
-        // Build mesh for this glyph
-        let mesh = make_rect_mesh_from_physical_rect(
-            &self.device,
-            &rect,
-            glm::vec4(0.0, 0.0, 0.0, 1.0),
-            size
-        );
+        let root = if let Some(root) = &document.layout_tree.root {
+            root
+        } else {
+            return;
+        };
 
-        let material = Material::new(
-            &image,
-            &self.device,
-            &self.queue,
-            "Glyph text",
-            &self.glyph_bind_group_layout
-        );
+        let drawable = match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Suboptimal(t) | CurrentSurfaceTexture::Success(t) => t,
 
-        self.draw_mesh_indexed(render_pass, &mesh, &material);
-    }
-
-    fn apply_border(
-        &self,
-        node: &LayoutNode,
-        computed_style: Option<&ComputedStyle>,
-        render_pass: &mut wgpu::RenderPass,
-        size: PhysicalSize<u32>
-    ) {
-        if let Some(dimensions) = node.dimensions() {
-            if let Some(border) = node.background_rect() {
-                if let Some(style) = computed_style {
-                    let border_color: Edges<[f32; 4]> = style.border_color();
-
-                    let top_rect = Rect {
-                        x: border.x + dimensions.border.left,
-                        y: border.y,
-                        width: border.width - dimensions.border.left - dimensions.border.right,
-                        height: dimensions.border.top,
-                    };
-                    let right_rect = Rect {
-                        x: border.x + border.width - dimensions.border.right,
-                        y: border.y + dimensions.border.top,
-                        width: dimensions.border.right,
-                        height: border.height - dimensions.border.top - dimensions.border.bottom,
-                    };
-                    let bottom_rect = Rect {
-                        x: border.x + dimensions.border.left,
-                        y: border.y + border.height - dimensions.border.bottom,
-                        width: border.width - dimensions.border.left - dimensions.border.right,
-                        height: dimensions.border.bottom,
-                    };
-                    let left_rect = Rect {
-                        x: border.x,
-                        y: border.y + dimensions.border.top,
-                        width: dimensions.border.left,
-                        height: border.height - dimensions.border.top - dimensions.border.bottom,
-                    };
-
-                    let rects_colors: [(Rect, Vec4); 4] = [
-                        (
-                            top_rect,
-                            glm::vec4(
-                                border_color.top[0],
-                                border_color.top[1],
-                                border_color.top[2],
-                                border_color.top[3]
-                            ),
-                        ),
-                        (
-                            right_rect,
-                            glm::vec4(
-                                border_color.right[0],
-                                border_color.right[1],
-                                border_color.right[2],
-                                border_color.right[3]
-                            ),
-                        ),
-                        (
-                            bottom_rect,
-                            glm::vec4(
-                                border_color.bottom[0],
-                                border_color.bottom[1],
-                                border_color.bottom[2],
-                                border_color.bottom[3]
-                            ),
-                        ),
-                        (
-                            left_rect,
-                            glm::vec4(
-                                border_color.left[0],
-                                border_color.left[1],
-                                border_color.left[2],
-                                border_color.left[3]
-                            ),
-                        ),
-                    ];
-
-                    for (rect, color) in rects_colors {
-                        let mesh = make_rect_mesh_from_physical_rect(
-                            &self.device,
-                            &rect,
-                            color,
-                            size
-                        );
-                        self.draw_mesh_indexed(render_pass, &mesh, &self.default_material);
-                    }
-
-                    let triangle_corners_and_colors: [([(f32, f32); 3], Vec4); 8] = [
-                        (
-                            [
-                                (border.x, border.y),
-                                (border.x + dimensions.border.left, border.y),
-                                (
-                                    border.x + dimensions.border.left,
-                                    border.y + dimensions.border.top,
-                                ),
-                            ],
-                            glm::vec4(
-                                border_color.top[0],
-                                border_color.top[1],
-                                border_color.top[2],
-                                border_color.top[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (border.x + border.width - dimensions.border.right, border.y),
-                                (border.x + border.width, border.y),
-                                (
-                                    border.x + border.width - dimensions.border.right,
-                                    border.y + dimensions.border.top,
-                                ),
-                            ],
-                            glm::vec4(
-                                border_color.top[0],
-                                border_color.top[1],
-                                border_color.top[2],
-                                border_color.top[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (border.x, border.y),
-                                (
-                                    border.x + dimensions.border.left,
-                                    border.y + dimensions.border.top,
-                                ),
-                                (border.x, border.y + dimensions.border.top),
-                            ],
-                            glm::vec4(
-                                border_color.left[0],
-                                border_color.left[1],
-                                border_color.left[2],
-                                border_color.left[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (border.x, border.y + border.height - dimensions.border.bottom),
-                                (
-                                    border.x + dimensions.border.left,
-                                    border.y + border.height - dimensions.border.bottom,
-                                ),
-                                (border.x, border.y + border.height),
-                            ],
-                            glm::vec4(
-                                border_color.left[0],
-                                border_color.left[1],
-                                border_color.left[2],
-                                border_color.left[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (
-                                    border.x + dimensions.border.left,
-                                    border.y + border.height - dimensions.border.bottom,
-                                ),
-                                (border.x + dimensions.border.left, border.y + border.height),
-                                (border.x, border.y + border.height),
-                            ],
-                            glm::vec4(
-                                border_color.bottom[0],
-                                border_color.bottom[1],
-                                border_color.bottom[2],
-                                border_color.bottom[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (border.x + border.width, border.y + border.height),
-
-                                (
-                                    border.x + border.width - dimensions.border.right,
-                                    border.y + border.height,
-                                ),
-
-                                (
-                                    border.x + border.width - dimensions.border.right,
-                                    border.y + border.height - dimensions.border.bottom,
-                                ),
-                            ],
-                            glm::vec4(
-                                border_color.bottom[0],
-                                border_color.bottom[1],
-                                border_color.bottom[2],
-                                border_color.bottom[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (
-                                    border.x + border.width - dimensions.border.right,
-                                    border.y + border.height - dimensions.border.bottom,
-                                ),
-
-                                (
-                                    border.x + border.width,
-                                    border.y + border.height - dimensions.border.bottom,
-                                ),
-
-                                (border.x + border.width, border.y + border.height),
-                            ],
-                            glm::vec4(
-                                border_color.right[0],
-                                border_color.right[1],
-                                border_color.right[2],
-                                border_color.right[3]
-                            ),
-                        ),
-                        (
-                            [
-                                (border.x + border.width, border.y),
-
-                                (border.x + border.width, border.y + dimensions.border.top),
-
-                                (
-                                    border.x + border.width - dimensions.border.left,
-                                    border.y + dimensions.border.top,
-                                ),
-                            ],
-                            glm::vec4(
-                                border_color.right[0],
-                                border_color.right[1],
-                                border_color.right[2],
-                                border_color.right[3]
-                            ),
-                        ),
-                    ];
-
-                    for (corners, color) in triangle_corners_and_colors.iter() {
-                        let tmesh = make_triangle_mesh_from_physical_points(
-                            &self.device,
-                            corners,
-                            *color,
-                            size
-                        );
-                        self.draw_mesh_indexed(render_pass, &tmesh, &self.default_material);
-                    }
-                }
+            e => {
+                dbg!(e);
+                panic!()
             }
+        };
+
+        let image_view_descriptor = wgpu::TextureViewDescriptor::default();
+        let image_view = drawable.texture.create_view(&image_view_descriptor);
+
+        let command_encoder_descriptor = wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        };
+
+        let mut command_encoder = self.device.create_command_encoder(&command_encoder_descriptor);
+
+        let color_attachment = wgpu::RenderPassColorAttachment {
+            view: &image_view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }),
+                store: wgpu::StoreOp::Store,
+            },
+            depth_slice: None,
+        };
+
+        let render_pass_descriptor = wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(color_attachment)],
+            ..Default::default()
+        };
+
+        {
+            let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
+            render_pass.set_pipeline(&self.render_pipeline);
+            let size = self.window.inner_size();
+            //cannot borrow `*self` as mutable because it is also borrowed as immutable
+            render_layout_tree(
+                &root,
+                &mut render_pass,
+                &mut self.glyph_atlas,
+                0,
+                size,
+                &document.computed_styles,
+                font_manager,
+                &self.device,
+                &self.default_material,
+                &self.queue,
+                &self.glyph_bind_group_layout
+            );
         }
+
+        let event: wgpu::SubmissionIndex = self.queue.submit(
+            std::iter::once(command_encoder.finish())
+        );
+        let maintain = wgpu::PollType::Wait { submission_index: Some(event), timeout: None };
+        self.device.poll(maintain).unwrap();
+        self.queue.present(drawable);
     }
 }

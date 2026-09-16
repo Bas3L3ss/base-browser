@@ -16,31 +16,28 @@ use crate::{
     text::{ TextEngine, line::Line },
 };
 use css::{ BoxSizing, ComputedStyle, CssOm, LengthContext, LineHeight };
-use font::{ FontManager, FontMetrics, FontRequest };
+use font::{ FontManager, FontMetrics, FontRequest, shape::cache::ShapeCache };
 use html::{ Dom, NodeType };
 use network::ResourceLoader;
-use std::{ eprintln, todo };
+use std::{ todo };
 use url::Url;
 
-pub(crate) struct LayoutContext {
+pub(crate) struct LayoutContext<'a> {
+    shape_cache: &'a mut ShapeCache,
     viewport_width: f32,
     viewport_height: f32,
-
     root_font_size: f32,
     current_font_size: f32,
     current_font_weight: u16,
-
     ex_height: f32,
     ch_width: f32,
-
     pending_space: bool,
-
     line_remaining_width: f32,
     current_line: Option<Line>,
 }
 
 pub struct LayoutEngine<'a> {
-    context: LayoutContext,
+    context: LayoutContext<'a>,
     dom: &'a Dom,
     computed_style: &'a [Option<ComputedStyle>],
     font_manager: &'a mut FontManager,
@@ -58,7 +55,8 @@ impl<'a> LayoutEngine<'a> {
         font_manager: &mut FontManager,
         loader: &ResourceLoader,
         base_url: &Url,
-        size: PhysicalSize<u32>
+        size: PhysicalSize<u32>,
+        shape_cache: &mut ShapeCache
     ) {
         let width = size.width as f32;
         let height = size.height as f32;
@@ -107,7 +105,7 @@ impl<'a> LayoutEngine<'a> {
             }
         };
 
-        let face = &loaded.face().expect("must always have a valid font");
+        let face = &loaded.face;
         let metrics = FontMetrics::from_face(face);
 
         let context = LayoutContext {
@@ -121,6 +119,7 @@ impl<'a> LayoutEngine<'a> {
             ch_width: metrics.ch(&face, root_font_size),
             ex_height: metrics.x_height,
             current_line: None,
+            shape_cache,
         };
 
         let mut engine = LayoutEngine {
@@ -203,13 +202,7 @@ impl<'a> LayoutEngine<'a> {
                 self.loader
             );
 
-            let face = match loaded_font.face() {
-                Ok(face) => face,
-                Err(e) => {
-                    eprintln!("Font parse error: {:?}", e);
-                    return;
-                }
-            };
+            let face = &loaded_font.face;
 
             let metrics = FontMetrics::from_face(&face);
 
@@ -246,8 +239,6 @@ impl<'a> LayoutEngine<'a> {
 
             let mut chars = text.char_indices();
 
-            let rb_face = loaded_font.to_rb_face();
-
             while let Some((idx, ch)) = chars.next() {
                 let is_newline = ch == '\n' && font_components.whitespace.preserve_newlines;
                 let is_whitespace = ch.is_whitespace();
@@ -257,7 +248,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &rb_face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -287,7 +278,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &rb_face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -311,7 +302,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &rb_face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -330,7 +321,7 @@ impl<'a> LayoutEngine<'a> {
                         fragments,
                         &mut self.context,
                         &text[idx..idx + ch.len_utf8()],
-                        &rb_face,
+                        loaded_font.clone(),
                         font_size,
                         &font_components,
                         &metrics,
@@ -351,7 +342,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             " ",
-                            &rb_face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -381,7 +372,7 @@ impl<'a> LayoutEngine<'a> {
                         fragments,
                         &mut self.context,
                         substr,
-                        &rb_face,
+                        loaded_font.clone(),
                         font_size,
                         &font_components,
                         &metrics,
@@ -459,11 +450,10 @@ impl<'a> LayoutEngine<'a> {
                 self.loader
             );
 
-            if let Ok(face) = &loaded_font.face() {
-                let metrics = FontMetrics::from_face(face);
-                self.context.ch_width = metrics.ch(face, self.context.current_font_size);
-                self.context.ex_height = metrics.x_height;
-            }
+            let face = &loaded_font.face;
+            let metrics = FontMetrics::from_face(face);
+            self.context.ch_width = metrics.ch(face, self.context.current_font_size);
+            self.context.ex_height = metrics.x_height;
 
             let element_ctx = LengthContext {
                 font_size: self.context.current_font_size,
