@@ -4,6 +4,7 @@ use std::{ eprintln, sync::Arc };
 use anyhow::{ Result, bail };
 use input_parser::Parse;
 use url::Url;
+use utils::profile_scope;
 use window::{ State, Tab, TabId };
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;

@@ -97,10 +97,10 @@ impl Material {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::R8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             label: Some(label),
-            view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
+            view_formats: &[wgpu::TextureFormat::R8Unorm],
         };
         let texture = device.create_texture(&texture_descriptor);
 
@@ -115,7 +115,7 @@ impl Material {
             &image.data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * image.placement.width),
+                bytes_per_row: Some(image.placement.width),
                 rows_per_image: Some(image.placement.height),
             },
             texture_size

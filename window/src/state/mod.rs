@@ -1,6 +1,6 @@
 use font::{ FontManager };
 use render::batch::MeshBatch;
-use render::render::{ draw_indexed_batch_mesh, render_layout_tree };
+use render::render::{ draw_indexed_batch_mesh, render_layout_tree, RenderPhase };
 use render::{ GlyphAtlas, Material, Vertex, bind_group_layout, pipeline };
 pub mod tab;
 pub use tab::*;
@@ -125,6 +125,7 @@ impl<'a> State<'a> {
             builder.add_bind_group_layout(&glyph_bind_group_layout);
             render_pipeline = builder.build("Render Pipeline");
         }
+        let mesh_batch = MeshBatch::new(&device);
 
         Self {
             cur_tab: None,
@@ -140,7 +141,7 @@ impl<'a> State<'a> {
             default_material,
             glyph_atlas: GlyphAtlas::new(),
             glyph_bind_group_layout,
-            mesh_batch: MeshBatch::new(),
+            mesh_batch,
         }
     }
 
@@ -225,38 +226,51 @@ impl<'a> State<'a> {
             ..Default::default()
         };
 
+        self.mesh_batch.clear();
+
         {
             let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
             render_pass.set_pipeline(&self.render_pipeline);
             let size = self.window.inner_size();
-            self.mesh_batch.clear();
 
-            render_layout_tree(
-                &root,
-                &mut render_pass,
-                &mut self.glyph_atlas,
-                0,
-                size,
-                &document.computed_styles,
-                font_manager,
-                &self.device,
-                &self.default_material,
-                &self.queue,
-                &self.glyph_bind_group_layout,
-                &mut self.mesh_batch
-            );
+            {
+                profile_scope!("render tab");
 
-            let (buffer, vertex_bytes, index_count) = self.mesh_batch.upload(
-                &self.device,
-                "Batch quads"
-            );
-            draw_indexed_batch_mesh(
-                &mut render_pass,
-                &buffer,
-                vertex_bytes,
-                index_count,
-                &self.default_material
-            );
+                render_layout_tree(
+                    &root,
+                    &mut render_pass,
+                    &mut self.glyph_atlas,
+                    0,
+                    size,
+                    &document.computed_styles,
+                    font_manager,
+                    &self.device,
+                    &self.default_material,
+                    &self.queue,
+                    &self.glyph_bind_group_layout,
+                    &mut self.mesh_batch,
+                    RenderPhase::Backgrounds
+                );
+                self.mesh_batch.upload(&self.device, &self.queue);
+
+                draw_indexed_batch_mesh(&mut render_pass, &self.mesh_batch, &self.default_material);
+
+                render_layout_tree(
+                    &root,
+                    &mut render_pass,
+                    &mut self.glyph_atlas,
+                    0,
+                    size,
+                    &document.computed_styles,
+                    font_manager,
+                    &self.device,
+                    &self.default_material,
+                    &self.queue,
+                    &self.glyph_bind_group_layout,
+                    &mut self.mesh_batch,
+                    RenderPhase::Glyphs
+                );
+            }
         }
 
         self.queue.submit(std::iter::once(command_encoder.finish()));

@@ -25,7 +25,7 @@ impl Mesh {
         let bytes_indices = unsafe {
             std::slice::from_raw_parts(
                 self.indices.as_ptr() as *const u8,
-                self.indices.len() * std::mem::size_of::<u16>()
+                self.indices.len() * std::mem::size_of::<u32>()
             )
         };
 

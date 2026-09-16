@@ -83,7 +83,7 @@ impl GlyphAtlas {
         let image = Render::new(
             &[Source::ColorOutline(0), Source::ColorBitmap(StrikeWith::BestFit), Source::Outline]
         )
-            .format(Format::Subpixel)
+            .format(Format::Alpha)
             .offset(offset)
             .render(&mut scaler, glyph_id);
 

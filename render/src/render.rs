@@ -7,36 +7,28 @@ use winit::dpi::PhysicalSize;
 
 use crate::{ GlyphAtlas, Material, Mesh, batch::MeshBatch };
 
-// pub fn draw_indexed_batch_mesh(
-//     render_pass: &mut wgpu::RenderPass,
-//     buffer: Buffer,
-//     offset: u64,
-//     material: &Material
-// ) {
-//     render_pass.set_bind_group(0, &material.bind_group, &[]);
-//     render_pass.set_vertex_buffer(0, buffer.slice(0..offset));
-//     render_pass.set_index_buffer(buffer.slice(offset..), wgpu::IndexFormat::Uint32);
-//     render_pass.draw_indexed(
-//         0..(buffer.slice(offset..).size() as u32) / (std::mem::size_of::<u32>() as u32),
-//         0,
-//         0..1
-//     );
-// }
+#[derive(Clone, Copy)]
+pub enum RenderPhase {
+    Backgrounds,
+    Glyphs,
+}
 
 pub fn draw_indexed_batch_mesh(
     render_pass: &mut wgpu::RenderPass,
-    buffer: &wgpu::Buffer,
-    vertex_bytes: u64,
-    index_count: u32,
+    batch: &MeshBatch,
     material: &Material
 ) {
+    if batch.index_count() == 0 {
+        return;
+    }
+
     render_pass.set_bind_group(0, &material.bind_group, &[]);
 
-    render_pass.set_vertex_buffer(0, buffer.slice(0..vertex_bytes));
+    render_pass.set_vertex_buffer(0, batch.vertex_buffer().slice(..));
 
-    render_pass.set_index_buffer(buffer.slice(vertex_bytes..), wgpu::IndexFormat::Uint32);
+    render_pass.set_index_buffer(batch.index_buffer().slice(..), wgpu::IndexFormat::Uint32);
 
-    render_pass.draw_indexed(0..index_count, 0, 0..1);
+    render_pass.draw_indexed(0..batch.index_count(), 0, 0..1);
 }
 
 pub fn render_layout_tree(
@@ -51,7 +43,8 @@ pub fn render_layout_tree(
     default_material: &Material,
     queue: &wgpu::Queue,
     glyph_bind_group_layout: &wgpu::BindGroupLayout,
-    mesh_batch: &mut MeshBatch
+    mesh_batch: &mut MeshBatch,
+    phase: RenderPhase
 ) {
     let node_id = node.node_id();
     let computed_style = node_id.and_then(|id| computed_styles[id].as_ref());
@@ -69,7 +62,8 @@ pub fn render_layout_tree(
         computed_styles,
         queue,
         glyph_bind_group_layout,
-        mesh_batch
+        mesh_batch,
+        &phase
     );
 }
 
@@ -86,9 +80,11 @@ fn render_node(
     computed_styles: &[Option<ComputedStyle>],
     queue: &wgpu::Queue,
     glyph_bind_group_layout: &wgpu::BindGroupLayout,
-    mesh_batch: &mut MeshBatch
+    mesh_batch: &mut MeshBatch,
+    phase: &RenderPhase
 ) {
-    if let Some(background) = node.background_rect() {
+    if matches!(phase, RenderPhase::Backgrounds) {
+        if let Some(background) = node.background_rect() {
         let color = match computed_style {
             Some(style) => {
                 let bg_color = style.bg_color();
@@ -98,6 +94,7 @@ fn render_node(
         };
         mesh_batch.push_quad_mesh(&background, color, size);
         apply_border(node, computed_style, size, mesh_batch);
+        }
     } else if let Some(fragments) = node.text_fragments() {
         for fragment in fragments {
             match fragment {
@@ -126,8 +123,8 @@ fn render_node(
                                     queue,
                                     glyph_bind_group_layout
                                 );
-                                pen_x += glyph_pos.x_advance;
                             }
+                            pen_x += glyph_pos.x_advance;
                         }
                     }
                 }
@@ -148,7 +145,8 @@ fn render_node(
             default_material,
             queue,
             glyph_bind_group_layout,
-            mesh_batch
+            mesh_batch,
+            *phase
         );
     }
 }
@@ -178,13 +176,13 @@ fn render_glyph_rect(
         height: image.placement.height as f32,
     };
 
-    // let mesh = Mesh::make_rect_mesh_from_physical_rect(&rect, glm::vec4(0.0, 0.0, 0.0, 1.0), size);
+    let mesh = Mesh::make_rect_mesh_from_physical_rect(&rect, glm::vec4(0.0, 0.0, 0.0, 1.0), size);
 
-    // let material = Material::new(&image, device, queue, "Glyph text", glyph_bind_group_layout);
+    let material = Material::new(&image, device, queue, "Glyph text", glyph_bind_group_layout);
 
-    // let (buffer, offset) = mesh.upload(&device, "Glyph Mesh");
+    let (buffer, offset) = mesh.upload(&device, "Glyph Mesh");
 
-    // draw_mesh_indexed(render_pass, &buffer, offset, &material);
+    draw_mesh_indexed(render_pass, &buffer, offset, &material);
 }
 
 fn apply_border(
