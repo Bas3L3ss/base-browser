@@ -1,9 +1,6 @@
 pub mod cache;
-pub mod cmap;
 pub mod error;
-pub mod glyphs;
 pub mod loaded;
-pub mod loader;
 pub mod manager;
 pub mod metrics;
 pub mod outline;
@@ -12,11 +9,8 @@ pub mod shape;
 pub mod value;
 
 pub use cache::*;
-pub use cmap::*;
 pub use error::*;
-pub use glyphs::*;
 pub use loaded::*;
-pub use loader::*;
 pub use manager::*;
 pub use metrics::*;
 pub use request::*;

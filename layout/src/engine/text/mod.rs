@@ -1,12 +1,15 @@
 pub mod inline_fragment;
 pub mod line;
 
-use font::{FontMetrics, GlyphRun};
+use std::sync::Arc;
+
+use font::{ FontKey, FontMetrics, GlyphRun, LoadedFont };
 
 use crate::{
-    Dimensions, FontComponents,
+    Dimensions,
+    FontComponents,
     engine::LayoutContext,
-    text::{inline_fragment::InlineFragment, line::Line},
+    text::{ inline_fragment::InlineFragment, line::Line },
 };
 
 pub struct TextEngine;
@@ -16,7 +19,7 @@ impl TextEngine {
         fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         text: &str,
-        face: &ttf_parser::Face,
+        loaded_font: Arc<LoadedFont>,
         font_size: f32,
         font_components: &FontComponents,
         metrics: &FontMetrics,
@@ -27,6 +30,7 @@ impl TextEngine {
         ascent: f32,
         descent: f32,
         line_height: f32,
+        font_key: &FontKey
     ) {
         let mut word_start = 0;
         let text_len = text.len();
@@ -40,7 +44,7 @@ impl TextEngine {
                         fragments,
                         context,
                         word,
-                        face,
+                        loaded_font.clone(),
                         font_size,
                         font_components,
                         metrics,
@@ -51,6 +55,7 @@ impl TextEngine {
                         ascent,
                         descent,
                         line_height,
+                        &font_key
                     );
                 }
                 // Instead of emitting "" for whitespace, emit the (potentially multi-byte) whitespace char
@@ -58,7 +63,7 @@ impl TextEngine {
                     fragments,
                     context,
                     &text[idx..idx + ch.len_utf8()],
-                    face,
+                    loaded_font.clone(),
                     font_size,
                     font_components,
                     metrics,
@@ -69,6 +74,7 @@ impl TextEngine {
                     ascent,
                     descent,
                     line_height,
+                    &font_key
                 );
                 word_start = idx + ch.len_utf8();
             }
@@ -81,7 +87,7 @@ impl TextEngine {
                 fragments,
                 context,
                 word,
-                face,
+                loaded_font,
                 font_size,
                 font_components,
                 metrics,
@@ -92,6 +98,7 @@ impl TextEngine {
                 ascent,
                 descent,
                 line_height,
+                &font_key
             );
         }
     }
@@ -100,7 +107,7 @@ impl TextEngine {
         fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         word: &str,
-        face: &ttf_parser::Face,
+        loaded_font: Arc<LoadedFont>,
         font_size: f32,
         font_components: &FontComponents,
         metrics: &FontMetrics,
@@ -111,18 +118,22 @@ impl TextEngine {
         ascent: f32,
         descent: f32,
         line_height: f32,
+        font_key: &FontKey
     ) {
         // Only classify as is_collapsible_space if non-empty string and all whitespace, and collapse_spaces is enabled
-        let is_collapsible_space = !word.is_empty()
-            && word.chars().all(char::is_whitespace)
-            && font_components.whitespace.collapse_spaces;
+        let is_collapsible_space =
+            !word.is_empty() &&
+            font_components.whitespace.collapse_spaces &&
+            word.chars().all(char::is_whitespace);
 
-        let glyph_run = GlyphRun::run(face, word, font_size, metrics);
+        let glyph_run = GlyphRun::run(loaded_font, word, font_size, metrics, context.shape_cache);
+
         let advance_width = glyph_run.advance_width;
 
-        let needs_newline = advance_width > context.line_remaining_width
-            && cur_line.width > 0.0
-            && font_components.whitespace.allow_wrap;
+        let needs_newline =
+            advance_width > context.line_remaining_width &&
+            cur_line.width > 0.0 &&
+            font_components.whitespace.allow_wrap;
 
         if needs_newline && is_collapsible_space {
             return;
@@ -140,13 +151,15 @@ impl TextEngine {
             return;
         }
 
-        let baseline_offset = ascent + (line_height - ascent - descent) / 2.0; // TODO: handle inline algorithm more properly 
+        let baseline_offset = ascent + (line_height - ascent - descent) / 2.0; // TODO: handle inline algorithm more properly
         let fragment = InlineFragment::text(
             glyph_run,
             *current_x,
             *current_y,
             advance_width,
             baseline_offset,
+            font_key.clone(),
+            font_size
         );
         cur_line.ascent = cur_line.ascent.max(ascent);
         cur_line.descent = cur_line.descent.max(descent);

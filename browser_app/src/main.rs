@@ -1,7 +1,6 @@
 use base_browser::cli::command::Command;
 use browser_core::browser::browser::Browser;
 use input_parser::traits::Parse;
-use url::url::Url;
 use utils::profile_scope;
 
 fn main() -> anyhow::Result<()> {
@@ -23,24 +22,11 @@ fn main() -> anyhow::Result<()> {
     if let Some(_sub_command) = command.sub_command {
         // handle sub_command
         std::unimplemented!("Subcommand handling not yet implemented");
-    } else if let Some(url_str) = command.opts.url {
+    } else if let Some(_) = command.opts.url {
         profile_scope!("Load Page");
-        let url = match Url::parse(&url_str) {
-            Ok(parsed_out) => {
-                for warning in &parsed_out.warnings {
-                    url::print_warning::print_warning(warning);
-                }
-                parsed_out.value
-            }
-            Err(err) => {
-                eprintln!("Error parsing URL: {err}");
-                return Err(err.into());
-            }
-        };
 
         let mut browser = Browser::new();
-        browser.open_tab(&url)?;
-        browser.run()?;
+        browser.run();
 
         Ok(())
     } else {

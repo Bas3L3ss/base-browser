@@ -1,14 +1,18 @@
 use crate::LoadedFont;
-use std::{collections::HashMap, sync::Arc};
+use std::{ collections::HashMap, sync::Arc };
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FontKey {
-    Web { url: Url },
-    Local { id: fontdb::ID },
+    Web {
+        url: Url,
+    },
+    Local {
+        id: fontdb::ID,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, Default)]
 pub struct FontCache {
     loaded: HashMap<FontKey, Arc<LoadedFont>>,
 }

@@ -12,3 +12,4 @@ rustybuzz = "0.20.1"
 url ={path = "../url"}
 css={ path = "../css"}
 network= {path = "../network"}
+swash= "0.2.10"

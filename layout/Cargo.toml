@@ -11,3 +11,5 @@ font= {path = "../font"}
 network = {path = "../network"}
 url = {path = "../url"}
 ttf-parser = "0.25.1"
+rustybuzz = "0.20.1"
+winit="0.30.13"

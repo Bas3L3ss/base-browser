@@ -16,12 +16,11 @@ impl Function {
 
 impl ToString for Function {
     fn to_string(&self) -> String {
-        let args_str = self
-            .args
+        let args_str = self.args
             .iter()
             .map(|arg| arg.to_string())
             .collect::<Vec<_>>()
-            .join(", ");
+            .join("");
         format!("{}({})", self.name, args_str)
     }
 }

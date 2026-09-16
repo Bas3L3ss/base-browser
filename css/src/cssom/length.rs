@@ -1,8 +1,11 @@
-use crate::{LengthContext, Unit};
+use crate::{ LengthContext, Unit };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Length {
-    Dimension { value: f32, unit: Unit },
+    Dimension {
+        value: f32,
+        unit: Unit,
+    },
     Percent(f32),
     Auto,
 }
@@ -16,7 +19,7 @@ impl Length {
     pub fn to_f32(&self, of: f32, auto: Option<f32>, ctx: &LengthContext) -> f32 {
         match self {
             Length::Dimension { value, unit } => unit.to_px(*value, ctx).or(auto).unwrap_or(0.0),
-            Length::Percent(p) => p * of,
+            Length::Percent(p) => p * (of / 100.0),
             Length::Auto => auto.unwrap_or(0.0),
         }
     }

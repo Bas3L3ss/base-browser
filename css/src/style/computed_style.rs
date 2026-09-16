@@ -1,9 +1,29 @@
-use std::{collections::HashMap, vec};
+use std::{ collections::HashMap, vec };
 
 use crate::{
-    AspectRatio, BoxSizing, Clear, ComponentValue, CssValue, Edges, Float, FontFamily, FontSize,
-    Length, LineHeight, MaxLength, MinLength, Overflow, Position, Property, Unit, Visibility,
-    WhiteSpaceBehavior, display::Display, font_stretch::FontStretch, font_style::FontStyle,
+    AspectRatio,
+    BoxSizing,
+    Clear,
+    Color,
+    ComponentValue,
+    CssValue,
+    Edges,
+    Float,
+    FontFamily,
+    FontSize,
+    Length,
+    LineHeight,
+    MaxLength,
+    MinLength,
+    Overflow,
+    Position,
+    Property,
+    Unit,
+    Visibility,
+    WhiteSpaceBehavior,
+    display::Display,
+    font_stretch::FontStretch,
+    font_style::FontStyle,
     font_weight::FontWeight,
 };
 
@@ -13,34 +33,53 @@ pub struct ComputedStyle {
 }
 
 impl ComputedStyle {
+    pub fn bg_color(&self) -> [f32; 4] {
+        let bg_color = self
+            .get(&Property::Background)
+            .map(Color::from_css)
+            .unwrap_or([0.0; 4]);
+
+        bg_color
+    }
+
+    pub fn border_color(&self) -> Edges<[f32; 4]> {
+        let prop_order = [
+            Property::BorderTopColor,
+            Property::BorderRightColor,
+            Property::BorderBottomColor,
+            Property::BorderLeftColor,
+        ];
+        let [bg_top, bg_right, bg_bottom, bg_left] = prop_order.map(|prop| {
+            self.get(&prop)
+                .map(Color::from_css)
+                .unwrap_or([1.0; 4])
+        });
+
+        Edges { top: bg_top, right: bg_right, bottom: bg_bottom, left: bg_left }
+    }
+
     pub fn display(&self) -> Display {
-        self.get(&Property::Display)
-            .map(Display::from_css)
-            .unwrap_or(Display::Inline)
+        self.get(&Property::Display).map(Display::from_css).unwrap_or(Display::Inline)
     }
 
     pub fn margin(&self) -> Edges<Length> {
         Edges {
-            top: self
-                .properties
+            top: self.properties
                 .get(&Property::MarginTop)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
                 .unwrap_or(Length::Auto),
-            right: self
-                .properties
+            right: self.properties
                 .get(&Property::MarginRight)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
                 .unwrap_or(Length::Auto),
-            bottom: self
-                .properties
+            bottom: self.properties
                 .get(&Property::MarginBottom)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
                 .unwrap_or(Length::Auto),
-            left: self
-                .properties
+            left: self.properties
                 .get(&Property::MarginLeft)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
@@ -50,26 +89,22 @@ impl ComputedStyle {
 
     pub fn padding(&self) -> Edges<Length> {
         Edges {
-            top: self
-                .properties
+            top: self.properties
                 .get(&Property::PaddingTop)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
                 .unwrap_or(Length::Auto),
-            right: self
-                .properties
+            right: self.properties
                 .get(&Property::PaddingRight)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
                 .unwrap_or(Length::Auto),
-            bottom: self
-                .properties
+            bottom: self.properties
                 .get(&Property::PaddingBottom)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
                 .unwrap_or(Length::Auto),
-            left: self
-                .properties
+            left: self.properties
                 .get(&Property::PaddingLeft)
                 .and_then(|v| v.components.first())
                 .and_then(|v| v.as_length())
@@ -96,14 +131,12 @@ impl ComputedStyle {
     }
 
     pub fn min_max_width(&self) -> (MinLength, MaxLength) {
-        let min = self
-            .properties
+        let min = self.properties
             .get(&Property::MinWidth)
             .map(MinLength::from_css)
             .unwrap_or(MinLength::Auto);
 
-        let max = self
-            .properties
+        let max = self.properties
             .get(&Property::MaxWidth)
             .map(MaxLength::from_css)
             .unwrap_or(MaxLength::None);
@@ -112,14 +145,12 @@ impl ComputedStyle {
     }
 
     pub fn min_max_height(&self) -> (MinLength, MaxLength) {
-        let min = self
-            .properties
+        let min = self.properties
             .get(&Property::MinHeight)
             .map(MinLength::from_css)
             .unwrap_or(MinLength::Auto);
 
-        let max = self
-            .properties
+        let max = self.properties
             .get(&Property::MaxHeight)
             .map(MaxLength::from_css)
             .unwrap_or(MaxLength::None);
@@ -147,42 +178,37 @@ impl ComputedStyle {
         self.properties
             .get(&Property::BoxSizing)
             .and_then(|v| v.components.first())
-            .and_then(|component| match component.as_ident() {
-                Some("content-box") => Some(BoxSizing::ContentBox),
-                Some("border-box") => Some(BoxSizing::BorderBox),
-                _ => None,
+            .and_then(|component| {
+                match component.as_ident() {
+                    Some("content-box") => Some(BoxSizing::ContentBox),
+                    Some("border-box") => Some(BoxSizing::BorderBox),
+                    _ => None,
+                }
             })
             .unwrap_or(BoxSizing::BorderBox)
     }
 
     pub fn position(&self) -> Position {
-        self.properties
-            .get(&Property::Position)
-            .map(Position::from_css)
-            .unwrap_or(Position::Static)
+        self.properties.get(&Property::Position).map(Position::from_css).unwrap_or(Position::Static)
     }
 
     pub fn offset(&self) -> (Length, Length, Length, Length) {
-        let left = self
-            .properties
+        let left = self.properties
             .get(&Property::Left)
             .and_then(|v| v.components.first())
             .and_then(|component| component.as_length())
             .unwrap_or(Length::Auto);
-        let top = self
-            .properties
+        let top = self.properties
             .get(&Property::Top)
             .and_then(|v| v.components.first())
             .and_then(|component| component.as_length())
             .unwrap_or(Length::Auto);
-        let right = self
-            .properties
+        let right = self.properties
             .get(&Property::Right)
             .and_then(|v| v.components.first())
             .and_then(|component| component.as_length())
             .unwrap_or(Length::Auto);
-        let bottom = self
-            .properties
+        let bottom = self.properties
             .get(&Property::Bottom)
             .and_then(|v| v.components.first())
             .and_then(|component| component.as_length())
@@ -191,34 +217,28 @@ impl ComputedStyle {
     }
 
     pub fn font_size(&self) -> Option<Length> {
-        self.properties
-            .get(&Property::FontSize)
-            .and_then(|css_value| FontSize::from_css(css_value))
+        self.properties.get(&Property::FontSize).and_then(|css_value| FontSize::from_css(css_value))
     }
 
     pub fn z_index(&self) -> Option<i32> {
         self.properties
             .get(&Property::ZIndex)
             .and_then(|v| v.components.first())
-            .and_then(|component| match component {
-                ComponentValue::Number(num) => Some(*num as i32),
-                ComponentValue::Ident(ident) if ident == "auto" => None,
-                _ => None,
+            .and_then(|component| {
+                match component {
+                    ComponentValue::Number(num) => Some(*num as i32),
+                    ComponentValue::Ident(ident) if ident == "auto" => None,
+                    _ => None,
+                }
             })
     }
 
     pub fn float(&self) -> Float {
-        self.properties
-            .get(&Property::Float)
-            .map(Float::from_css)
-            .unwrap_or(Float::None)
+        self.properties.get(&Property::Float).map(Float::from_css).unwrap_or(Float::None)
     }
 
     pub fn clear(&self) -> Clear {
-        self.properties
-            .get(&Property::Clear)
-            .map(Clear::from_css)
-            .unwrap_or(Clear::None)
+        self.properties.get(&Property::Clear).map(Clear::from_css).unwrap_or(Clear::None)
     }
 
     pub fn aspect_ratio(&self) -> AspectRatio {
@@ -250,9 +270,7 @@ impl ComputedStyle {
     }
 
     pub fn font_weight(&self) -> Option<FontWeight> {
-        self.properties
-            .get(&Property::FontWeight)
-            .map(FontWeight::from_css)
+        self.properties.get(&Property::FontWeight).map(FontWeight::from_css)
     }
 
     pub fn font_stretch(&self) -> FontStretch {

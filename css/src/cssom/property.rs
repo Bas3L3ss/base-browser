@@ -601,7 +601,7 @@ impl Property {
         match self {
             // See: https://www.w3.org/TR/CSS21/propidx.html#initial-value
             // Typography
-            Property::Color
+            | Property::Color
             | Property::Font
             | Property::FontFamily
             | Property::FontSize
@@ -650,8 +650,7 @@ impl Property {
             | Property::UserSelect
             | Property::CaretColor
             // SVG & other inherited CSS
-            | Property::TabSize
-            => true,
+            | Property::TabSize => true,
             Property::Unknown(_) => false,
             _ => false,
         }

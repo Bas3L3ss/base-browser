@@ -1,7 +1,7 @@
 use anyhow::Result;
-use css::{CssOm, CssRule, Origin, Parser, Tokenizer};
+use css::{ CssOm, Origin, Parser, tokenizer::tokenizer::Tokenizer, CssRule };
 use font::FontManager;
-use network::{HttpClient, ResourceLoader};
+use network::{ HttpClient, ResourceLoader };
 
 pub struct BrowserShared {
     // CSS

@@ -11,5 +11,8 @@ network = {path = "../network"}
 html ={ path="../html" }
 utils = {path = "../utils"}
 css = {path="../css"}
+window = {path="../window"}
+winit="0.30.13"
+pollster = "1.0.1"
 layout={path = "../layout"}
 font = {path = "../font"}

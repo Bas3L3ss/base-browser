@@ -2,6 +2,7 @@ pub(crate) use style_components::*;
 pub mod font_components;
 pub mod style_components;
 pub use font_components::*;
+use winit::{ dpi::PhysicalSize };
 pub mod block;
 pub mod inline;
 pub mod text;
@@ -10,35 +11,33 @@ use crate::{
     Dimensions,
     LayoutNode,
     LayoutTree,
+    Rect,
     block::BlockEngine,
     text::{ TextEngine, line::Line },
 };
-use css::{ ComputedStyle, CssOm, LengthContext, LineHeight };
-use font::{ FontManager, FontMetrics, FontRequest };
+use css::{ BoxSizing, ComputedStyle, CssOm, LengthContext, LineHeight };
+use font::{ FontManager, FontMetrics, FontRequest, shape::cache::ShapeCache };
 use html::{ Dom, NodeType };
 use network::ResourceLoader;
-use std::{ eprintln, todo };
+use std::{ todo };
 use url::Url;
 
-pub(crate) struct LayoutContext {
+pub(crate) struct LayoutContext<'a> {
+    shape_cache: &'a mut ShapeCache,
     viewport_width: f32,
     viewport_height: f32,
-
     root_font_size: f32,
     current_font_size: f32,
     current_font_weight: u16,
-
     ex_height: f32,
     ch_width: f32,
-
     pending_space: bool,
-
     line_remaining_width: f32,
     current_line: Option<Line>,
 }
 
 pub struct LayoutEngine<'a> {
-    context: LayoutContext,
+    context: LayoutContext<'a>,
     dom: &'a Dom,
     computed_style: &'a [Option<ComputedStyle>],
     font_manager: &'a mut FontManager,
@@ -50,14 +49,17 @@ pub struct LayoutEngine<'a> {
 impl<'a> LayoutEngine<'a> {
     pub fn layout(
         tree: &mut LayoutTree,
-        viewport: Dimensions,
         computed_style: &[Option<ComputedStyle>],
         dom: &Dom,
         cssom: &CssOm,
         font_manager: &mut FontManager,
         loader: &ResourceLoader,
-        base_url: &Url
+        base_url: &Url,
+        size: PhysicalSize<u32>,
+        shape_cache: &mut ShapeCache
     ) {
+        let width = size.width as f32;
+        let height = size.height as f32;
         let root = match tree.root.as_mut() {
             Some(root) => root,
             None => {
@@ -84,7 +86,7 @@ impl<'a> LayoutEngine<'a> {
 
                 let font_components = FontComponents::new(computed_style, font_weight);
 
-                let loaded_font = font_manager.resolve_font(
+                let (loaded_font, _) = font_manager.resolve_font(
                     &cssom.indexes.fonts,
                     &FontRequest::new(
                         &font_components.families,
@@ -103,20 +105,21 @@ impl<'a> LayoutEngine<'a> {
             }
         };
 
-        let face = &loaded.face().expect("must always have a valid font");
+        let face = &loaded.face;
         let metrics = FontMetrics::from_face(face);
 
         let context = LayoutContext {
-            viewport_height: viewport.content.height,
-            viewport_width: viewport.content.width,
+            viewport_height: height,
+            viewport_width: width,
             root_font_size,
             current_font_size: root_font_size,
             current_font_weight: root_font_weight,
             pending_space: false,
-            line_remaining_width: viewport.content.width,
+            line_remaining_width: width,
             ch_width: metrics.ch(&face, root_font_size),
             ex_height: metrics.x_height,
             current_line: None,
+            shape_cache,
         };
 
         let mut engine = LayoutEngine {
@@ -129,10 +132,23 @@ impl<'a> LayoutEngine<'a> {
             base_url,
         };
 
-        engine.layout_node(root, &viewport, viewport.content.y);
+        engine.layout_node(
+            root,
+            &(Dimensions {
+                content: Rect { width, height, ..Default::default() },
+                is_height_definite: true,
+                ..Default::default()
+            }),
+            &mut 0.0
+        );
     }
 
-    fn layout_node(&mut self, node: &mut LayoutNode, containing_block: &Dimensions, cursor_y: f32) {
+    fn layout_node(
+        &mut self,
+        node: &mut LayoutNode,
+        containing_block: &Dimensions,
+        cursor_y: &mut f32
+    ) {
         match node {
             LayoutNode::Block { .. } => self.layout_block(node, containing_block, cursor_y),
 
@@ -146,7 +162,7 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+    fn layout_text(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: &mut f32) {
         if let LayoutNode::Text { node_id, fragments, height } = node {
             let text = match &self.dom.nodes[*node_id].ntype {
                 NodeType::Text(text) => text,
@@ -179,20 +195,14 @@ impl<'a> LayoutEngine<'a> {
                 font_components.stretch
             );
 
-            let loaded_font = self.font_manager.resolve_font(
+            let (loaded_font, font_key) = self.font_manager.resolve_font(
                 &self.cssom.indexes.fonts,
                 &request,
                 self.base_url,
                 self.loader
             );
 
-            let face = match loaded_font.face() {
-                Ok(face) => face,
-                Err(e) => {
-                    eprintln!("Font parse error: {:?}", e);
-                    return;
-                }
-            };
+            let face = &loaded_font.face;
 
             let metrics = FontMetrics::from_face(&face);
 
@@ -222,27 +232,23 @@ impl<'a> LayoutEngine<'a> {
             let initial_x = parent.content.x + cur_line.width;
 
             let mut current_x = initial_x;
-            let mut current_y = cursor_y;
+            let mut current_y = *cursor_y;
 
-            // For both collapsing and non-collapsing, always treat explicit "\n" with preserve_newlines
-            // as a hard line break, even when collapsing is disabled.
             let mut slice_start = 0;
-            let mut space_pending = self.context.pending_space; // Only relevant for collapse_spaces
+            let mut space_pending = self.context.pending_space;
 
             let mut chars = text.char_indices();
 
             while let Some((idx, ch)) = chars.next() {
                 let is_newline = ch == '\n' && font_components.whitespace.preserve_newlines;
                 let is_whitespace = ch.is_whitespace();
-                // In collapse_spaces mode, whitespace is handled as before, but now with correct newline handling.
                 if is_newline {
-                    // Emit any text fragment before the \n
                     if slice_start < idx {
                         TextEngine::layout_text_fragments(
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -252,7 +258,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                     }
                     // Discard any pending space, and forcibly break the line.
@@ -271,7 +278,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -281,7 +288,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                     }
                     // Don't emit "" for whitespace; instead, set pending_space
@@ -294,7 +302,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -304,7 +312,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                     }
                     // Emit the actual whitespace character, as a slice.
@@ -312,7 +321,7 @@ impl<'a> LayoutEngine<'a> {
                         fragments,
                         &mut self.context,
                         &text[idx..idx + ch.len_utf8()],
-                        &face,
+                        loaded_font.clone(),
                         font_size,
                         &font_components,
                         &metrics,
@@ -322,7 +331,8 @@ impl<'a> LayoutEngine<'a> {
                         &mut current_y,
                         ascent,
                         descent,
-                        line_height
+                        line_height,
+                        &font_key
                     );
                     slice_start = idx + ch.len_utf8();
                 } else {
@@ -332,7 +342,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             " ",
-                            &face,
+                            loaded_font.clone(),
                             font_size,
                             &font_components,
                             &metrics,
@@ -342,7 +352,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                         space_pending = false;
                     }
@@ -361,7 +372,7 @@ impl<'a> LayoutEngine<'a> {
                         fragments,
                         &mut self.context,
                         substr,
-                        &face,
+                        loaded_font.clone(),
                         font_size,
                         &font_components,
                         &metrics,
@@ -371,11 +382,13 @@ impl<'a> LayoutEngine<'a> {
                         &mut current_y,
                         ascent,
                         descent,
-                        line_height
+                        line_height,
+                        &font_key
                     );
                 }
             }
 
+            *height = current_y + line_height - *cursor_y;
             self.context.pending_space = if font_components.whitespace.collapse_spaces {
                 space_pending
             } else {
@@ -386,7 +399,7 @@ impl<'a> LayoutEngine<'a> {
         }
     }
 
-    fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
+    fn layout_block(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: &mut f32) {
         if let LayoutNode::Block { node_id, dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
@@ -425,7 +438,7 @@ impl<'a> LayoutEngine<'a> {
             }
 
             let font_components = FontComponents::new(style, self.context.current_font_weight);
-            let loaded_font = self.font_manager.resolve_font(
+            let (loaded_font, _) = self.font_manager.resolve_font(
                 &self.cssom.indexes.fonts,
                 &FontRequest::new(
                     &font_components.families,
@@ -436,11 +449,11 @@ impl<'a> LayoutEngine<'a> {
                 self.base_url,
                 self.loader
             );
-            if let Ok(face) = &loaded_font.face() {
-                let metrics = FontMetrics::from_face(face);
-                self.context.ch_width = metrics.ch(face, self.context.current_font_size);
-                self.context.ex_height = metrics.x_height;
-            }
+
+            let face = &loaded_font.face;
+            let metrics = FontMetrics::from_face(face);
+            self.context.ch_width = metrics.ch(face, self.context.current_font_size);
+            self.context.ex_height = metrics.x_height;
 
             let element_ctx = LengthContext {
                 font_size: self.context.current_font_size,
@@ -451,18 +464,17 @@ impl<'a> LayoutEngine<'a> {
                 viewport_height: self.context.viewport_height,
             };
 
-            BlockEngine::calculate_width(dimensions, parent, &style_components, &element_ctx);
+            match style_components.box_sizing {
+                BoxSizing::BorderBox => {}
+                _ => {}
+            }
+            BlockEngine::calculate_horizontal(dimensions, parent, &style_components, &element_ctx);
 
             self.context.line_remaining_width = dimensions.content.width;
 
             BlockEngine::calculate_x(dimensions, parent);
 
-            BlockEngine::resolve_specified_height(
-                dimensions,
-                &style_components,
-                parent,
-                &element_ctx
-            );
+            BlockEngine::calculate_vertical(dimensions, &style_components, parent, &element_ctx);
 
             BlockEngine::calculate_y(dimensions, cursor_y);
 
@@ -473,7 +485,8 @@ impl<'a> LayoutEngine<'a> {
                 dimensions,
                 &style_components,
                 parent,
-                &element_ctx
+                &element_ctx,
+                cursor_y
             );
 
             self.context.current_font_weight = old_font_weight;
@@ -483,8 +496,9 @@ impl<'a> LayoutEngine<'a> {
             self.context.ex_height = old_ex_height;
         }
     }
-    fn layout_anonymous(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: f32) {
-        if let LayoutNode::Block { node_id: _, dimensions, children } = node {
+
+    fn layout_anonymous(&mut self, node: &mut LayoutNode, parent: &Dimensions, cursor_y: &mut f32) {
+        if let LayoutNode::AnonymousBlock { dimensions, children } = node {
             self.context.current_line = None;
             self.context.pending_space = false;
 
@@ -496,17 +510,16 @@ impl<'a> LayoutEngine<'a> {
             self.layout_descendants(dimensions, children);
 
             BlockEngine::resolve_auto_height(children, dimensions);
-            BlockEngine::finalize_box_height(dimensions);
+            BlockEngine::finalize_cursor_y(dimensions, cursor_y);
         }
     }
 
-    fn layout_descendants(&mut self, dimensions: &Dimensions, children: &mut Vec<LayoutNode>) {
-        let mut cursor_y = dimensions.content.y;
+    fn layout_descendants(&mut self, parent: &Dimensions, children: &mut Vec<LayoutNode>) {
+        // In-flow children stack by margin box within the parent's content box.
+        let mut cursor_y = parent.content.y;
 
         for child in children {
-            self.layout_node(child, &dimensions, cursor_y);
-
-            cursor_y += BlockEngine::margin_box_height(child);
+            self.layout_node(child, parent, &mut cursor_y);
         }
     }
 }

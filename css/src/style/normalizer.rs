@@ -1,85 +1,97 @@
-use std::{collections::HashMap, unreachable, vec};
+use std::{ collections::HashMap, unreachable, vec };
 
-use crate::{ComponentValue, CssValue, DeclarationCandidate, Property};
+use crate::{ ComponentValue, CssValue, DeclarationCandidate, Property };
 
 pub struct Normalizer;
 
 impl Normalizer {
     pub(crate) fn insert(
         properties: &mut HashMap<Property, CssValue>,
-        candidate: DeclarationCandidate,
+        candidate: DeclarationCandidate
     ) {
         match candidate.property {
+            // TODO: expand background shorthands
+            // Property::Background => {
+            //     Self::insert_background_shorthand(&candidate, properties);
+            // }
             Property::Inset => {
                 // Handles the shorthand "inset" by expanding into top/right/bottom/left with default `auto`
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::Top,
                     Property::Right,
                     Property::Bottom,
                     Property::Left,
-                    ComponentValue::Ident(String::from("auto")),
+                    ComponentValue::Ident(String::from("auto"))
                 );
             }
 
             Property::Margin => {
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::MarginTop,
                     Property::MarginRight,
                     Property::MarginBottom,
                     Property::MarginLeft,
-                    ComponentValue::Ident(String::from("auto")),
+                    ComponentValue::Ident(String::from("auto"))
                 );
             }
 
             Property::Padding => {
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::PaddingTop,
                     Property::PaddingRight,
                     Property::PaddingBottom,
                     Property::PaddingLeft,
-                    ComponentValue::Ident(String::from("0")),
+                    ComponentValue::Ident(String::from("0"))
                 );
             }
             Property::BorderWidth => {
-                Self::expand_and_insert_box_edges(
+                Self::distribute_box_edge_shorthand(
                     properties,
                     &candidate,
                     Property::BorderTopWidth,
                     Property::BorderRightWidth,
                     Property::BorderBottomWidth,
                     Property::BorderLeftWidth,
-                    ComponentValue::Ident(String::from("medium")),
+                    ComponentValue::Ident(String::from("medium"))
+                );
+            }
+
+            Property::BorderColor => {
+                Self::distribute_box_edge_shorthand(
+                    properties,
+                    &candidate,
+                    Property::BorderTopColor,
+                    Property::BorderRightColor,
+                    Property::BorderBottomColor,
+                    Property::BorderLeftColor,
+                    ComponentValue::Ident(String::from("black"))
                 );
             }
             Property::Border => {
                 let border_defaults = (
                     ComponentValue::Ident(String::from("medium")),
                     ComponentValue::Ident(String::from("none")),
-                    ComponentValue::Ident(String::from("currentcolor")),
+                    ComponentValue::Ident(String::from("black")),
                 );
 
                 let (width, style, color) = Self::parse_border_shorthand_components(
                     &candidate.value.components,
                     border_defaults.0.clone(),
                     border_defaults.1.clone(),
-                    border_defaults.2.clone(),
+                    border_defaults.2.clone()
                 );
 
                 let important = candidate.value.is_important;
 
                 // Helper mapping for sides and their border sub-properties
                 let sides = [
-                    (
-                        Property::BorderTopWidth,
-                        Property::BorderTopStyle,
-                        Property::BorderTopColor,
-                    ),
+                    (Property::BorderTopWidth, Property::BorderTopStyle, Property::BorderTopColor),
                     (
                         Property::BorderRightWidth,
                         Property::BorderRightStyle,
@@ -112,44 +124,49 @@ impl Normalizer {
                     });
                 }
             }
-            Property::BorderTop
+
+            | Property::BorderTop
             | Property::BorderRight
             | Property::BorderBottom
             | Property::BorderLeft => {
                 let border_defaults = (
                     ComponentValue::Ident(String::from("medium")),
                     ComponentValue::Ident(String::from("none")),
-                    ComponentValue::Ident(String::from("currentcolor")),
+                    ComponentValue::Ident(String::from("black")),
                 );
-                let border_components = Self::parse_border_logical_components(
+                let border_components = Self::border_side_components(
                     &candidate.value.components,
                     border_defaults.0.clone(),
                     border_defaults.1.clone(),
-                    border_defaults.2.clone(),
+                    border_defaults.2.clone()
                 );
                 let important = candidate.value.is_important;
 
                 let (width_prop, style_prop, color_prop) = match candidate.property {
-                    Property::BorderTop => (
-                        Property::BorderTopWidth,
-                        Property::BorderTopStyle,
-                        Property::BorderTopColor,
-                    ),
-                    Property::BorderRight => (
-                        Property::BorderRightWidth,
-                        Property::BorderRightStyle,
-                        Property::BorderRightColor,
-                    ),
-                    Property::BorderBottom => (
-                        Property::BorderBottomWidth,
-                        Property::BorderBottomStyle,
-                        Property::BorderBottomColor,
-                    ),
-                    Property::BorderLeft => (
-                        Property::BorderLeftWidth,
-                        Property::BorderLeftStyle,
-                        Property::BorderLeftColor,
-                    ),
+                    Property::BorderTop =>
+                        (
+                            Property::BorderTopWidth,
+                            Property::BorderTopStyle,
+                            Property::BorderTopColor,
+                        ),
+                    Property::BorderRight =>
+                        (
+                            Property::BorderRightWidth,
+                            Property::BorderRightStyle,
+                            Property::BorderRightColor,
+                        ),
+                    Property::BorderBottom =>
+                        (
+                            Property::BorderBottomWidth,
+                            Property::BorderBottomStyle,
+                            Property::BorderBottomColor,
+                        ),
+                    Property::BorderLeft =>
+                        (
+                            Property::BorderLeftWidth,
+                            Property::BorderLeftStyle,
+                            Property::BorderLeftColor,
+                        ),
                     _ => unreachable!(),
                 };
 
@@ -170,17 +187,30 @@ impl Normalizer {
         }
     }
 
+    // fn parse_background_shorthand(
+    //     candidate: &DeclarationCandidate,
+    //     properties: &mut HashMap<Property, CssValue>
+    // ) {}
+
     fn parse_border_shorthand_components(
         components: &[ComponentValue],
         default_width: ComponentValue,
         default_style: ComponentValue,
-        default_color: ComponentValue,
+        default_color: ComponentValue
     ) -> (ComponentValue, ComponentValue, ComponentValue) {
         use crate::cssom::unit::Unit;
 
         // Border styles per CSS spec
         const BORDER_STYLES: &[&str] = &[
-            "none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset",
+            "none",
+            "hidden",
+            "dotted",
+            "dashed",
+            "solid",
+            "double",
+            "groove",
+            "ridge",
+            "inset",
             "outset",
         ];
 
@@ -195,11 +225,9 @@ impl Normalizer {
                         style = Some(component.clone());
                     }
                 }
-                ComponentValue::Ident(_)
-                | ComponentValue::Hash(_)
-                | ComponentValue::Function(_)
-                    if color.is_none() =>
-                {
+                ComponentValue::Ident(_) | ComponentValue::Hash(_) | ComponentValue::Function(_) if
+                    color.is_none()
+                => {
                     // Accept color as ident, hash, or function (e.g. 'red', '#f00', 'rgb(...)')
                     color = Some(component.clone());
                 }
@@ -224,40 +252,45 @@ impl Normalizer {
         )
     }
 
-    fn parse_border_logical_components(
+    fn border_side_components(
         components: &[ComponentValue],
         default_width: ComponentValue,
         default_style: ComponentValue,
-        default_color: ComponentValue,
+        default_color: ComponentValue
     ) -> Vec<ComponentValue> {
         let (width, style, color) = Self::parse_border_shorthand_components(
             components,
             default_width,
             default_style,
-            default_color,
+            default_color
         );
         vec![width, style, color]
     }
 
-    fn expand_and_insert_box_edges(
+    fn distribute_box_edge_shorthand(
         properties: &mut HashMap<Property, CssValue>,
         candidate: &DeclarationCandidate,
         top_prop: Property,
         right_prop: Property,
         bottom_prop: Property,
         left_prop: Property,
-        initial: ComponentValue,
+        initial: ComponentValue
     ) {
-        let (top, right, bottom, left) =
-            Self::expand_shorthand_four_values(&candidate.value.components, initial.clone());
+        let (top, right, bottom, left) = Self::explode_four_value_shorthand(
+            &candidate.value.components,
+            initial.clone()
+        );
 
-        let insert_edge =
-            |properties: &mut HashMap<_, _>, edge_prop: Property, value: ComponentValue| {
-                properties.entry(edge_prop).or_insert(CssValue {
-                    components: vec![value],
-                    is_important: candidate.value.is_important,
-                });
-            };
+        let insert_edge = |
+            properties: &mut HashMap<_, _>,
+            edge_prop: Property,
+            value: ComponentValue
+        | {
+            properties.entry(edge_prop).or_insert(CssValue {
+                components: vec![value],
+                is_important: candidate.value.is_important,
+            });
+        };
 
         insert_edge(properties, top_prop, top);
         insert_edge(properties, right_prop, right);
@@ -265,15 +298,10 @@ impl Normalizer {
         insert_edge(properties, left_prop, left);
     }
 
-    pub fn expand_shorthand_four_values(
+    pub fn explode_four_value_shorthand(
         values: &[ComponentValue],
-        initial: ComponentValue,
-    ) -> (
-        ComponentValue,
-        ComponentValue,
-        ComponentValue,
-        ComponentValue,
-    ) {
+        initial: ComponentValue
+    ) -> (ComponentValue, ComponentValue, ComponentValue, ComponentValue) {
         match values {
             [v1] => (v1.clone(), v1.clone(), v1.clone(), v1.clone()),
             [v1, v2] => (v1.clone(), v2.clone(), v1.clone(), v2.clone()),
