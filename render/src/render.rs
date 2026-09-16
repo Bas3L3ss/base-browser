@@ -5,7 +5,39 @@ use layout::{ LayoutNode, Rect, text::inline_fragment::InlineFragment };
 use swash::scale::image::Image;
 use winit::dpi::PhysicalSize;
 
-use crate::{ GlyphAtlas, Material, Mesh };
+use crate::{ GlyphAtlas, Material, Mesh, batch::MeshBatch };
+
+// pub fn draw_indexed_batch_mesh(
+//     render_pass: &mut wgpu::RenderPass,
+//     buffer: Buffer,
+//     offset: u64,
+//     material: &Material
+// ) {
+//     render_pass.set_bind_group(0, &material.bind_group, &[]);
+//     render_pass.set_vertex_buffer(0, buffer.slice(0..offset));
+//     render_pass.set_index_buffer(buffer.slice(offset..), wgpu::IndexFormat::Uint32);
+//     render_pass.draw_indexed(
+//         0..(buffer.slice(offset..).size() as u32) / (std::mem::size_of::<u32>() as u32),
+//         0,
+//         0..1
+//     );
+// }
+
+pub fn draw_indexed_batch_mesh(
+    render_pass: &mut wgpu::RenderPass,
+    buffer: &wgpu::Buffer,
+    vertex_bytes: u64,
+    index_count: u32,
+    material: &Material
+) {
+    render_pass.set_bind_group(0, &material.bind_group, &[]);
+
+    render_pass.set_vertex_buffer(0, buffer.slice(0..vertex_bytes));
+
+    render_pass.set_index_buffer(buffer.slice(vertex_bytes..), wgpu::IndexFormat::Uint32);
+
+    render_pass.draw_indexed(0..index_count, 0, 0..1);
+}
 
 pub fn render_layout_tree(
     node: &LayoutNode,
@@ -18,7 +50,8 @@ pub fn render_layout_tree(
     device: &wgpu::Device,
     default_material: &Material,
     queue: &wgpu::Queue,
-    glyph_bind_group_layout: &wgpu::BindGroupLayout
+    glyph_bind_group_layout: &wgpu::BindGroupLayout,
+    mesh_batch: &mut MeshBatch
 ) {
     let node_id = node.node_id();
     let computed_style = node_id.and_then(|id| computed_styles[id].as_ref());
@@ -35,7 +68,8 @@ pub fn render_layout_tree(
         device,
         computed_styles,
         queue,
-        glyph_bind_group_layout
+        glyph_bind_group_layout,
+        mesh_batch
     );
 }
 
@@ -51,7 +85,8 @@ fn render_node(
     device: &wgpu::Device,
     computed_styles: &[Option<ComputedStyle>],
     queue: &wgpu::Queue,
-    glyph_bind_group_layout: &wgpu::BindGroupLayout
+    glyph_bind_group_layout: &wgpu::BindGroupLayout,
+    mesh_batch: &mut MeshBatch
 ) {
     if let Some(background) = node.background_rect() {
         let color = match computed_style {
@@ -61,9 +96,8 @@ fn render_node(
             }
             None => glm::vec4(0.0, 0.0, 0.0, 0.0),
         };
-        let mesh = Mesh::make_rect_mesh_from_physical_rect(&device, &background, color, size);
-        draw_mesh_indexed(render_pass, &mesh, &default_material);
-        apply_border(node, computed_style, render_pass, size, device, default_material);
+        mesh_batch.push_quad_mesh(&background, color, size);
+        apply_border(node, computed_style, size, mesh_batch);
     } else if let Some(fragments) = node.text_fragments() {
         for fragment in fragments {
             match fragment {
@@ -113,7 +147,8 @@ fn render_node(
             device,
             default_material,
             queue,
-            glyph_bind_group_layout
+            glyph_bind_group_layout,
+            mesh_batch
         );
     }
 }
@@ -143,35 +178,20 @@ fn render_glyph_rect(
         height: image.placement.height as f32,
     };
 
-    let mesh = Mesh::make_rect_mesh_from_physical_rect(
-        device,
-        &rect,
-        glm::vec4(0.0, 0.0, 0.0, 1.0),
-        size
-    );
+    // let mesh = Mesh::make_rect_mesh_from_physical_rect(&rect, glm::vec4(0.0, 0.0, 0.0, 1.0), size);
 
     // let material = Material::new(&image, device, queue, "Glyph text", glyph_bind_group_layout);
-    // draw_mesh_indexed(render_pass, &mesh, &material);
-}
 
-pub fn draw_mesh_indexed(render_pass: &mut wgpu::RenderPass, mesh: &Mesh, material: &Material) {
-    render_pass.set_bind_group(0, &material.bind_group, &[]);
-    render_pass.set_vertex_buffer(0, mesh.buffer.slice(0..mesh.offset));
-    render_pass.set_index_buffer(mesh.buffer.slice(mesh.offset..), wgpu::IndexFormat::Uint16);
-    render_pass.draw_indexed(
-        0..(mesh.buffer.slice(mesh.offset..).size() as u32) / (std::mem::size_of::<u16>() as u32),
-        0,
-        0..1
-    );
+    // let (buffer, offset) = mesh.upload(&device, "Glyph Mesh");
+
+    // draw_mesh_indexed(render_pass, &buffer, offset, &material);
 }
 
 fn apply_border(
     node: &LayoutNode,
     computed_style: Option<&ComputedStyle>,
-    render_pass: &mut wgpu::RenderPass,
     size: PhysicalSize<u32>,
-    device: &wgpu::Device,
-    default_material: &Material
+    mesh_batch: &mut MeshBatch
 ) {
     if let Some(dimensions) = node.dimensions() {
         if let Some(border) = node.background_rect() {
@@ -243,8 +263,7 @@ fn apply_border(
                 ];
 
                 for (rect, color) in rects_colors.iter() {
-                    let mesh = Mesh::make_rect_mesh_from_physical_rect(device, rect, *color, size);
-                    draw_mesh_indexed(render_pass, &mesh, default_material);
+                    mesh_batch.push_quad_mesh(rect, *color, size);
                 }
 
                 let triangle_corners_and_colors: [([(f32, f32); 3], Vec4); 8] = [
@@ -379,15 +398,25 @@ fn apply_border(
                 ];
 
                 for (corners, color) in triangle_corners_and_colors.iter() {
-                    let tmesh = Mesh::make_triangle_mesh_from_physical_points(
-                        device,
-                        corners,
-                        *color,
-                        size
-                    );
-                    draw_mesh_indexed(render_pass, &tmesh, default_material);
+                    mesh_batch.push_tri_mesh(corners, *color, size);
                 }
             }
         }
     }
+}
+
+pub fn draw_mesh_indexed(
+    render_pass: &mut wgpu::RenderPass,
+    buffer: &wgpu::Buffer,
+    offset: u64,
+    material: &Material
+) {
+    render_pass.set_bind_group(0, &material.bind_group, &[]);
+    render_pass.set_vertex_buffer(0, buffer.slice(0..offset));
+    render_pass.set_index_buffer(buffer.slice(offset..), wgpu::IndexFormat::Uint32);
+    render_pass.draw_indexed(
+        0..(buffer.slice(offset..).size() as u32) / (std::mem::size_of::<u32>() as u32),
+        0,
+        0..1
+    );
 }

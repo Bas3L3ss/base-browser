@@ -53,7 +53,6 @@ impl GlyphAtlas {
         x: f32,
         y: f32
     ) -> GlyphCacheKey {
-        // Bin subpixel offsets to 64 possible values (6 bits of precision).
         let subpixel_x = ((x.fract() * 64.0).round() as u8).min(63);
         let subpixel_y = ((y.fract() * 64.0).round() as u8).min(63);
         GlyphCacheKey {
@@ -65,8 +64,6 @@ impl GlyphAtlas {
         }
     }
 
-    /// Returns rendered glyph image, using a cache.
-    /// Instead of returning Image directly, return Option<Arc<Image>> to allow cheap clones and thread safety.
     pub fn get_glpyh_image(
         &mut self,
         font_size: f32,

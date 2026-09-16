@@ -1,5 +1,6 @@
 use font::{ FontManager };
-use render::render::render_layout_tree;
+use render::batch::MeshBatch;
+use render::render::{ draw_indexed_batch_mesh, render_layout_tree };
 use render::{ GlyphAtlas, Material, Vertex, bind_group_layout, pipeline };
 pub mod tab;
 pub use tab::*;
@@ -17,6 +18,7 @@ pub struct State<'a> {
     pub cursor_position: PhysicalPosition<f64>,
     pub tabs: Vec<Tab>,
     pub cur_tab: Option<TabId>,
+    pub mesh_batch: MeshBatch,
     surface: wgpu::Surface<'a>,
     glyph_atlas: GlyphAtlas,
     device: wgpu::Device,
@@ -138,6 +140,7 @@ impl<'a> State<'a> {
             default_material,
             glyph_atlas: GlyphAtlas::new(),
             glyph_bind_group_layout,
+            mesh_batch: MeshBatch::new(),
         }
     }
 
@@ -226,7 +229,8 @@ impl<'a> State<'a> {
             let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
             render_pass.set_pipeline(&self.render_pipeline);
             let size = self.window.inner_size();
-            //cannot borrow `*self` as mutable because it is also borrowed as immutable
+            self.mesh_batch.clear();
+
             render_layout_tree(
                 &root,
                 &mut render_pass,
@@ -238,15 +242,24 @@ impl<'a> State<'a> {
                 &self.device,
                 &self.default_material,
                 &self.queue,
-                &self.glyph_bind_group_layout
+                &self.glyph_bind_group_layout,
+                &mut self.mesh_batch
+            );
+
+            let (buffer, vertex_bytes, index_count) = self.mesh_batch.upload(
+                &self.device,
+                "Batch quads"
+            );
+            draw_indexed_batch_mesh(
+                &mut render_pass,
+                &buffer,
+                vertex_bytes,
+                index_count,
+                &self.default_material
             );
         }
 
-        let event: wgpu::SubmissionIndex = self.queue.submit(
-            std::iter::once(command_encoder.finish())
-        );
-        let maintain = wgpu::PollType::Wait { submission_index: Some(event), timeout: None };
-        self.device.poll(maintain).unwrap();
+        self.queue.submit(std::iter::once(command_encoder.finish()));
         self.queue.present(drawable);
     }
 }
