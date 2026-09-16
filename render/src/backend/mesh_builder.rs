@@ -57,10 +57,10 @@ pub fn make_rect_mesh(device: &wgpu::Device, rectangle: &(f32, f32, f32, f32, Ve
     let (x, y, width, height, color) = *rectangle;
 
     let vertices = vec![
-        Vertex { position: Vec3::new(x, y, 0.0), color, uv: glm::vec2(0.0, 0.0) },
-        Vertex { position: Vec3::new(x + width, y, 0.0), color, uv: glm::vec2(0.0, 0.0) },
-        Vertex { position: Vec3::new(x + width, y + height, 0.0), color, uv: glm::vec2(0.0, 0.0) },
-        Vertex { position: Vec3::new(x, y + height, 0.0), color, uv: glm::vec2(0.0, 0.0) }
+        Vertex { position: Vec3::new(x, y, 0.0), color, uv: glm::vec2(0.0, 0.0) }, // Top-left
+        Vertex { position: Vec3::new(x + width, y, 0.0), color, uv: glm::vec2(1.0, 0.0) }, // Top-right
+        Vertex { position: Vec3::new(x + width, y + height, 0.0), color, uv: glm::vec2(1.0, 1.0) }, // Bottom-right
+        Vertex { position: Vec3::new(x, y + height, 0.0), color, uv: glm::vec2(0.0, 1.0) } // Bottom-left
     ];
 
     let indices: Vec<u16> = vec![0, 2, 1, 2, 0, 3];

@@ -1,4 +1,4 @@
-use std::env::current_dir;
+use swash::scale::image::Image;
 
 use super::bind_group;
 
@@ -78,25 +78,16 @@ impl Material {
     }
 
     pub fn new(
-        filename: &str,
+        image: &Image,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         label: &str,
         layout: &wgpu::BindGroupLayout
     ) -> Self {
         // Get absolute filepath from relative one
-        let mut filepath = current_dir().unwrap();
-        filepath.push("src/");
-        filepath.push(filename);
-        let filepath = filepath.into_os_string().into_string().unwrap();
-        let bytes = std::fs::read(filepath).unwrap();
-        let loaded_image = image::load_from_memory(&bytes).unwrap();
-        let converted = loaded_image.to_rgba8();
-        use image::GenericImageView;
-        let size = loaded_image.dimensions();
         let texture_size = wgpu::Extent3d {
-            width: size.0,
-            height: size.1,
+            width: image.placement.width,
+            height: image.placement.height,
             depth_or_array_layers: 1,
         };
 
@@ -121,11 +112,11 @@ impl Material {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &converted,
+            &image.data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * size.0),
-                rows_per_image: Some(size.1),
+                bytes_per_row: Some(4 * image.placement.width),
+                rows_per_image: Some(image.placement.height),
             },
             texture_size
         );

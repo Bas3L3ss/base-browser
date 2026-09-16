@@ -1,7 +1,7 @@
 use css::{ ComputedStyle, Edges };
-use font::FontManager;
+use font::{ FontManager, GlyphPosition };
 use glm::Vec4;
-use layout::text::inline_fragment::InlineFragment;
+use layout::text::inline_fragment::{ InlineFragment, TextFragment };
 use render::{
     GlyphAtlas,
     Material,
@@ -16,6 +16,7 @@ use render::{
 
 use layout::{ LayoutNode, Rect };
 pub mod tab;
+use swash::scale::image::Image;
 pub use tab::*;
 pub mod document;
 pub use document::*;
@@ -112,22 +113,6 @@ impl<'a> State<'a> {
 
         surface.configure(&device, &config);
 
-        let material_bind_group_layout: wgpu::BindGroupLayout;
-
-        {
-            let mut builder = bind_group_layout::Builder::new(&device);
-            builder.add_material();
-            material_bind_group_layout = builder.build("Material Bind Group Layout");
-        }
-
-        let default_material = Material::default(
-            &device,
-            &queue,
-            "Default Material",
-            &material_bind_group_layout,
-            [255, 255, 255, 255]
-        );
-
         // Create glyph bind group layout
         let glyph_bind_group_layout: wgpu::BindGroupLayout;
         {
@@ -136,14 +121,21 @@ impl<'a> State<'a> {
             glyph_bind_group_layout = builder.build("Glyph Bind Group Layout");
         }
 
+        let default_material = Material::default(
+            &device,
+            &queue,
+            "Default Material",
+            &glyph_bind_group_layout,
+            [255, 255, 255, 255]
+        );
+
         let render_pipeline: wgpu::RenderPipeline;
         {
             let mut builder = pipeline::Builder::new(&device);
             builder.set_shader_module("vs_main", "fs_main");
             builder.set_pixel_format(config.format);
             builder.add_vertex_buffer_layout(Vertex::get_layout());
-            builder.add_bind_group_layout(&material_bind_group_layout);
-            // builder.add_bind_group_layout(&glyph_bind_group_layout);
+            builder.add_bind_group_layout(&glyph_bind_group_layout);
             render_pipeline = builder.build("Render Pipeline");
         }
 
@@ -344,44 +336,25 @@ impl<'a> State<'a> {
                         let mut pen_x = text_frag.x;
                         let baseline_y = text_frag.y + text_frag.baseline_offset;
                         if let Some(font) = font_manager.cache.get(&text_frag.font_key) {
-                            for glyph in &text_frag.glyph_run.glyphs {
+                            for glyph_pos in &text_frag.glyph_run.glyphs {
                                 if
                                     let Some(image) = self.glyph_atlas.get_glpyh_image(
                                         text_frag.font_size,
                                         &font,
-                                        glyph.x_offset,
-                                        glyph.y_offset,
-                                        glyph.glyph_id
+                                        glyph_pos.x_offset,
+                                        glyph_pos.y_offset,
+                                        glyph_pos.glyph_id
                                     )
                                 {
-                                    // Calculate glyph position
-                                    let glyph_x =
-                                        pen_x + glyph.x_offset + (image.placement.left as f32);
-                                    let glyph_y =
-                                        baseline_y - glyph.y_offset - (image.placement.top as f32);
-
-                                    let rect = Rect {
-                                        x: glyph_x,
-                                        y: glyph_y,
-                                        width: image.placement.width as f32,
-                                        height: image.placement.height as f32,
-                                    };
-
-                                    // Build mesh for this glyph
-                                    let mesh = make_rect_mesh_from_physical_rect(
-                                        &self.device,
-                                        &rect,
-                                        // Use the desired text color, e.g. style.color(), or fallback
-                                        glm::vec4(0.0, 0.0, 0.0, 1.0),
-                                        size
-                                    );
-
-                                    self.draw_mesh_indexed(
+                                    self.render_glyph_rect(
+                                        glyph_pos,
+                                        size,
                                         render_pass,
-                                        &mesh,
-                                        &self.default_material
+                                        pen_x,
+                                        baseline_y,
+                                        &image
                                     );
-                                    pen_x += glyph.x_advance;
+                                    pen_x += glyph_pos.x_advance;
                                 }
                             }
                         }
@@ -393,6 +366,49 @@ impl<'a> State<'a> {
         for child in node.children() {
             self.render_layout_tree(child, render_pass, depth + 1, size, document, font_manager);
         }
+    }
+
+    /// Render a mesh rectangle for a single glyph image, given the glyph and a prepared image.
+    fn render_glyph_rect(
+        &self,
+        glyph_pos: &GlyphPosition,
+        size: winit::dpi::PhysicalSize<u32>,
+        render_pass: &mut wgpu::RenderPass,
+        pen_x: f32,
+        baseline_y: f32,
+        image: &Image
+    ) {
+        if image.placement.width == 0 || image.placement.height == 0 {
+            return;
+        }
+        // Calculate glyph position
+        let glyph_x = pen_x + glyph_pos.x_offset + (image.placement.left as f32);
+        let glyph_y = baseline_y - glyph_pos.y_offset - (image.placement.top as f32);
+
+        let rect = Rect {
+            x: glyph_x,
+            y: glyph_y,
+            width: image.placement.width as f32,
+            height: image.placement.height as f32,
+        };
+
+        // Build mesh for this glyph
+        let mesh = make_rect_mesh_from_physical_rect(
+            &self.device,
+            &rect,
+            glm::vec4(0.0, 0.0, 0.0, 1.0),
+            size
+        );
+
+        let material = Material::new(
+            &image,
+            &self.device,
+            &self.queue,
+            "Glyph text",
+            &self.glyph_bind_group_layout
+        );
+
+        self.draw_mesh_indexed(render_pass, &mesh, &material);
     }
 
     fn apply_border(
