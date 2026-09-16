@@ -3,31 +3,11 @@ use layout::Rect;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct Vertex {
-    pub position: Vec3,
-    pub color: Vec4,
-}
+use crate::Vertex;
 
 pub struct Mesh {
     pub buffer: wgpu::Buffer,
     pub offset: u64,
-}
-
-impl Vertex {
-    pub fn get_layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [
-            wgpu::VertexAttribute;
-            2
-        ] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4];
-
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &ATTRIBUTES,
-        }
-    }
 }
 
 /// Helper to convert pixel-space (layout-space) coordinates to NDC (-1..1)
@@ -77,10 +57,10 @@ pub fn make_rect_mesh(device: &wgpu::Device, rectangle: &(f32, f32, f32, f32, Ve
     let (x, y, width, height, color) = *rectangle;
 
     let vertices = vec![
-        Vertex { position: Vec3::new(x, y, 0.0), color },
-        Vertex { position: Vec3::new(x + width, y, 0.0), color },
-        Vertex { position: Vec3::new(x + width, y + height, 0.0), color },
-        Vertex { position: Vec3::new(x, y + height, 0.0), color }
+        Vertex { position: Vec3::new(x, y, 0.0), color, uv: glm::vec2(0.0, 0.0) },
+        Vertex { position: Vec3::new(x + width, y, 0.0), color, uv: glm::vec2(0.0, 0.0) },
+        Vertex { position: Vec3::new(x + width, y + height, 0.0), color, uv: glm::vec2(0.0, 0.0) },
+        Vertex { position: Vec3::new(x, y + height, 0.0), color, uv: glm::vec2(0.0, 0.0) }
     ];
 
     let indices: Vec<u16> = vec![0, 2, 1, 2, 0, 3];
@@ -113,9 +93,21 @@ pub fn make_rect_mesh(device: &wgpu::Device, rectangle: &(f32, f32, f32, f32, Ve
 
 pub fn make_triangle_mesh(device: &wgpu::Device, points: &[(f32, f32); 3], color: Vec4) -> Mesh {
     let vertices = vec![
-        Vertex { position: Vec3::new(points[0].0, points[0].1, 0.0), color },
-        Vertex { position: Vec3::new(points[1].0, points[1].1, 0.0), color },
-        Vertex { position: Vec3::new(points[2].0, points[2].1, 0.0), color }
+        Vertex {
+            position: Vec3::new(points[0].0, points[0].1, 0.0),
+            color,
+            uv: glm::vec2(0.0, 0.0),
+        },
+        Vertex {
+            position: Vec3::new(points[1].0, points[1].1, 0.0),
+            color,
+            uv: glm::vec2(0.0, 0.0),
+        },
+        Vertex {
+            position: Vec3::new(points[2].0, points[2].1, 0.0),
+            color,
+            uv: glm::vec2(0.0, 0.0),
+        }
     ];
 
     let indices: Vec<u16> = vec![0, 2, 1];

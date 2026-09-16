@@ -1,7 +1,7 @@
 pub mod inline_fragment;
 pub mod line;
 
-use font::{ FontMetrics, GlyphRun };
+use font::{ FontKey, FontMetrics, GlyphRun };
 
 use crate::{
     Dimensions,
@@ -17,7 +17,7 @@ impl TextEngine {
         fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         text: &str,
-        face: &ttf_parser::Face,
+        rb_face: &rustybuzz::Face,
         font_size: f32,
         font_components: &FontComponents,
         metrics: &FontMetrics,
@@ -27,7 +27,8 @@ impl TextEngine {
         current_y: &mut f32,
         ascent: f32,
         descent: f32,
-        line_height: f32
+        line_height: f32,
+        font_key: &FontKey
     ) {
         let mut word_start = 0;
         let text_len = text.len();
@@ -41,7 +42,7 @@ impl TextEngine {
                         fragments,
                         context,
                         word,
-                        face,
+                        rb_face,
                         font_size,
                         font_components,
                         metrics,
@@ -51,7 +52,8 @@ impl TextEngine {
                         current_y,
                         ascent,
                         descent,
-                        line_height
+                        line_height,
+                        &font_key
                     );
                 }
                 // Instead of emitting "" for whitespace, emit the (potentially multi-byte) whitespace char
@@ -59,7 +61,7 @@ impl TextEngine {
                     fragments,
                     context,
                     &text[idx..idx + ch.len_utf8()],
-                    face,
+                    rb_face,
                     font_size,
                     font_components,
                     metrics,
@@ -69,7 +71,8 @@ impl TextEngine {
                     current_y,
                     ascent,
                     descent,
-                    line_height
+                    line_height,
+                    &font_key
                 );
                 word_start = idx + ch.len_utf8();
             }
@@ -82,7 +85,7 @@ impl TextEngine {
                 fragments,
                 context,
                 word,
-                face,
+                rb_face,
                 font_size,
                 font_components,
                 metrics,
@@ -92,7 +95,8 @@ impl TextEngine {
                 current_y,
                 ascent,
                 descent,
-                line_height
+                line_height,
+                &font_key
             );
         }
     }
@@ -101,7 +105,7 @@ impl TextEngine {
         fragments: &mut Vec<InlineFragment>,
         context: &mut LayoutContext,
         word: &str,
-        face: &ttf_parser::Face,
+        rb_face: &rustybuzz::Face,
         font_size: f32,
         font_components: &FontComponents,
         metrics: &FontMetrics,
@@ -111,7 +115,8 @@ impl TextEngine {
         current_y: &mut f32,
         ascent: f32,
         descent: f32,
-        line_height: f32
+        line_height: f32,
+        font_key: &FontKey
     ) {
         // Only classify as is_collapsible_space if non-empty string and all whitespace, and collapse_spaces is enabled
         let is_collapsible_space =
@@ -119,7 +124,7 @@ impl TextEngine {
             font_components.whitespace.collapse_spaces &&
             word.chars().all(char::is_whitespace);
 
-        let glyph_run = GlyphRun::run(face, word, font_size, metrics);
+        let glyph_run = GlyphRun::run(rb_face, word, font_size, metrics);
 
         let advance_width = glyph_run.advance_width;
 
@@ -150,7 +155,9 @@ impl TextEngine {
             *current_x,
             *current_y,
             advance_width,
-            baseline_offset
+            baseline_offset,
+            font_key.clone(),
+            font_size
         );
         cur_line.ascent = cur_line.ascent.max(ascent);
         cur_line.descent = cur_line.descent.max(descent);

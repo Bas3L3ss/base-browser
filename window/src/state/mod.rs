@@ -1,9 +1,12 @@
 use css::{ ComputedStyle, Edges };
+use font::FontManager;
 use glm::Vec4;
 use layout::text::inline_fragment::InlineFragment;
 use render::{
+    GlyphAtlas,
     Material,
     Mesh,
+    Vertex,
     bind_group_layout,
     make_rect_mesh_from_physical_rect,
     make_triangle_mesh_from_physical_points,
@@ -11,8 +14,8 @@ use render::{
     pipeline,
 };
 
-pub mod tab;
 use layout::{ LayoutNode, Rect };
+pub mod tab;
 pub use tab::*;
 pub mod document;
 pub use document::*;
@@ -29,11 +32,13 @@ pub struct State<'a> {
     pub tabs: Vec<Tab>,
     pub cur_tab: Option<TabId>,
     surface: wgpu::Surface<'a>,
+    glyph_atlas: GlyphAtlas,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
+    glyph_bind_group_layout: wgpu::BindGroupLayout,
     default_material: Material,
 }
 
@@ -123,13 +128,22 @@ impl<'a> State<'a> {
             [255, 255, 255, 255]
         );
 
+        // Create glyph bind group layout
+        let glyph_bind_group_layout: wgpu::BindGroupLayout;
+        {
+            let mut builder = bind_group_layout::Builder::new(&device);
+            builder.add_glyph_texture_and_sampler();
+            glyph_bind_group_layout = builder.build("Glyph Bind Group Layout");
+        }
+
         let render_pipeline: wgpu::RenderPipeline;
         {
             let mut builder = pipeline::Builder::new(&device);
             builder.set_shader_module("vs_main", "fs_main");
             builder.set_pixel_format(config.format);
-            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+            builder.add_vertex_buffer_layout(Vertex::get_layout());
             builder.add_bind_group_layout(&material_bind_group_layout);
+            // builder.add_bind_group_layout(&glyph_bind_group_layout);
             render_pipeline = builder.build("Render Pipeline");
         }
 
@@ -145,6 +159,8 @@ impl<'a> State<'a> {
             tabs: Vec::new(),
             cursor_position: PhysicalPosition::new(400.0, 300.0),
             default_material,
+            glyph_atlas: GlyphAtlas::new(),
+            glyph_bind_group_layout,
         }
     }
 
@@ -167,7 +183,6 @@ impl<'a> State<'a> {
         }
         None
     }
-
     pub fn get_current_mut_tab(&mut self) -> Option<&mut Tab> {
         if let Some(id) = self.cur_tab {
             if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.tab_id == id) {
@@ -179,12 +194,12 @@ impl<'a> State<'a> {
         None
     }
 
-    pub fn render(&mut self) {
+    pub fn render(&mut self, font_manager: &FontManager) {
         // Get the current tab and its document
         let (_, document) = match self.get_current_tab() {
             Some(tab) =>
                 match &tab.document {
-                    Some(document) => (tab, document),
+                    Some(document) => (tab, document.clone()), // TODO: FIX CLONE - OWNERSHIP PROBLEM
                     None => {
                         return;
                     }
@@ -235,7 +250,7 @@ impl<'a> State<'a> {
                 let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
                 render_pass.set_pipeline(&self.render_pipeline);
                 let size = self.window.inner_size();
-                self.render_layout_tree(&root, &mut render_pass, 0, size, &document);
+                self.render_layout_tree(&root, &mut render_pass, 0, size, &document, font_manager);
             }
 
             let event: wgpu::SubmissionIndex = self.queue.submit(
@@ -266,35 +281,45 @@ impl<'a> State<'a> {
 
     /// Paints each element's background over its border box (padding + border, not margin).
     pub fn render_layout_tree(
-        &self,
-        node: &LayoutNode,
-        render_pass: &mut wgpu::RenderPass,
-        depth: usize,
-        size: PhysicalSize<u32>,
-        document: &Document
-    ) {
-        println!("---------------------------------------------------------------------------");
-        println!("{node:?}");
-        let node_id = node.node_id();
-        match node_id {
-            Some(id) => {
-                let computed_style = document.computed_styles[id].as_ref();
-
-                self.render_node(node, render_pass, depth, size, document, computed_style);
-            }
-            None => {
-                self.render_node(node, render_pass, depth, size, document, None);
-            }
-        }
-    }
-    fn render_node(
-        &self,
+        &mut self,
         node: &LayoutNode,
         render_pass: &mut wgpu::RenderPass,
         depth: usize,
         size: PhysicalSize<u32>,
         document: &Document,
-        computed_style: Option<&ComputedStyle>
+        font_manager: &FontManager
+    ) {
+        println!("---------------------------------------------------------------------------");
+        // println!("{node:?}");
+        let node_id = node.node_id();
+        match node_id {
+            Some(id) => {
+                let computed_style = document.computed_styles[id].as_ref();
+
+                self.render_node(
+                    node,
+                    render_pass,
+                    depth,
+                    size,
+                    document,
+                    computed_style,
+                    font_manager
+                );
+            }
+            None => {
+                self.render_node(node, render_pass, depth, size, document, None, font_manager);
+            }
+        }
+    }
+    fn render_node(
+        &mut self,
+        node: &LayoutNode,
+        render_pass: &mut wgpu::RenderPass,
+        depth: usize,
+        size: PhysicalSize<u32>,
+        document: &Document,
+        computed_style: Option<&ComputedStyle>,
+        font_manager: &FontManager
     ) {
         if let Some(background) = node.background_rect() {
             let color = match computed_style {
@@ -316,14 +341,57 @@ impl<'a> State<'a> {
             for fragment in fragments {
                 match fragment {
                     InlineFragment::Text(text_frag) => {
-                        dbg!(text_frag);
+                        let mut pen_x = text_frag.x;
+                        let baseline_y = text_frag.y + text_frag.baseline_offset;
+                        if let Some(font) = font_manager.cache.get(&text_frag.font_key) {
+                            for glyph in &text_frag.glyph_run.glyphs {
+                                if
+                                    let Some(image) = self.glyph_atlas.get_glpyh_image(
+                                        text_frag.font_size,
+                                        &font,
+                                        glyph.x_offset,
+                                        glyph.y_offset,
+                                        glyph.glyph_id
+                                    )
+                                {
+                                    // Calculate glyph position
+                                    let glyph_x =
+                                        pen_x + glyph.x_offset + (image.placement.left as f32);
+                                    let glyph_y =
+                                        baseline_y - glyph.y_offset - (image.placement.top as f32);
+
+                                    let rect = Rect {
+                                        x: glyph_x,
+                                        y: glyph_y,
+                                        width: image.placement.width as f32,
+                                        height: image.placement.height as f32,
+                                    };
+
+                                    // Build mesh for this glyph
+                                    let mesh = make_rect_mesh_from_physical_rect(
+                                        &self.device,
+                                        &rect,
+                                        // Use the desired text color, e.g. style.color(), or fallback
+                                        glm::vec4(0.0, 0.0, 0.0, 1.0),
+                                        size
+                                    );
+
+                                    self.draw_mesh_indexed(
+                                        render_pass,
+                                        &mesh,
+                                        &self.default_material
+                                    );
+                                    pen_x += glyph.x_advance;
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
         for child in node.children() {
-            self.render_layout_tree(child, render_pass, depth + 1, size, document);
+            self.render_layout_tree(child, render_pass, depth + 1, size, document, font_manager);
         }
     }
 

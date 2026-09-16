@@ -88,7 +88,7 @@ impl<'a> LayoutEngine<'a> {
 
                 let font_components = FontComponents::new(computed_style, font_weight);
 
-                let loaded_font = font_manager.resolve_font(
+                let (loaded_font, _) = font_manager.resolve_font(
                     &cssom.indexes.fonts,
                     &FontRequest::new(
                         &font_components.families,
@@ -196,7 +196,7 @@ impl<'a> LayoutEngine<'a> {
                 font_components.stretch
             );
 
-            let loaded_font = self.font_manager.resolve_font(
+            let (loaded_font, font_key) = self.font_manager.resolve_font(
                 &self.cssom.indexes.fonts,
                 &request,
                 self.base_url,
@@ -246,6 +246,8 @@ impl<'a> LayoutEngine<'a> {
 
             let mut chars = text.char_indices();
 
+            let rb_face = loaded_font.to_rb_face();
+
             while let Some((idx, ch)) = chars.next() {
                 let is_newline = ch == '\n' && font_components.whitespace.preserve_newlines;
                 let is_whitespace = ch.is_whitespace();
@@ -255,7 +257,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &face,
+                            &rb_face,
                             font_size,
                             &font_components,
                             &metrics,
@@ -265,7 +267,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                     }
                     // Discard any pending space, and forcibly break the line.
@@ -284,7 +287,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &face,
+                            &rb_face,
                             font_size,
                             &font_components,
                             &metrics,
@@ -294,7 +297,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                     }
                     // Don't emit "" for whitespace; instead, set pending_space
@@ -307,7 +311,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             &text[slice_start..idx],
-                            &face,
+                            &rb_face,
                             font_size,
                             &font_components,
                             &metrics,
@@ -317,7 +321,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                     }
                     // Emit the actual whitespace character, as a slice.
@@ -325,7 +330,7 @@ impl<'a> LayoutEngine<'a> {
                         fragments,
                         &mut self.context,
                         &text[idx..idx + ch.len_utf8()],
-                        &face,
+                        &rb_face,
                         font_size,
                         &font_components,
                         &metrics,
@@ -335,7 +340,8 @@ impl<'a> LayoutEngine<'a> {
                         &mut current_y,
                         ascent,
                         descent,
-                        line_height
+                        line_height,
+                        &font_key
                     );
                     slice_start = idx + ch.len_utf8();
                 } else {
@@ -345,7 +351,7 @@ impl<'a> LayoutEngine<'a> {
                             fragments,
                             &mut self.context,
                             " ",
-                            &face,
+                            &rb_face,
                             font_size,
                             &font_components,
                             &metrics,
@@ -355,7 +361,8 @@ impl<'a> LayoutEngine<'a> {
                             &mut current_y,
                             ascent,
                             descent,
-                            line_height
+                            line_height,
+                            &font_key
                         );
                         space_pending = false;
                     }
@@ -374,7 +381,7 @@ impl<'a> LayoutEngine<'a> {
                         fragments,
                         &mut self.context,
                         substr,
-                        &face,
+                        &rb_face,
                         font_size,
                         &font_components,
                         &metrics,
@@ -384,7 +391,8 @@ impl<'a> LayoutEngine<'a> {
                         &mut current_y,
                         ascent,
                         descent,
-                        line_height
+                        line_height,
+                        &font_key
                     );
                 }
             }
@@ -439,7 +447,7 @@ impl<'a> LayoutEngine<'a> {
             }
 
             let font_components = FontComponents::new(style, self.context.current_font_weight);
-            let loaded_font = self.font_manager.resolve_font(
+            let (loaded_font, _) = self.font_manager.resolve_font(
                 &self.cssom.indexes.fonts,
                 &FontRequest::new(
                     &font_components.families,

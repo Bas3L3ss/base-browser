@@ -20,14 +20,17 @@ pub struct GlyphPosition {
 }
 
 impl GlyphRun {
-    pub fn run(face: &ttf_parser::Face, text: &str, font_size: f32, metrics: &FontMetrics) -> Self {
-        let rb_face = rustybuzz::Face::from_face(face.clone());
-
+    pub fn run(
+        rb_face: &rustybuzz::Face,
+        text: &str,
+        font_size: f32,
+        metrics: &FontMetrics
+    ) -> Self {
         let mut buffer = rustybuzz::UnicodeBuffer::new();
         buffer.push_str(text);
         buffer.guess_segment_properties();
 
-        let output = rustybuzz::shape(&rb_face, &[], buffer);
+        let output = rustybuzz::shape(&rb_face, &[], buffer); // CACHE THIS
 
         let scale = metrics.scale(font_size);
 

@@ -152,7 +152,7 @@ impl<'a> ApplicationHandler for Browser<'a> {
             }
             WindowEvent::RedrawRequested => {
                 if let Some(state) = self.state.as_mut() {
-                    state.render();
+                    state.render(&self.shared.font_manager);
                 }
             }
 

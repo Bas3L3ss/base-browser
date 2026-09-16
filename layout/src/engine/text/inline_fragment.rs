@@ -1,4 +1,4 @@
-use font::GlyphRun;
+use font::{ FontKey, GlyphRun };
 
 #[derive(Clone, Debug)]
 pub struct TextFragment {
@@ -9,6 +9,9 @@ pub struct TextFragment {
 
     pub baseline_offset: f32,
     pub width: f32,
+
+    pub font_key: FontKey,
+    pub font_size: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -25,7 +28,9 @@ impl InlineFragment {
         x: f32,
         y: f32,
         width: f32,
-        baseline_offset: f32
+        baseline_offset: f32,
+        font_key: FontKey,
+        font_size: f32
     ) -> TextFragment {
         TextFragment {
             glyph_run,
@@ -33,6 +38,8 @@ impl InlineFragment {
             y,
             width,
             baseline_offset,
+            font_key,
+            font_size,
         }
     }
 }

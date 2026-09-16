@@ -3,14 +3,17 @@ pub mod default;
 pub mod matcher;
 pub mod support;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{ collections::HashMap, sync::Arc };
 
 use crate::{
-    FontCache, FontKey, FontRequest, LoadedFont,
+    FontCache,
+    FontKey,
+    FontRequest,
+    LoadedFont,
     decoder::FontDecoder,
-    default::{DEFAULT_MONO, DEFAULT_SANS, DEFAULT_SERIF},
+    default::{ DEFAULT_MONO, DEFAULT_SANS, DEFAULT_SERIF },
     matcher::FontMatcher,
-    support::{FontFileFormat, FontSupport},
+    support::{ FontFileFormat, FontSupport },
 };
 use css::FontFaceRule;
 use network::ResourceLoader;
@@ -18,8 +21,8 @@ use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct FontManager {
-    cache: FontCache,
-    font_db: fontdb::Database,
+    pub cache: FontCache,
+    pub font_db: fontdb::Database,
 }
 
 impl FontManager {
@@ -38,21 +41,28 @@ impl FontManager {
         font_faces: &HashMap<String, Vec<FontFaceRule>>,
         request: &FontRequest,
         base_url: &Url,
-        loader: &ResourceLoader,
-    ) -> Arc<LoadedFont> {
+        loader: &ResourceLoader
+    ) -> (Arc<LoadedFont>, FontKey) {
         for family in request.families {
             if let Some(font_faces) = font_faces.get(family) {
-                if let Some(font) = self.resolve_web_font(font_faces, request, base_url, loader) {
-                    return font;
+                if
+                    let Some((font, key)) = self.resolve_web_font(
+                        font_faces,
+                        request,
+                        base_url,
+                        loader
+                    )
+                {
+                    return (font, key);
                 }
             }
 
-            if let Some(font) = self.resolve_system_font(family, request) {
-                return font;
+            if let Some((font, key)) = self.resolve_system_font(family, request) {
+                return (font, key);
             }
 
-            if let Some(font) = self.resolve_generic_font(family, request) {
-                return font;
+            if let Some((font, key)) = self.resolve_generic_font(family, request) {
+                return (font, key);
             }
         }
 
@@ -62,36 +72,38 @@ impl FontManager {
     fn load_cached(
         &mut self,
         key: FontKey,
-        load: impl FnOnce() -> Option<LoadedFont>,
-    ) -> Option<Arc<LoadedFont>> {
+        load: impl FnOnce() -> Option<LoadedFont>
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         if let Some(font) = self.cache.get(&key) {
-            return Some(font);
+            return Some((font, key.clone()));
         }
 
         let font = Arc::new(load()?);
 
-        self.cache.insert(key, font.clone());
+        self.cache.insert(key.clone(), font.clone());
 
-        Some(font)
+        Some((font, key))
     }
 
-    fn load_system_face(&mut self, id: fontdb::ID) -> Option<Arc<LoadedFont>> {
+    fn load_system_face(&mut self, id: fontdb::ID) -> Option<(Arc<LoadedFont>, FontKey)> {
         let key = FontKey::Local { id };
 
         let face_info = {
             let face = self.font_db.face(id);
 
             // Now find the source path if present
-            face.and_then(|face| match &face.source {
-                fontdb::Source::File(path) => Some(path.clone()),
-                _ => None,
+            face.and_then(|face| {
+                match &face.source {
+                    fontdb::Source::File(path) => Some(path.clone()),
+                    _ => None,
+                }
             })
         };
 
         self.load_cached(key, || {
             let source = face_info.as_ref()?;
             let bytes = std::fs::read(source).ok()?;
-            Some(LoadedFont::from_bytes(bytes))
+            Some(LoadedFont::from_bytes(bytes).ok()?)
         })
     }
 
@@ -101,8 +113,8 @@ impl FontManager {
         base_url: &Url,
         formats: &[css::FontFormat],
         techs: &[css::FontTechnology],
-        loader: &ResourceLoader,
-    ) -> Option<Arc<LoadedFont>> {
+        loader: &ResourceLoader
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         let url = base_url.resolve(href).ok()?;
         let key = FontKey::Web { url: url.clone() };
 
@@ -129,14 +141,20 @@ impl FontManager {
                 FontFileFormat::TrueType | FontFileFormat::OpenType => bytes,
                 FontFileFormat::Woff => FontDecoder::decode_woff(&bytes)?,
                 FontFileFormat::Woff2 => FontDecoder::decode_woff2(&bytes)?,
-                _ => return None,
+                _ => {
+                    return None;
+                }
             };
 
-            Some(LoadedFont::from_bytes(bytes))
+            Some(LoadedFont::from_bytes(bytes).ok()?)
         })
     }
 
-    fn load_local(&mut self, family: &str, request: &FontRequest) -> Option<Arc<LoadedFont>> {
+    fn load_local(
+        &mut self,
+        family: &str,
+        request: &FontRequest
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         let id = FontMatcher::match_system_face(self.font_db.faces(), family, request)?;
         self.load_system_face(id)
     }
@@ -146,15 +164,12 @@ impl FontManager {
         source: &css::rule::FontSource,
         base_url: &Url,
         loader: &ResourceLoader,
-        request: &FontRequest,
-    ) -> Option<Arc<LoadedFont>> {
+        request: &FontRequest
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         match source {
             css::FontSource::Local { family } => self.load_local(family, request),
-            css::FontSource::Url {
-                url,
-                formats,
-                techs,
-            } => self.load_url(url, base_url, formats, techs, loader),
+            css::FontSource::Url { url, formats, techs } =>
+                self.load_url(url, base_url, formats, techs, loader),
         }
     }
 
@@ -163,12 +178,12 @@ impl FontManager {
         font_faces: &[FontFaceRule],
         request: &FontRequest,
         base_url: &Url,
-        loader: &ResourceLoader,
-    ) -> Option<Arc<LoadedFont>> {
+        loader: &ResourceLoader
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         if let Some(face) = FontMatcher::match_font_face_rule(font_faces, request) {
             for source in &face.sources {
-                if let Some(loaded) = self.load_font_face(source, base_url, loader, request) {
-                    return Some(loaded);
+                if let Some((loaded, key)) = self.load_font_face(source, base_url, loader, request) {
+                    return Some((loaded, key));
                 }
             }
         }
@@ -178,8 +193,8 @@ impl FontManager {
     fn resolve_system_font(
         &mut self,
         family: &str,
-        request: &FontRequest,
-    ) -> Option<Arc<LoadedFont>> {
+        request: &FontRequest
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         let id = FontMatcher::match_system_face(self.font_db.faces(), family, request)?;
         self.load_system_face(id)
     }
@@ -187,8 +202,8 @@ impl FontManager {
     fn resolve_generic_font(
         &mut self,
         family: &str,
-        request: &FontRequest,
-    ) -> Option<Arc<LoadedFont>> {
+        request: &FontRequest
+    ) -> Option<(Arc<LoadedFont>, FontKey)> {
         let fallbacks = match family {
             "serif" => DEFAULT_SERIF,
             "sans-serif" => DEFAULT_SANS,
@@ -205,59 +220,64 @@ impl FontManager {
             "fantasy" => DEFAULT_SANS,
             "math" => DEFAULT_SERIF,
 
-            _ => return None,
+            _ => {
+                return None;
+            }
         };
 
         for family in fallbacks {
-            if let Some(id) = FontMatcher::match_system_face(self.font_db.faces(), family, request)
-            {
-                if let Some(font) = self.load_system_face(id) {
-                    return Some(font);
+            if let Some(id) = FontMatcher::match_system_face(self.font_db.faces(), family, request) {
+                if let Some((font, key)) = self.load_system_face(id) {
+                    return Some((font, key));
                 }
             }
         }
         None
     }
 
-    fn default_font(&mut self) -> Arc<LoadedFont> {
+    fn default_font(&mut self) -> (Arc<LoadedFont>, FontKey) {
         // First search fonts that match one of the default sans families.
-        let default_sans_font = self
-            .font_db
+        let mut found: Option<(Arc<LoadedFont>, FontKey)> = None;
+        let face_opt = self.font_db
             .faces()
             .find(|face| {
-                face.families.iter().any(|fam| {
-                    DEFAULT_SANS
-                        .iter()
-                        .any(|default| fam.0.eq_ignore_ascii_case(default))
-                })
-            })
-            .and_then(|face| {
-                if let fontdb::Source::File(path) = &face.source {
-                    std::fs::read(path)
-                        .ok()
-                        .map(|bytes| LoadedFont::from_bytes(bytes).into())
-                } else {
-                    None
-                }
+                face.families
+                    .iter()
+                    .any(|fam| {
+                        DEFAULT_SANS.iter().any(|default| fam.0.eq_ignore_ascii_case(default))
+                    })
             });
+        if let Some(face) = face_opt {
+            if let fontdb::Source::File(path) = &face.source {
+                if let Ok(bytes) = std::fs::read(path) {
+                    if let Ok(loaded_font) = LoadedFont::from_bytes(bytes) {
+                        let font = Arc::new(loaded_font);
+                        let key = FontKey::Local { id: face.id };
+                        found = Some((font, key));
+                    }
+                }
+            }
+        }
 
         // If found, return it.
-        if let Some(font) = default_sans_font {
-            return font;
+        if let Some(result) = found {
+            return result;
         }
 
         // Otherwise, fallback to any available font file.
-        let any_font = self
-            .font_db
+        let any_font = self.font_db
             .faces()
             .find_map(|face| {
                 if let fontdb::Source::File(path) = &face.source {
-                    std::fs::read(path)
-                        .ok()
-                        .map(|bytes| LoadedFont::from_bytes(bytes).into())
-                } else {
-                    None
+                    if let Ok(bytes) = std::fs::read(path) {
+                        if let Ok(loaded_font) = LoadedFont::from_bytes(bytes) {
+                            let font = Arc::new(loaded_font);
+                            let key = FontKey::Local { id: face.id };
+                            return Some((font, key));
+                        }
+                    }
                 }
+                None
             })
             .expect("No usable system fonts found");
 
